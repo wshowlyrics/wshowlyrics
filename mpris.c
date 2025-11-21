@@ -57,43 +57,81 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 
 	memset(metadata, 0, sizeof(struct track_metadata));
 
-	// Get title
-	metadata->title = execute_command("playerctl metadata title 2>/dev/null");
-	if (!metadata->title) {
+	// Get all metadata in a single command to ensure consistency
+	// Format: title|artist|album|url|length
+	char *result = execute_command(
+		"playerctl --player=%any metadata --format "
+		"'{{title}}|||{{artist}}|||{{album}}|||{{xesam:url}}|||{{mpris:length}}' 2>/dev/null"
+	);
+
+	if (!result) {
 		return false;
 	}
 
-	// Get artist
-	metadata->artist = execute_command("playerctl metadata artist 2>/dev/null");
+	// Parse the result
+	char *title_start = result;
+	char *artist_start = strstr(result, "|||");
+	if (!artist_start) {
+		free(result);
+		return false;
+	}
+	*artist_start = '\0';
+	artist_start += 3;
 
-	// Get album
-	metadata->album = execute_command("playerctl metadata album 2>/dev/null");
+	char *album_start = strstr(artist_start, "|||");
+	if (!album_start) {
+		free(result);
+		return false;
+	}
+	*album_start = '\0';
+	album_start += 3;
 
-	// Get URL/file path
-	metadata->url = execute_command("playerctl metadata xesam:url 2>/dev/null");
+	char *url_start = strstr(album_start, "|||");
+	if (!url_start) {
+		free(result);
+		return false;
+	}
+	*url_start = '\0';
+	url_start += 3;
 
-	// Get length in microseconds
-	char *length_str = execute_command("playerctl metadata mpris:length 2>/dev/null");
-	if (length_str) {
-		metadata->length_us = atoll(length_str);
-		free(length_str);
+	char *length_start = strstr(url_start, "|||");
+	if (!length_start) {
+		free(result);
+		return false;
+	}
+	*length_start = '\0';
+	length_start += 3;
+
+	// Copy the values
+	metadata->title = strdup(title_start);
+	if (strlen(artist_start) > 0) {
+		metadata->artist = strdup(artist_start);
+	}
+	if (strlen(album_start) > 0) {
+		metadata->album = strdup(album_start);
+	}
+	if (strlen(url_start) > 0) {
+		metadata->url = strdup(url_start);
+	}
+	if (strlen(length_start) > 0) {
+		metadata->length_us = atoll(length_start);
 	}
 
-	// Get position in microseconds
-	char *position_str = execute_command("playerctl position 2>/dev/null");
+	// Get position separately (not available in metadata format)
+	char *position_str = execute_command("playerctl --player=%any position 2>/dev/null");
 	if (position_str) {
-		// Position is in seconds (float), convert to microseconds
 		double position_sec = atof(position_str);
 		metadata->position_us = (int64_t)(position_sec * 1000000);
 		free(position_str);
 	}
 
-	return true;
+	free(result);
+	return metadata->title != NULL;
 }
 
 int64_t mpris_get_position(void) {
 	// Use metadata format to get position in microseconds
-	char *position_str = execute_command("playerctl metadata -f '{{position}}' 2>/dev/null");
+	char *position_str = execute_command("playerctl --player=%any metadata -f '{{position}}' 2>/dev/null");
 	if (!position_str) {
 		return 0;
 	}
@@ -105,7 +143,7 @@ int64_t mpris_get_position(void) {
 }
 
 bool mpris_is_playing(void) {
-	char *status = execute_command("playerctl status 2>/dev/null");
+	char *status = execute_command("playerctl --player=%any status 2>/dev/null");
 	if (!status) {
 		return false;
 	}
