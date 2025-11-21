@@ -161,25 +161,62 @@ Filename formats:
 - wayland-client
 - wayland-protocols
 - wlr-layer-shell protocol
-- libcurl
 - meson & ninja
 
 ### Runtime Requirements
 - playerctl (for MPRIS mode)
 - Wayland compositor with wlr-layer-shell support (Sway, Hyprland, etc.)
 
-### Installation (Arch Linux)
+## Installation
+
+### Arch Linux (AUR)
+
+Install using an AUR helper like `yay`:
 
 ```bash
-sudo pacman -S cairo fontconfig pango wayland wayland-protocols curl meson ninja playerctl
+yay -S wshowlyrics-git
 ```
 
-### Installation (Ubuntu/Debian)
+Or manually:
+
+```bash
+git clone https://aur.archlinux.org/wshowlyrics-git.git
+cd wshowlyrics-git
+makepkg -si
+```
+
+### Manual Installation (Arch Linux)
+
+Install dependencies:
+
+```bash
+sudo pacman -S cairo fontconfig pango wayland wayland-protocols meson ninja playerctl
+```
+
+Build and install:
+
+```bash
+meson setup build
+meson compile -C build
+sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
+```
+
+### Manual Installation (Ubuntu/Debian)
+
+Install dependencies:
 
 ```bash
 sudo apt install libcairo2-dev libfontconfig1-dev libpango1.0-dev \
-                 libwayland-dev wayland-protocols libcurl4-openssl-dev \
+                 libwayland-dev wayland-protocols \
                  meson ninja-build playerctl
+```
+
+Build and install:
+
+```bash
+meson setup build
+meson compile -C build
+sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
 ```
 
 ## License

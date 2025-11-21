@@ -159,25 +159,62 @@ mpv --force-window=yes song.mp3
 - wayland-client
 - wayland-protocols
 - wlr-layer-shell protocol
-- libcurl
 - meson & ninja
 
 ### 실행 시 필요
 - playerctl (MPRIS 모드 사용시)
 - Wayland compositor with wlr-layer-shell support (Sway, Hyprland 등)
 
-### 설치 (Arch Linux)
+## 설치
+
+### Arch Linux (AUR)
+
+AUR 헬퍼(예: `yay`)를 사용하여 설치:
 
 ```bash
-sudo pacman -S cairo fontconfig pango wayland wayland-protocols curl meson ninja playerctl
+yay -S wshowlyrics-git
 ```
 
-### 설치 (Ubuntu/Debian)
+수동 설치:
+
+```bash
+git clone https://aur.archlinux.org/wshowlyrics-git.git
+cd wshowlyrics-git
+makepkg -si
+```
+
+### 수동 설치 (Arch Linux)
+
+의존성 설치:
+
+```bash
+sudo pacman -S cairo fontconfig pango wayland wayland-protocols meson ninja playerctl
+```
+
+빌드 및 설치:
+
+```bash
+meson setup build
+meson compile -C build
+sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
+```
+
+### 수동 설치 (Ubuntu/Debian)
+
+의존성 설치:
 
 ```bash
 sudo apt install libcairo2-dev libfontconfig1-dev libpango1.0-dev \
-                 libwayland-dev wayland-protocols libcurl4-openssl-dev \
+                 libwayland-dev wayland-protocols \
                  meson ninja-build playerctl
+```
+
+빌드 및 설치:
+
+```bash
+meson setup build
+meson compile -C build
+sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
 ```
 
 ## 라이선스
