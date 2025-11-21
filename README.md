@@ -50,30 +50,50 @@ mpv --force-window=yes song.mp3
 
 ### 옵션
 
-- `-l <파일>`: 가사 파일 경로 (지정시 MPRIS 비활성화)
-- `-F <폰트>`: 폰트 설정 (기본: "Sans Bold 32")
-- `-b <색상>`: 배경색 (기본: #000000CC)
-- `-f <색상>`: 전경색/텍스트색 (기본: #FFFFFFFF)
-- `-a <위치>`: 화면 위치 - top, bottom, left, right (기본: bottom)
-- `-m <픽셀>`: 화면 가장자리로부터의 여백 (기본: 32)
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `-h` | 도움말 표시 | - |
+| `-b COLOR` | 배경색 (#RRGGBB[AA] 형식) | `#00000080` (검정, 50% 투명) |
+| `-f COLOR` | 전경색/텍스트색 (#RRGGBB[AA] 형식) | `#FFFFFFFF` (흰색, 불투명) |
+| `-F FONT` | 폰트 설정 | `"Sans 20"` |
+| `-a POSITION` | 화면 위치 (top/bottom/left/right) | `bottom` |
+| `-m PIXELS` | 화면 가장자리 여백 (픽셀) | `32` |
+| `-l FILE` | 특정 가사 파일 로드 (.lrc/.srt/.vtt) | MPRIS 자동 감지 |
+
+**색상 형식:**
+- `#RRGGBB`: RGB 값 (예: `#FF0000` = 빨강)
+- `#RRGGBBAA`: RGB + 투명도 (예: `#FF000080` = 빨강 50% 투명)
+- `AA` 값: `00` = 완전 투명, `FF` = 불투명, `80` = 50% 투명
+
+**폰트 형식:**
+- 기본: `"Sans 20"` (Sans 폰트, 20pt)
+- 볼드: `"Sans Bold 24"`
+- 한글: `"Noto Sans CJK KR 18"`
+- 일본어: `"Noto Sans CJK JP Bold 22"`
 
 ### 예제
 
 ```bash
-# MPRIS 모드로 실행
+# 도움말 보기
+./build/lyrics -h
+
+# MPRIS 모드로 실행 (기본)
 ./build/lyrics
 
 # 한글 폰트로 실행
-./build/lyrics -F "Noto Sans CJK KR Bold 48"
+./build/lyrics -F "Noto Sans CJK KR 20"
 
 # 화면 상단에 표시
-./build/lyrics -a top
+./build/lyrics -a top -m 50
 
-# 흰색 배경에 검은색 텍스트
-./build/lyrics -b FFFFFFFF -f 000000FF
+# 투명한 배경에 노란색 텍스트
+./build/lyrics -b 00000066 -f FFFF00FF
 
 # 특정 LRC 파일 표시
 ./build/lyrics -l "Artist - Song.lrc"
+
+# 큰 볼드 폰트, 화면 하단
+./build/lyrics -F "Sans Bold 28" -a bottom -m 40
 ```
 
 ## 가사 파일 형식

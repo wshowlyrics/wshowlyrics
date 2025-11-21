@@ -392,9 +392,9 @@ int main(int argc, char *argv[]) {
 	unsigned int anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
 	int margin = 32;
 	struct lyrics_state state = { 0 };
-	state.background = 0x000000CC;
+	state.background = 0x00000080;
 	state.foreground = 0xFFFFFFFF;
-	state.font = "Sans 24";
+	state.font = "Sans 20";
 	state.lyrics_file = NULL;
 	state.use_mpris = true; // Default to MPRIS mode
 
@@ -429,12 +429,34 @@ int main(int argc, char *argv[]) {
 			state.lyrics_file = optarg;
 			state.use_mpris = false; // Explicit file disables MPRIS
 			break;
+		case 'h':
 		default:
-			fprintf(stderr, "usage: lyrics [-b|-f #RRGGBB[AA]] [-F font] "
-					"[-a top|left|right|bottom] [-m margin] "
-					"[-l lyrics_file]\n");
-			fprintf(stderr, "\nIf -l is not provided, will use MPRIS to detect current track\n");
-			return 1;
+			fprintf(stderr, "Usage: lyrics [OPTIONS]\n\n");
+			fprintf(stderr, "Wayland lyrics overlay with MPRIS integration\n\n");
+			fprintf(stderr, "Options:\n");
+			fprintf(stderr, "  -h              Show this help message\n");
+			fprintf(stderr, "  -b COLOR        Background color in #RRGGBB[AA] format (default: #00000080)\n");
+			fprintf(stderr, "  -f COLOR        Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
+			fprintf(stderr, "  -F FONT         Font specification (default: \"Sans 20\")\n");
+			fprintf(stderr, "                  Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
+			fprintf(stderr, "  -a POSITION     Anchor position: top, bottom, left, right (default: bottom)\n");
+			fprintf(stderr, "  -m PIXELS       Margin from screen edge in pixels (default: 32)\n");
+			fprintf(stderr, "  -l FILE         Load specific lyrics file (disables MPRIS auto-detection)\n");
+			fprintf(stderr, "                  Supports: .lrc, .srt, .vtt formats\n\n");
+			fprintf(stderr, "MPRIS Mode (default):\n");
+			fprintf(stderr, "  When -l is not provided, automatically detects currently playing track\n");
+			fprintf(stderr, "  and searches for lyrics files in:\n");
+			fprintf(stderr, "    1. Same directory as the music file\n");
+			fprintf(stderr, "    2. Current directory\n");
+			fprintf(stderr, "    3. ~/.lyrics/\n");
+			fprintf(stderr, "    4. $HOME\n\n");
+			fprintf(stderr, "Examples:\n");
+			fprintf(stderr, "  lyrics                              # Auto-detect with MPRIS\n");
+			fprintf(stderr, "  lyrics -F \"Sans Bold 24\"            # Larger font\n");
+			fprintf(stderr, "  lyrics -a top -m 50                 # Top of screen, 50px margin\n");
+			fprintf(stderr, "  lyrics -b 000000AA -f FFFF00FF      # Custom colors\n");
+			fprintf(stderr, "  lyrics -l song.lrc                  # Load specific file\n");
+			return c == 'h' ? 0 : 1;
 		}
 	}
 
