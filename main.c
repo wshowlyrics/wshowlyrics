@@ -526,6 +526,13 @@ int main(int argc, char *argv[]) {
 	zwlr_layer_surface_v1_set_margin(state.layer_surface,
 			margin, margin, margin, margin);
 	zwlr_layer_surface_v1_set_exclusive_zone(state.layer_surface, -1);
+	zwlr_layer_surface_v1_set_keyboard_interactivity(state.layer_surface, 0);
+
+	// Set empty input region to allow clicks to pass through
+	struct wl_region *region = wl_compositor_create_region(state.compositor);
+	wl_surface_set_input_region(state.surface, region);
+	wl_region_destroy(region);
+
 	wl_surface_commit(state.surface);
 
 	// Wait for configure event
