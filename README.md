@@ -162,4 +162,6 @@ sudo apt install libcairo2-dev libfontconfig1-dev libpango1.0-dev \
 
 ## 라이선스
 
-GPL (wshowkeys 프로젝트 기반)
+GNU General Public License v3.0 (GPL-3.0)
+
+이 프로젝트는 wshowkeys를 기반으로 하며, 동일한 GPL-3.0 라이선스를 따릅니다.
