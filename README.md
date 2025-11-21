@@ -1,157 +1,159 @@
 # Lyrics Overlay for Wayland
 
-Wayland 기반 가사 오버레이 프로그램입니다. [wshowkeys 프로젝트를 기반](https://github.com/unstable-code/wshowkeys)으로 제작되었으며, [LyricsX](https://github.com/ddddxxx/LyricsX)에서 영감을 받았습니다.
+A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https://github.com/unstable-code/wshowkeys) and inspired by [LyricsX](https://github.com/ddddxxx/LyricsX).
 
-## 기능
+[한국어 README](README.ko.md)
 
-- **MPRIS 통합**: playerctl을 통해 현재 재생중인 곡 자동 감지 (mpv, Spotify, VLC 등 모든 MPRIS 호환 플레이어)
-- **스마트 로컬 가사 검색**:
-  - 현재 재생중인 파일과 같은 디렉토리 우선 검색
-  - URL 디코딩으로 유니코드(한글, 일본어 등) 경로 지원
-  - 파일명 기반 자동 매칭
-- **동기화된 가사**: LRC 및 SRT 포맷 지원
-- **실시간 싱크**: 음악 재생 위치에 따라 가사 자동 표시
-- Wayland 프로토콜 사용 (wlr-layer-shell)
-- 투명 배경 지원
-- 한글, 중국어, 일본어 등 모든 유니코드 문자 지원 (Pango)
-- 화면 위치 조정 가능 (상/하/좌/우)
-- 색상 및 폰트 커스터마이징
+## Features
 
-## 빌드 방법
+- **MPRIS Integration**: Automatically detects currently playing songs via playerctl (supports all MPRIS-compatible players: mpv, Spotify, VLC, etc.)
+- **Smart Local Lyrics Search**:
+  - Prioritizes searching in the same directory as the currently playing file
+  - URL decoding support for Unicode paths (Korean, Japanese, etc.)
+  - Automatic filename-based matching
+- **Synchronized Lyrics**: Supports LRC and SRT formats
+- **Real-time Sync**: Automatically displays lyrics based on music playback position
+- Uses Wayland protocol (wlr-layer-shell)
+- Transparent background support
+- Full Unicode character support (Korean, Chinese, Japanese, etc. via Pango)
+- Adjustable screen position (top/bottom/left/right)
+- Customizable colors and fonts
+
+## Build
 
 ```bash
 meson setup build
 meson compile -C build
 ```
 
-## 사용 방법
+## Usage
 
-### MPRIS 모드 (기본)
+### MPRIS Mode (Default)
 
-현재 재생중인 음악에 자동으로 가사를 표시합니다:
+Automatically displays lyrics for the currently playing music:
 
 ```bash
-# 기본 실행 - 자동으로 현재 재생중인 곡의 가사를 찾아 표시
+# Basic execution - automatically finds and displays lyrics for the current song
 ./build/lyrics
 
-# mpv로 음악 재생
+# Play music with mpv
 mpv --force-window=yes song.mp3
 
-# Spotify, VLC 등 다른 MPRIS 호환 플레이어도 동작
+# Also works with other MPRIS-compatible players like Spotify, VLC, etc.
 ```
 
-### 수동 모드
+### Manual Mode
 
-특정 LRC/SRT 파일을 표시:
+Display a specific LRC/SRT file:
 
 ```bash
 ./build/lyrics -l sample.lrc
 ```
 
-### 옵션
+### Options
 
-| 옵션 | 설명 | 기본값 |
-|------|------|--------|
-| `-h` | 도움말 표시 | - |
-| `-b COLOR` | 배경색 (#RRGGBB[AA] 형식) | `#00000080` (검정, 50% 투명) |
-| `-f COLOR` | 전경색/텍스트색 (#RRGGBB[AA] 형식) | `#FFFFFFFF` (흰색, 불투명) |
-| `-F FONT` | 폰트 설정 | `"Sans 20"` |
-| `-a POSITION` | 화면 위치 (top/bottom/left/right) | `bottom` |
-| `-m PIXELS` | 화면 가장자리 여백 (픽셀) | `32` |
-| `-l FILE` | 특정 가사 파일 로드 (.lrc/.srt/.vtt) | MPRIS 자동 감지 |
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-h` | Show help | - |
+| `-b COLOR` | Background color (#RRGGBB[AA] format) | `#00000080` (black, 50% transparent) |
+| `-f COLOR` | Foreground/text color (#RRGGBB[AA] format) | `#FFFFFFFF` (white, opaque) |
+| `-F FONT` | Font setting | `"Sans 20"` |
+| `-a POSITION` | Screen position (top/bottom/left/right) | `bottom` |
+| `-m PIXELS` | Screen edge margin (pixels) | `32` |
+| `-l FILE` | Load specific lyrics file (.lrc/.srt/.vtt) | MPRIS auto-detect |
 
-**색상 형식:**
-- `#RRGGBB`: RGB 값 (예: `#FF0000` = 빨강)
-- `#RRGGBBAA`: RGB + 투명도 (예: `#FF000080` = 빨강 50% 투명)
-- `AA` 값: `00` = 완전 투명, `FF` = 불투명, `80` = 50% 투명
+**Color Format:**
+- `#RRGGBB`: RGB value (e.g., `#FF0000` = red)
+- `#RRGGBBAA`: RGB + transparency (e.g., `#FF000080` = red 50% transparent)
+- `AA` value: `00` = fully transparent, `FF` = opaque, `80` = 50% transparent
 
-**폰트 형식:**
-- 기본: `"Sans 20"` (Sans 폰트, 20pt)
-- 볼드: `"Sans Bold 24"`
-- 한글: `"Noto Sans CJK KR 18"`
-- 일본어: `"Noto Sans CJK JP Bold 22"`
+**Font Format:**
+- Basic: `"Sans 20"` (Sans font, 20pt)
+- Bold: `"Sans Bold 24"`
+- Korean: `"Noto Sans CJK KR 18"`
+- Japanese: `"Noto Sans CJK JP Bold 22"`
 
-### 예제
+### Examples
 
 ```bash
-# 도움말 보기
+# Show help
 ./build/lyrics -h
 
-# MPRIS 모드로 실행 (기본)
+# Run in MPRIS mode (default)
 ./build/lyrics
 
-# 한글 폰트로 실행
+# Run with Korean font
 ./build/lyrics -F "Noto Sans CJK KR 20"
 
-# 화면 상단에 표시
+# Display at top of screen
 ./build/lyrics -a top -m 50
 
-# 투명한 배경에 노란색 텍스트
+# Transparent background with yellow text
 ./build/lyrics -b 00000066 -f FFFF00FF
 
-# 특정 LRC 파일 표시
+# Display specific LRC file
 ./build/lyrics -l "Artist - Song.lrc"
 
-# 큰 볼드 폰트, 화면 하단
+# Large bold font at bottom of screen
 ./build/lyrics -F "Sans Bold 28" -a bottom -m 40
 ```
 
-## 가사 파일 형식
+## Lyrics File Formats
 
-### LRC 형식 (권장)
+### LRC Format (Recommended)
 
-동기화된 가사 파일 형식입니다:
+Synchronized lyrics file format:
 
 ```lrc
-[ti:노래 제목]
-[ar:아티스트]
-[al:앨범]
+[ti:Song Title]
+[ar:Artist]
+[al:Album]
 
-[00:12.00]첫 번째 가사 줄
-[00:17.50]두 번째 가사 줄
-[00:23.00]세 번째 가사 줄
+[00:12.00]First line of lyrics
+[00:17.50]Second line of lyrics
+[00:23.00]Third line of lyrics
 ```
 
-### SRT 형식
+### SRT Format
 
-자막 형식도 지원합니다:
+Subtitle format is also supported:
 
 ```srt
 1
 00:00:12,000 --> 00:00:17,500
-첫 번째 가사 줄
+First line of lyrics
 
 2
 00:00:17,500 --> 00:00:23,000
-두 번째 가사 줄
+Second line of lyrics
 ```
 
-### 로컬 가사 파일 검색 경로
+### Local Lyrics File Search Paths
 
-프로그램은 다음 **우선순위**로 가사 파일을 자동으로 검색합니다:
+The program automatically searches for lyrics files in the following **priority order**:
 
-1. **현재 재생중인 음악 파일과 같은 디렉토리** (최우선!)
-   - 먼저 음악 파일명과 동일한 이름의 가사 파일 검색
-   - 예: `song.mp3` → `song.lrc` 또는 `song.srt`
-2. 제목 기반 검색 (현재 디렉토리부터)
+1. **Same directory as the currently playing music file** (highest priority!)
+   - First searches for a lyrics file with the same name as the music file
+   - Example: `song.mp3` → `song.lrc` or `song.srt`
+2. Title-based search (starting from current directory)
 3. `$XDG_MUSIC_DIR`
 4. `~/.lyrics/`
 5. `$HOME`
 
-파일명 형식:
-- `파일명.lrc` / `파일명.srt` (추천! 음악 파일과 같은 이름)
-- `제목.lrc` / `제목.srt`
-- `아티스트 - 제목.lrc` / `아티스트 - 제목.srt`
-- `아티스트/제목.lrc`
+Filename formats:
+- `filename.lrc` / `filename.srt` (recommended! same name as music file)
+- `title.lrc` / `title.srt`
+- `artist - title.lrc` / `artist - title.srt`
+- `artist/title.lrc`
 
-**팁**:
-- 가사 파일을 음악 파일과 **같은 이름, 같은 디렉토리**에 두세요!
-- 유니코드(한글, 일본어 등) 파일명도 완벽 지원합니다
-- 예: `/music/노래.mp3` + `/music/노래.lrc` ✅
+**Tips:**
+- Place lyrics files with the **same name in the same directory** as your music files!
+- Unicode filenames (Korean, Japanese, etc.) are fully supported
+- Example: `/music/song.mp3` + `/music/song.lrc` ✅
 
-## 의존성
+## Dependencies
 
-### 빌드 시 필요
+### Build Requirements
 - cairo
 - fontconfig
 - pango
@@ -162,17 +164,17 @@ mpv --force-window=yes song.mp3
 - libcurl
 - meson & ninja
 
-### 실행 시 필요
-- playerctl (MPRIS 모드 사용시)
-- Wayland compositor with wlr-layer-shell support (Sway, Hyprland 등)
+### Runtime Requirements
+- playerctl (for MPRIS mode)
+- Wayland compositor with wlr-layer-shell support (Sway, Hyprland, etc.)
 
-### 설치 (Arch Linux)
+### Installation (Arch Linux)
 
 ```bash
 sudo pacman -S cairo fontconfig pango wayland wayland-protocols curl meson ninja playerctl
 ```
 
-### 설치 (Ubuntu/Debian)
+### Installation (Ubuntu/Debian)
 
 ```bash
 sudo apt install libcairo2-dev libfontconfig1-dev libpango1.0-dev \
@@ -180,8 +182,8 @@ sudo apt install libcairo2-dev libfontconfig1-dev libpango1.0-dev \
                  meson ninja-build playerctl
 ```
 
-## 라이선스
+## License
 
 GNU General Public License v3.0 (GPL-3.0)
 
-이 프로젝트는 wshowkeys를 기반으로 하며, 동일한 GPL-3.0 라이선스를 따릅니다.
+This project is based on wshowkeys and follows the same GPL-3.0 license.
