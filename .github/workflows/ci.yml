@@ -4,9 +4,19 @@ on:
   push:
     branches:
       - master
+    paths:
+      - '**.c'
+      - '**.h'
+      - 'meson.build'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches:
       - master
+    paths:
+      - '**.c'
+      - '**.h'
+      - 'meson.build'
+      - '.github/workflows/ci.yml'
 
 jobs:
   build-and-test:
