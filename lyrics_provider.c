@@ -164,8 +164,11 @@ static bool local_search(const char *title, const char *artist, const char *albu
 		return false;
 	}
 
-	char *title_safe = sanitize_filename(title);
+	// Remove extension from title first (in case it's a filename)
+	char *title_no_ext = remove_extension(title);
+	char *title_safe = sanitize_filename(title_no_ext ? title_no_ext : title);
 	char *artist_safe = artist ? sanitize_filename(artist) : NULL;
+	free(title_no_ext);
 
 	// PRIORITY 1: Directory of the currently playing file
 	char *current_dir = get_directory_from_url(url);

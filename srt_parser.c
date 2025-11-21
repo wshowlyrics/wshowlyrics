@@ -4,12 +4,19 @@
 #include <string.h>
 #include <ctype.h>
 
-// Parse SRT timestamp like 00:00:12,340 --> 00:00:15,120
+// Parse SRT/WEBVTT timestamp like 00:00:12,340 --> 00:00:15,120 or 00:00:12.340 --> 00:00:15.120
 static bool parse_srt_timestamp(const char *str, int64_t *start_us, int64_t *end_us) {
 	int h1, m1, s1, ms1, h2, m2, s2, ms2;
 
+	// Try SRT format first (with comma)
 	int matched = sscanf(str, "%d:%d:%d,%d --> %d:%d:%d,%d",
 	                     &h1, &m1, &s1, &ms1, &h2, &m2, &s2, &ms2);
+
+	// Try WEBVTT format (with dot)
+	if (matched != 8) {
+		matched = sscanf(str, "%d:%d:%d.%d --> %d:%d:%d.%d",
+		                 &h1, &m1, &s1, &ms1, &h2, &m2, &s2, &ms2);
+	}
 
 	if (matched == 8) {
 		*start_us = (int64_t)h1 * 3600 * 1000000 +
@@ -77,8 +84,21 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 
 		switch (state) {
 		case STATE_INDEX:
-			// Expecting a number
-			if (*line && isdigit(*line)) {
+			// Skip empty lines and WEBVTT headers
+			if (*line == '\0' || strncmp(line, "WEBVTT", 6) == 0 ||
+			    strncmp(line, "Kind:", 5) == 0 || strncmp(line, "NOTE", 4) == 0) {
+				break;
+			}
+			// Check for timestamp directly (WEBVTT may not have index numbers)
+			if (strstr(line, "-->")) {
+				if (parse_srt_timestamp(line, &current_start_us, &current_end_us)) {
+					state = STATE_TEXT;
+					text_len = 0;
+					text_buffer[0] = '\0';
+				}
+			}
+			// Or expecting a number (SRT format)
+			else if (*line && isdigit(*line)) {
 				state = STATE_TIMESTAMP;
 			}
 			break;
