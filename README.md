@@ -1,6 +1,6 @@
 # Lyrics Overlay for Wayland
 
-Wayland 기반 가사 오버레이 프로그램입니다. wshowkeys 프로젝트를 기반으로 제작되었으며, LyricsX에서 영감을 받았습니다.
+Wayland 기반 가사 오버레이 프로그램입니다. [wshowkeys 프로젝트를 기반](https://github.com/unstable-code/wshowkeys)으로 제작되었으며, [LyricsX](https://github.com/ddddxxx/LyricsX)에서 영감을 받았습니다.
 
 ## 기능
 
