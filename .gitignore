@@ -53,3 +53,18 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Meson build directory
+build/
+builddir/
+
+# Editor and IDE files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Lyrics cache/data files
+*.lrc
+*.srt
