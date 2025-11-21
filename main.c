@@ -27,14 +27,19 @@ static cairo_subpixel_order_t to_cairo_subpixel_order(
 
 static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 		int scale, uint32_t *width, uint32_t *height) {
-	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
-	cairo_set_source_u32(cairo, state->background);
-	cairo_paint(cairo);
-
 	const char *text_to_display = " "; // Default to single space
-	if (state->current_line && state->current_line->text) {
+	bool has_lyrics = (state->current_line && state->current_line->text);
+
+	if (has_lyrics) {
 		text_to_display = state->current_line->text;
 	}
+
+	// Use transparent background when no lyrics, normal background when lyrics present
+	uint32_t background_color = has_lyrics ? state->background : 0x00000000;
+
+	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
+	cairo_set_source_u32(cairo, background_color);
+	cairo_paint(cairo);
 
 	cairo_set_source_u32(cairo, state->foreground);
 
