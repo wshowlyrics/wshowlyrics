@@ -22,11 +22,9 @@ struct lyrics_provider {
 };
 
 // Concrete implementations
-extern struct lyrics_provider lrclib_provider;
 extern struct lyrics_provider local_provider;
 
 // High-level API: Find lyrics for current track
-// Tries local files first, then falls back to online providers
 bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *data);
 
 // Initialize all providers

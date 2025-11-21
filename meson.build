@@ -39,7 +39,6 @@ pango          = dependency('pango')
 pangocairo     = dependency('pangocairo')
 wayland_client = dependency('wayland-client')
 wayland_protos = dependency('wayland-protocols')
-curl           = dependency('libcurl')
 
 rt = cc.find_library('rt')
 
@@ -59,7 +58,6 @@ executable(
 	dependencies: [
 		cairo,
 		client_protos,
-		curl,
 		fontconfig,
 		pango,
 		pangocairo,

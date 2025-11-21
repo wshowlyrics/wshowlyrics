@@ -9,7 +9,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <libgen.h>
-#include <curl/curl.h>
 
 // ============================================================================
 // Local file provider
@@ -289,236 +288,11 @@ struct lyrics_provider local_provider = {
 };
 
 // ============================================================================
-// lrclib.net API provider
-// ============================================================================
-
-struct curl_response {
-	char *data;
-	size_t size;
-};
-
-static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
-	size_t realsize = size * nmemb;
-	struct curl_response *resp = (struct curl_response *)userp;
-
-	char *ptr = realloc(resp->data, resp->size + realsize + 1);
-	if (!ptr) {
-		return 0;
-	}
-
-	resp->data = ptr;
-	memcpy(&(resp->data[resp->size]), contents, realsize);
-	resp->size += realsize;
-	resp->data[resp->size] = 0;
-
-	return realsize;
-}
-
-static char* url_encode(const char *str) {
-	if (!str) return NULL;
-
-	CURL *curl = curl_easy_init();
-	if (!curl) return NULL;
-
-	char *encoded = curl_easy_escape(curl, str, 0);
-	char *result = encoded ? strdup(encoded) : NULL;
-
-	curl_free(encoded);
-	curl_easy_cleanup(curl);
-
-	return result;
-}
-
-// Simple JSON parsing for lrclib response
-// This is a minimal implementation - for production use a proper JSON library
-static char* extract_json_field(const char *json, const char *field) {
-	char pattern[256];
-	snprintf(pattern, sizeof(pattern), "\"%s\"", field);
-
-	const char *field_start = strstr(json, pattern);
-	if (!field_start) {
-		return NULL;
-	}
-
-	// Find the colon after field name
-	const char *colon = strchr(field_start, ':');
-	if (!colon) {
-		return NULL;
-	}
-
-	// Skip whitespace after colon
-	colon++;
-	while (*colon && (*colon == ' ' || *colon == '\t')) {
-		colon++;
-	}
-
-	// Check if value is null
-	if (strncmp(colon, "null", 4) == 0) {
-		return NULL;
-	}
-
-	// Skip opening quote
-	if (*colon != '"') {
-		return NULL;
-	}
-	colon++;
-
-	// Find closing quote (handling escaped quotes)
-	const char *end = colon;
-	while (*end) {
-		if (*end == '"' && *(end - 1) != '\\') {
-			break;
-		}
-		end++;
-	}
-
-	if (*end != '"') {
-		return NULL;
-	}
-
-	// Extract and unescape
-	size_t len = end - colon;
-	char *result = malloc(len + 1);
-	if (!result) {
-		return NULL;
-	}
-
-	// Simple unescape (only handles \\n for now)
-	const char *src = colon;
-	char *dst = result;
-	while (src < end) {
-		if (*src == '\\' && src + 1 < end) {
-			if (*(src + 1) == 'n') {
-				*dst++ = '\n';
-				src += 2;
-				continue;
-			} else if (*(src + 1) == '\\') {
-				*dst++ = '\\';
-				src += 2;
-				continue;
-			} else if (*(src + 1) == '"') {
-				*dst++ = '"';
-				src += 2;
-				continue;
-			}
-		}
-		*dst++ = *src++;
-	}
-	*dst = '\0';
-
-	return result;
-}
-
-static bool lrclib_search(const char *title, const char *artist, const char *album,
-                          const char *url, struct lyrics_data *data) {
-	(void)url; // Unused for online search
-	if (!title) {
-		return false;
-	}
-
-	CURL *curl = curl_easy_init();
-	if (!curl) {
-		return false;
-	}
-
-	// Remove extension from title for better search results
-	char *title_clean = remove_extension(title);
-	if (!title_clean) {
-		curl_easy_cleanup(curl);
-		return false;
-	}
-
-	// Build URL
-	char *title_enc = url_encode(title_clean);
-	char *artist_enc = artist ? url_encode(artist) : NULL;
-	char *album_enc = album ? url_encode(album) : NULL;
-
-	free(title_clean);
-
-	char api_url[2048];
-	snprintf(api_url, sizeof(api_url),
-	         "https://lrclib.net/api/get?track_name=%s%s%s%s%s",
-	         title_enc,
-	         artist_enc ? "&artist_name=" : "",
-	         artist_enc ? artist_enc : "",
-	         album_enc ? "&album_name=" : "",
-	         album_enc ? album_enc : "");
-
-	free(title_enc);
-	free(artist_enc);
-	free(album_enc);
-
-	struct curl_response response = {0};
-
-	curl_easy_setopt(curl, CURLOPT_URL, api_url);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-	curl_easy_setopt(curl, CURLOPT_USERAGENT, "lyrics-overlay/0.1");
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-
-	printf("Fetching lyrics from lrclib.net...\n");
-	CURLcode res = curl_easy_perform(curl);
-
-	bool success = false;
-	if (res == CURLE_OK) {
-		long response_code;
-		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
-
-		if (response_code == 200 && response.data) {
-			// Try to extract synced lyrics first
-			char *synced_lyrics = extract_json_field(response.data, "syncedLyrics");
-			if (synced_lyrics) {
-				printf("Found synced lyrics from lrclib.net\n");
-				success = lrc_parse_string(synced_lyrics, data);
-				free(synced_lyrics);
-			}
-
-			// Fallback to plain lyrics
-			if (!success) {
-				char *plain_lyrics = extract_json_field(response.data, "plainLyrics");
-				if (plain_lyrics) {
-					printf("Found plain lyrics from lrclib.net (no timing info)\n");
-					// For plain lyrics, we'll create fake timestamps
-					// This is not ideal but better than nothing
-					free(plain_lyrics);
-				}
-			}
-		} else {
-			printf("lrclib.net returned status %ld\n", response_code);
-		}
-	} else {
-		fprintf(stderr, "lrclib.net request failed: %s\n", curl_easy_strerror(res));
-	}
-
-	free(response.data);
-	curl_easy_cleanup(curl);
-
-	return success;
-}
-
-static bool lrclib_init(void) {
-	curl_global_init(CURL_GLOBAL_ALL);
-	return true;
-}
-
-static void lrclib_cleanup(void) {
-	curl_global_cleanup();
-}
-
-struct lyrics_provider lrclib_provider = {
-	.name = "lrclib",
-	.search = lrclib_search,
-	.init = lrclib_init,
-	.cleanup = lrclib_cleanup,
-};
-
-// ============================================================================
 // High-level API
 // ============================================================================
 
 static struct lyrics_provider *providers[] = {
 	&local_provider,
-	// &lrclib_provider,  // Disabled for now - focus on local files
 	NULL
 };
 
@@ -550,7 +324,7 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
 		printf("File location: %s\n", track->url);
 	}
 
-	// Try each provider in order (local first, then online)
+	// Try each provider in order
 	for (int i = 0; providers[i]; i++) {
 		printf("Trying provider: %s\n", providers[i]->name);
 		if (providers[i]->search(track->title, track->artist, track->album,
