@@ -51,6 +51,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 	} state = STATE_INDEX;
 
 	int64_t current_start_us = 0;
+	int64_t current_end_us = 0;
 	char text_buffer[4096] = {0};
 	int text_len = 0;
 
@@ -85,8 +86,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 		case STATE_TIMESTAMP:
 			// Expecting timestamp
 			if (strstr(line, "-->")) {
-				int64_t end_us;
-				if (parse_srt_timestamp(line, &current_start_us, &end_us)) {
+				if (parse_srt_timestamp(line, &current_start_us, &current_end_us)) {
 					state = STATE_TEXT;
 					text_len = 0;
 					text_buffer[0] = '\0';
@@ -102,6 +102,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 					struct lyrics_line *new_line = calloc(1, sizeof(struct lyrics_line));
 					if (new_line) {
 						new_line->timestamp_us = current_start_us;
+						new_line->end_timestamp_us = current_end_us;
 						new_line->text = strdup(text_buffer);
 
 						*next_line = new_line;
@@ -131,6 +132,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 		struct lyrics_line *new_line = calloc(1, sizeof(struct lyrics_line));
 		if (new_line) {
 			new_line->timestamp_us = current_start_us;
+			new_line->end_timestamp_us = current_end_us;
 			new_line->text = strdup(text_buffer);
 
 			*next_line = new_line;

@@ -6,6 +6,7 @@
 
 struct lyrics_line {
 	int64_t timestamp_us; // Timestamp in microseconds
+	int64_t end_timestamp_us; // End timestamp in microseconds (0 if not specified, e.g., LRC format)
 	char *text;
 	struct lyrics_line *next;
 };

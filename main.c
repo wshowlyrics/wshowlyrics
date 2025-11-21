@@ -31,19 +31,20 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 	cairo_set_source_u32(cairo, state->background);
 	cairo_paint(cairo);
 
-	if (!state->current_line || !state->current_line->text) {
-		return;
+	const char *text_to_display = " "; // Default to single space
+	if (state->current_line && state->current_line->text) {
+		text_to_display = state->current_line->text;
 	}
 
 	cairo_set_source_u32(cairo, state->foreground);
 
 	// Calculate text size
 	int w, h;
-	get_text_size(cairo, state->font, &w, &h, NULL, scale, "%s", state->current_line->text);
+	get_text_size(cairo, state->font, &w, &h, NULL, scale, "%s", text_to_display);
 
 	// Draw text at the beginning of the surface (surface itself will be centered by layer-shell)
 	cairo_move_to(cairo, 0, 0);
-	pango_printf(cairo, state->font, scale, "%s", state->current_line->text);
+	pango_printf(cairo, state->font, scale, "%s", text_to_display);
 
 	*width = w;
 	*height = h;
@@ -331,6 +332,38 @@ static void update_current_line(struct lyrics_state *state) {
 	// Find the appropriate line for current position
 	struct lyrics_line *new_line = lrc_find_line_at_time(&state->lyrics, position_us);
 
+	// Check if we should clear the lyrics
+	if (new_line) {
+		if (new_line->end_timestamp_us > 0) {
+			// SRT format: clear if we've passed the explicit end timestamp
+			if (position_us > new_line->end_timestamp_us) {
+				new_line = NULL;
+			}
+		} else {
+			// LRC format: display for 5 seconds OR until 2 seconds before next line
+			int64_t line_end_time_us = new_line->timestamp_us + 5000000;
+
+			struct lyrics_line *next_line = new_line->next;
+			if (next_line) {
+				// Clear 2 seconds before next line to avoid overlap
+				int64_t clear_time = next_line->timestamp_us - 2000000;
+				if (clear_time < line_end_time_us) {
+					line_end_time_us = clear_time;
+				}
+			}
+
+			if (position_us > line_end_time_us) {
+				new_line = NULL;
+			}
+		}
+	} else if (state->lyrics.lines) {
+		// We're before the first line - check if we're more than 2 seconds before it
+		int64_t time_until_first = state->lyrics.lines->timestamp_us - position_us;
+		if (time_until_first > 2000000) {
+			new_line = NULL; // Keep clear if we're well before the first line
+		}
+	}
+
 	if (new_line != state->current_line) {
 		state->current_line = new_line;
 		set_dirty(state);
@@ -338,6 +371,8 @@ static void update_current_line(struct lyrics_state *state) {
 		if (new_line && new_line->text) {
 			int index = lrc_get_line_index(&state->lyrics, new_line);
 			printf("Line %d/%d: %s\n", index + 1, state->lyrics.line_count, new_line->text);
+		} else if (!new_line) {
+			printf("Instrumental break - clearing lyrics\n");
 		}
 	}
 }
@@ -542,6 +577,13 @@ int main(int argc, char *argv[]) {
 			// Update current line based on playback position
 			if (mpris_is_playing()) {
 				update_current_line(&state);
+			} else {
+				// Clear lyrics when not playing (paused or stopped)
+				if (state.current_line != NULL) {
+					state.current_line = NULL;
+					set_dirty(&state);
+					printf("Playback stopped/paused - clearing lyrics\n");
+				}
 			}
 		}
 
