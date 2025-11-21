@@ -335,33 +335,13 @@ static void update_current_line(struct lyrics_state *state) {
 	// Check if we should clear the lyrics
 	if (new_line) {
 		if (new_line->end_timestamp_us > 0) {
-			// SRT format: clear if we've passed the explicit end timestamp
+			// SRT/WEBVTT format: clear if we've passed the explicit end timestamp
 			if (position_us > new_line->end_timestamp_us) {
 				new_line = NULL;
 			}
-		} else {
-			// LRC format: display for 5 seconds OR until 2 seconds before next line
-			int64_t line_end_time_us = new_line->timestamp_us + 5000000;
-
-			struct lyrics_line *next_line = new_line->next;
-			if (next_line) {
-				// Clear 2 seconds before next line to avoid overlap
-				int64_t clear_time = next_line->timestamp_us - 2000000;
-				if (clear_time < line_end_time_us) {
-					line_end_time_us = clear_time;
-				}
-			}
-
-			if (position_us > line_end_time_us) {
-				new_line = NULL;
-			}
 		}
-	} else if (state->lyrics.lines) {
-		// We're before the first line - check if we're more than 2 seconds before it
-		int64_t time_until_first = state->lyrics.lines->timestamp_us - position_us;
-		if (time_until_first > 2000000) {
-			new_line = NULL; // Keep clear if we're well before the first line
-		}
+		// LRC format: Keep displaying until next line starts (no automatic clearing)
+		// This prevents lyrics from disappearing too quickly during instrumental breaks
 	}
 
 	if (new_line != state->current_line) {
