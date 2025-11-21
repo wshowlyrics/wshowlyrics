@@ -114,8 +114,8 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 			} else {
 				// Append text
 				if (text_len > 0) {
-					// Add space between lines
-					strncat(text_buffer, " ", sizeof(text_buffer) - text_len - 1);
+					// Add newline between lines
+					strncat(text_buffer, "\n", sizeof(text_buffer) - text_len - 1);
 					text_len++;
 				}
 				strncat(text_buffer, line, sizeof(text_buffer) - text_len - 1);
