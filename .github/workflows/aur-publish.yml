@@ -50,6 +50,7 @@ jobs:
             chown -R builder:builder /pkg
             cd /pkg
             sudo -u builder makepkg --printsrcinfo > .SRCINFO
+            chown -R $(stat -c '%u:%g' /pkg) /pkg
           "
 
       - name: Commit and push to AUR
