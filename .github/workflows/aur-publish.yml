@@ -44,13 +44,10 @@ jobs:
 
       - name: Generate .SRCINFO
         run: |
-          docker run --rm -v "${{ github.workspace }}/aur:/pkg" archlinux:latest bash -c "
-            pacman -Sy --noconfirm --needed base-devel git sudo
-            useradd -m builder
-            chown -R builder:builder /pkg
+          docker run --rm --user $(id -u):$(id -g) -v "${{ github.workspace }}/aur:/pkg" -e HOME=/tmp archlinux:latest bash -c "
+            pacman -Sy --noconfirm --needed base-devel git fakeroot
             cd /pkg
-            sudo -u builder makepkg --printsrcinfo > .SRCINFO
-            chown -R $(stat -c '%u:%g' /pkg) /pkg
+            fakeroot -- makepkg --printsrcinfo > .SRCINFO
           "
 
       - name: Commit and push to AUR
