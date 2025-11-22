@@ -111,6 +111,12 @@ static char* url_decode_string(const char *str) {
 static char* get_directory_from_url(const char *url) {
 	if (!url) return NULL;
 
+	// Skip non-file URLs (http://, https://, spotify:, etc.)
+	// These should not be used for local file searching
+	if (strstr(url, "://") != NULL && strncmp(url, "file://", 7) != 0) {
+		return NULL;
+	}
+
 	// Handle file:// URLs
 	const char *path = url;
 	if (strncmp(url, "file://", 7) == 0) {
@@ -137,6 +143,12 @@ static char* get_directory_from_url(const char *url) {
 // Extract filename from URL (without extension)
 static char* get_filename_from_url(const char *url) {
 	if (!url) return NULL;
+
+	// Skip non-file URLs (http://, https://, spotify:, etc.)
+	// These should not be used for local file searching
+	if (strstr(url, "://") != NULL && strncmp(url, "file://", 7) != 0) {
+		return NULL;
+	}
 
 	const char *path = url;
 	if (strncmp(url, "file://", 7) == 0) {
