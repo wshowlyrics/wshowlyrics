@@ -161,7 +161,7 @@ Filename formats:
 If no local lyrics file is found, the program automatically fetches synchronized lyrics from [lrclib.net](https://lrclib.net):
 
 - **Requirements**: Track must have both **title** and **artist** metadata
-- **Format**: Prefers synchronized lyrics (LRC format), falls back to plain text if unavailable
+- **Format**: Only uses synchronized lyrics (LRC format with timestamps)
 - **No internet connection?** The program will simply skip online search and continue
 - **Privacy**: Only sends song metadata (title, artist, album) to lrclib.net API
 

@@ -126,8 +126,8 @@ static int64_t extract_json_duration(const char *json) {
 
 static bool lrclib_search(const char *title, const char *artist, const char *album,
                           const char *url, struct lyrics_data *data) {
-	// Require title and artist for lrclib API
-	if (!title || !artist) {
+	// Require title, artist, and album for lrclib API
+	if (!title || !artist || !album) {
 		return false;
 	}
 
@@ -140,9 +140,9 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
 	// URL encode parameters
 	char *title_encoded = url_encode(curl, title);
 	char *artist_encoded = url_encode(curl, artist);
-	char *album_encoded = album ? url_encode(curl, album) : NULL;
+	char *album_encoded = url_encode(curl, album);
 
-	if (!title_encoded || !artist_encoded) {
+	if (!title_encoded || !artist_encoded || !album_encoded) {
 		curl_free(title_encoded);
 		curl_free(artist_encoded);
 		curl_free(album_encoded);
@@ -152,15 +152,9 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
 
 	// Build request URL
 	char request_url[2048];
-	if (album_encoded) {
-		snprintf(request_url, sizeof(request_url),
-		         "https://lrclib.net/api/get?track_name=%s&artist_name=%s&album_name=%s",
-		         title_encoded, artist_encoded, album_encoded);
-	} else {
-		snprintf(request_url, sizeof(request_url),
-		         "https://lrclib.net/api/get?track_name=%s&artist_name=%s",
-		         title_encoded, artist_encoded);
-	}
+	snprintf(request_url, sizeof(request_url),
+	         "https://lrclib.net/api/get?track_name=%s&artist_name=%s&album_name=%s",
+	         title_encoded, artist_encoded, album_encoded);
 
 	printf("lrclib API request: %s\n", request_url);
 
@@ -207,21 +201,10 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
 
 	bool success = false;
 
-	// Prefer synced lyrics (LRC format)
+	// Only use synced lyrics (LRC format) - skip plainLyrics
 	if (synced_lyrics && strlen(synced_lyrics) > 0) {
 		printf("Found synced lyrics from lrclib\n");
 		success = lrc_parse_string(synced_lyrics, data);
-	} else if (plain_lyrics && strlen(plain_lyrics) > 0) {
-		printf("Found plain lyrics from lrclib (no timestamps)\n");
-		// For plain lyrics, create a single line at time 0
-		data->line_count = 1;
-		data->lines = calloc(1, sizeof(struct lyrics_line));
-		if (data->lines) {
-			data->lines[0].timestamp_us = 0;
-			data->lines[0].end_timestamp_us = 0;
-			data->lines[0].text = strdup(plain_lyrics);
-			success = true;
-		}
 	}
 
 	free(synced_lyrics);
