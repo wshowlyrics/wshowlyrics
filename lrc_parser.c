@@ -4,7 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 
-// Parse timestamp like [00:12.34] or [00:12.340]
+// Parse LRC timestamp like [00:12.34] or [00:12.340]
 static bool parse_timestamp(const char *str, int64_t *timestamp_us) {
 	int minutes = 0, seconds = 0, centiseconds = 0;
 
