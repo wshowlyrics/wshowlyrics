@@ -30,7 +30,6 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 	const char *text_to_display = " "; // Default to single space
 	bool has_lyrics = (state->current_line && state->current_line->text);
 	bool is_empty_line = false; // Track if current line is empty (instrumental break)
-	bool should_hide = false; // Hide overlay if too many consecutive lines
 
 	if (has_lyrics) {
 		// Check if the text is empty or only whitespace
@@ -40,28 +39,12 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 			is_empty_line = true;
 			text_to_display = " "; // Display single space to keep surface visible
 		} else {
-			// Count newlines in text to determine if we should hide the overlay
-			// If there are 3 or more lines (2+ newlines), hide to avoid covering the screen
-			int newline_count = 0;
-			const char *p = text;
-			while (*p) {
-				if (*p == '\n') {
-					newline_count++;
-				}
-				p++;
-			}
-
-			if (newline_count >= 2) {
-				// 3 or more lines - hide overlay
-				should_hide = true;
-			} else {
-				text_to_display = text;
-			}
+			text_to_display = text;
 		}
 	}
 
-	// Use transparent background when no lyrics, during instrumental breaks, or when hiding multi-line lyrics
-	uint32_t background_color = (has_lyrics && !is_empty_line && !should_hide) ? state->background : 0x00000000;
+	// Use transparent background when no lyrics or during instrumental breaks
+	uint32_t background_color = (has_lyrics && !is_empty_line) ? state->background : 0x00000000;
 
 	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
 	cairo_set_source_u32(cairo, background_color);
