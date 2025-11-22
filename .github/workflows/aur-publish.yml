@@ -27,7 +27,7 @@ jobs:
       - name: Setup SSH for AUR
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur
+          printf "%s" "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur
           chmod 600 ~/.ssh/aur
           ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
 
@@ -43,7 +43,7 @@ jobs:
 
       - name: Generate .SRCINFO
         run: |
-          docker run --rm -v $PWD/aur:/pkg archlinux:latest bash -c "
+          docker run --rm -v "${{ github.workspace }}/aur:/pkg" archlinux:latest bash -c "
             pacman -Sy --noconfirm --needed base-devel git
             cd /pkg
             makepkg --printsrcinfo > .SRCINFO
