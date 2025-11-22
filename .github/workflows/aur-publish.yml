@@ -42,9 +42,12 @@ jobs:
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
       - name: Generate .SRCINFO
-        uses: edlanglois/pkgbuild-action@v1
-        with:
-          pkgdir: aur
+        run: |
+          docker run --rm -v $PWD/aur:/pkg archlinux:latest bash -c "
+            pacman -Sy --noconfirm binutils fakeroot
+            cd /pkg
+            makepkg --printsrcinfo > .SRCINFO
+          "
 
       - name: Commit and push to AUR
         run: |
