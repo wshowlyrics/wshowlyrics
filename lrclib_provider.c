@@ -106,24 +106,6 @@ static char* extract_json_string(const char *json, const char *key) {
 	return result;
 }
 
-// Parse duration in seconds from JSON (integer field)
-static int64_t extract_json_duration(const char *json) {
-	if (!json) return 0;
-
-	char *duration_field = strstr(json, "\"duration\":");
-	if (!duration_field) return 0;
-
-	duration_field += strlen("\"duration\":");
-
-	// Skip whitespace
-	while (*duration_field == ' ' || *duration_field == '\t' || *duration_field == '\n') {
-		duration_field++;
-	}
-
-	int64_t duration_sec = atoll(duration_field);
-	return duration_sec * 1000000; // Convert to microseconds
-}
-
 static bool lrclib_search(const char *title, const char *artist, const char *album,
                           const char *url, struct lyrics_data *data) {
 	// Require title, artist, and album for lrclib API
