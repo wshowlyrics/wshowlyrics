@@ -24,13 +24,16 @@ jobs:
           VER=$(printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)")
           echo "version=$VER" >> $GITHUB_OUTPUT
 
+      - name: Setup SSH for AUR
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
       - name: Checkout AUR repository
-        uses: actions/checkout@v4
-        with:
-          repository: 'aur-wshowlyrics-git'
-          path: 'aur'
-          ssh-key: ${{ secrets.AUR_SSH_KEY }}
-          persist-credentials: true
+        run: |
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git clone ssh://aur@aur.archlinux.org/wshowlyrics-git.git aur
 
       - name: Update PKGBUILD
         run: |
@@ -50,4 +53,4 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add PKGBUILD .SRCINFO
           git diff --staged --quiet || git commit -m "Update to ${{ steps.pkgver.outputs.version }}"
-          git push ssh://aur@aur.archlinux.org/wshowlyrics-git.git HEAD:master
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git push origin master
