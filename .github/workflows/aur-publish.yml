@@ -1,0 +1,53 @@
+name: Publish to AUR
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - master
+
+jobs:
+  aur-publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout lyrics repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get package version
+        id: pkgver
+        run: |
+          VER=$(printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)")
+          echo "version=$VER" >> $GITHUB_OUTPUT
+
+      - name: Checkout AUR repository
+        uses: actions/checkout@v4
+        with:
+          repository: 'aur-wshowlyrics-git'
+          path: 'aur'
+          ssh-key: ${{ secrets.AUR_SSH_KEY }}
+          persist-credentials: true
+
+      - name: Update PKGBUILD
+        run: |
+          cd aur
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.pkgver.outputs.version }}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+      - name: Generate .SRCINFO
+        uses: edlanglois/pkgbuild-action@v1
+        with:
+          pkgdir: aur
+
+      - name: Commit and push to AUR
+        run: |
+          cd aur
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          git diff --staged --quiet || git commit -m "Update to ${{ steps.pkgver.outputs.version }}"
+          git push ssh://aur@aur.archlinux.org/wshowlyrics-git.git HEAD:master
