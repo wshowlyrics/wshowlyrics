@@ -187,6 +187,10 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
 	if (synced_lyrics && strlen(synced_lyrics) > 0) {
 		printf("Found synced lyrics from lrclib\n");
 		success = lrc_parse_string(synced_lyrics, data);
+	} else if (plain_lyrics && strlen(plain_lyrics) > 0) {
+		printf("Plain lyrics available but ignored (synced lyrics only)\n");
+	} else {
+		printf("No lyrics found from lrclib\n");
 	}
 
 	free(synced_lyrics);
