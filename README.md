@@ -7,8 +7,9 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
 ## Features
 
 - **MPRIS Integration**: Automatically detects currently playing songs via playerctl (supports all MPRIS-compatible players: mpv, Spotify, VLC, etc.)
-- **Smart Local Lyrics Search**:
-  - Prioritizes searching in the same directory as the currently playing file
+- **Smart Lyrics Search**:
+  - **Local file search**: Prioritizes searching in the same directory as the currently playing file
+  - **Online fallback**: Automatically fetches lyrics from [lrclib.net](https://lrclib.net) when local files are not found
   - URL decoding support for Unicode paths (Korean, Japanese, etc.)
   - Automatic filename-based matching
 - **Synchronized Lyrics**: Supports LRC and SRT formats
@@ -128,9 +129,13 @@ First line of lyrics
 Second line of lyrics
 ```
 
-### Local Lyrics File Search Paths
+### Lyrics Search Process
 
-The program automatically searches for lyrics files in the following **priority order**:
+The program uses a two-stage approach to find lyrics:
+
+#### 1. Local File Search (Priority)
+
+Automatically searches for lyrics files in the following **priority order**:
 
 1. **Same directory as the currently playing music file** (highest priority!)
    - First searches for a lyrics file with the same name as the music file
@@ -151,10 +156,20 @@ Filename formats:
 - Unicode filenames (Korean, Japanese, etc.) are fully supported
 - Example: `/music/song.mp3` + `/music/song.lrc` ✅
 
+#### 2. Online Lyrics Fallback
+
+If no local lyrics file is found, the program automatically fetches synchronized lyrics from [lrclib.net](https://lrclib.net):
+
+- **Requirements**: Track must have both **title** and **artist** metadata
+- **Format**: Prefers synchronized lyrics (LRC format), falls back to plain text if unavailable
+- **No internet connection?** The program will simply skip online search and continue
+- **Privacy**: Only sends song metadata (title, artist, album) to lrclib.net API
+
 ## Dependencies
 
 ### Build Requirements
 - cairo
+- curl (libcurl)
 - fontconfig
 - pango
 - pangocairo
@@ -164,6 +179,7 @@ Filename formats:
 - meson & ninja
 
 ### Runtime Requirements
+- curl (for online lyrics fetching)
 - playerctl (for MPRIS mode)
 - Wayland compositor with wlr-layer-shell support (Sway, Hyprland, etc.)
 
@@ -190,7 +206,7 @@ makepkg -si
 Install dependencies:
 
 ```bash
-sudo pacman -S cairo fontconfig pango wayland wayland-protocols meson ninja playerctl
+sudo pacman -S cairo curl fontconfig pango wayland wayland-protocols meson ninja playerctl
 ```
 
 Build and install:
@@ -206,7 +222,7 @@ sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
 Install dependencies:
 
 ```bash
-sudo apt install libcairo2-dev libfontconfig1-dev libpango1.0-dev \
+sudo apt install libcairo2-dev libcurl4-openssl-dev libfontconfig1-dev libpango1.0-dev \
                  libwayland-dev wayland-protocols \
                  meson ninja-build playerctl
 ```
