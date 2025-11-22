@@ -90,7 +90,24 @@ static void render_frame(struct lyrics_state *state) {
 	if (height / scale != state->height
 			|| width / scale != state->width
 			|| state->width == 0) {
-		// Reconfigure surface
+		// Size change detected - make overlay transparent during resize
+		// First, render a transparent frame
+		state->current_buffer = get_next_buffer(state->shm,
+				state->buffers, state->width * scale, state->height * scale);
+		if (state->current_buffer) {
+			cairo_t *shm = state->current_buffer->cairo;
+			cairo_save(shm);
+			cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
+			cairo_paint(shm);
+			cairo_restore(shm);
+
+			wl_surface_set_buffer_scale(state->surface, scale);
+			wl_surface_attach(state->surface, state->current_buffer->buffer, 0, 0);
+			wl_surface_damage_buffer(state->surface, 0, 0, state->width, state->height);
+			wl_surface_commit(state->surface);
+		}
+
+		// Reconfigure surface size
 		if (width == 0 || height == 0) {
 			// Keep a minimal 1x1 surface instead of detaching
 			zwlr_layer_surface_v1_set_size(state->layer_surface, 1, 1);
