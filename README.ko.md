@@ -51,15 +51,15 @@ mpv --force-window=yes song.mp3
 
 ### 옵션
 
-| 옵션 | 설명 | 기본값 |
-|------|------|--------|
-| `-h` | 도움말 표시 | - |
-| `-b COLOR` | 배경색 (#RRGGBB[AA] 형식) | `#00000080` (검정, 50% 투명) |
-| `-f COLOR` | 전경색/텍스트색 (#RRGGBB[AA] 형식) | `#FFFFFFFF` (흰색, 불투명) |
-| `-F FONT` | 폰트 설정 | `"Sans 20"` |
-| `-a POSITION` | 화면 위치 (top/bottom/left/right) | `bottom` |
-| `-m PIXELS` | 화면 가장자리 여백 (픽셀) | `32` |
-| `-l FILE` | 특정 가사 파일 로드 (.lrc/.srt/.vtt) | MPRIS 자동 감지 |
+| 짧은 형식 | 긴 형식 | 설명 | 기본값 |
+|-----------|---------|------|--------|
+| `-h` | `--help` | 도움말 표시 | - |
+| `-b COLOR` | `--background=COLOR` | 배경색 (#RRGGBB[AA] 형식) | `#00000080` (검정, 50% 투명) |
+| `-f COLOR` | `--foreground=COLOR` | 전경색/텍스트색 (#RRGGBB[AA] 형식) | `#FFFFFFFF` (흰색, 불투명) |
+| `-F FONT` | `--font=FONT` | 폰트 설정 | `"Sans 20"` |
+| `-a POSITION` | `--anchor=POSITION` | 화면 위치 (top/bottom/left/right) | `bottom` |
+| `-m PIXELS` | `--margin=PIXELS` | 화면 가장자리 여백 (픽셀) | `32` |
+| `-l FILE` | `--lyrics-file=FILE` | 특정 가사 파일 로드 (.lrc/.srt/.vtt) | MPRIS 자동 감지 |
 
 **색상 형식:**
 - `#RRGGBB`: RGB 값 (예: `#FF0000` = 빨강)
@@ -77,24 +77,30 @@ mpv --force-window=yes song.mp3
 ```bash
 # 도움말 보기
 ./build/lyrics -h
+./build/lyrics --help
 
 # MPRIS 모드로 실행 (기본)
 ./build/lyrics
 
 # 한글 폰트로 실행
 ./build/lyrics -F "Noto Sans CJK KR 20"
+./build/lyrics --font="Noto Sans CJK KR 20"
 
 # 화면 상단에 표시
 ./build/lyrics -a top -m 50
+./build/lyrics --anchor=top --margin=50
 
 # 투명한 배경에 노란색 텍스트
 ./build/lyrics -b 00000066 -f FFFF00FF
+./build/lyrics --background=00000066 --foreground=FFFF00FF
 
 # 특정 LRC 파일 표시
 ./build/lyrics -l "Artist - Song.lrc"
+./build/lyrics --lyrics-file="Artist - Song.lrc"
 
 # 큰 볼드 폰트, 화면 하단
 ./build/lyrics -F "Sans Bold 28" -a bottom -m 40
+./build/lyrics --font="Sans Bold 28" --anchor=bottom --margin=40
 ```
 
 ## 가사 파일 형식

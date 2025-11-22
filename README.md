@@ -53,15 +53,15 @@ Display a specific LRC/SRT file:
 
 ### Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-h` | Show help | - |
-| `-b COLOR` | Background color (#RRGGBB[AA] format) | `#00000080` (black, 50% transparent) |
-| `-f COLOR` | Foreground/text color (#RRGGBB[AA] format) | `#FFFFFFFF` (white, opaque) |
-| `-F FONT` | Font setting | `"Sans 20"` |
-| `-a POSITION` | Screen position (top/bottom/left/right) | `bottom` |
-| `-m PIXELS` | Screen edge margin (pixels) | `32` |
-| `-l FILE` | Load specific lyrics file (.lrc/.srt/.vtt) | MPRIS auto-detect |
+| Short | Long | Description | Default |
+|-------|------|-------------|---------|
+| `-h` | `--help` | Show help | - |
+| `-b COLOR` | `--background=COLOR` | Background color (#RRGGBB[AA] format) | `#00000080` (black, 50% transparent) |
+| `-f COLOR` | `--foreground=COLOR` | Foreground/text color (#RRGGBB[AA] format) | `#FFFFFFFF` (white, opaque) |
+| `-F FONT` | `--font=FONT` | Font setting | `"Sans 20"` |
+| `-a POSITION` | `--anchor=POSITION` | Screen position (top/bottom/left/right) | `bottom` |
+| `-m PIXELS` | `--margin=PIXELS` | Screen edge margin (pixels) | `32` |
+| `-l FILE` | `--lyrics-file=FILE` | Load specific lyrics file (.lrc/.srt/.vtt) | MPRIS auto-detect |
 
 **Color Format:**
 - `#RRGGBB`: RGB value (e.g., `#FF0000` = red)
@@ -79,24 +79,30 @@ Display a specific LRC/SRT file:
 ```bash
 # Show help
 ./build/lyrics -h
+./build/lyrics --help
 
 # Run in MPRIS mode (default)
 ./build/lyrics
 
 # Run with Korean font
 ./build/lyrics -F "Noto Sans CJK KR 20"
+./build/lyrics --font="Noto Sans CJK KR 20"
 
 # Display at top of screen
 ./build/lyrics -a top -m 50
+./build/lyrics --anchor=top --margin=50
 
 # Transparent background with yellow text
 ./build/lyrics -b 00000066 -f FFFF00FF
+./build/lyrics --background=00000066 --foreground=FFFF00FF
 
 # Display specific LRC file
 ./build/lyrics -l "Artist - Song.lrc"
+./build/lyrics --lyrics-file="Artist - Song.lrc"
 
 # Large bold font at bottom of screen
 ./build/lyrics -F "Sans Bold 28" -a bottom -m 40
+./build/lyrics --font="Sans Bold 28" --anchor=bottom --margin=40
 ```
 
 ## Lyrics File Formats

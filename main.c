@@ -212,7 +212,7 @@ static void output_mode(void *data, struct wl_output *wl_output,
 	struct lyrics_output *output = data;
 	output->width = width;
 	output->height = height;
-	fprintf(stdout, "Screen resolution: %dx%d\n", width, height);
+	printf("Screen resolution: %dx%d\n", width, height);
 }
 
 static void output_done(void *data, struct wl_output *wl_output) {
@@ -389,15 +389,6 @@ static void update_current_line(struct lyrics_state *state) {
 }
 
 int main(int argc, char *argv[]) {
-	// Fontconfig initializations
-	if(!FcInit()) {
-		fprintf(stderr, "Failed to initialize fontconfig\n");
-		return 1;
-	}
-
-	fprintf(stdout, "Compositor: %s\n", getenv("WAYLAND_DISPLAY") ?: "wayland-0");
-	fprintf(stdout, "Using compositor interfaces...\n");
-
 	int ret = 0;
 
 	unsigned int anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
@@ -409,8 +400,20 @@ int main(int argc, char *argv[]) {
 	state.lyrics_file = NULL;
 	state.use_mpris = true; // Default to MPRIS mode
 
+	static struct option long_options[] = {
+		{"help", no_argument, 0, 'h'},
+		{"background", required_argument, 0, 'b'},
+		{"foreground", required_argument, 0, 'f'},
+		{"font", required_argument, 0, 'F'},
+		{"anchor", required_argument, 0, 'a'},
+		{"margin", required_argument, 0, 'm'},
+		{"lyrics-file", required_argument, 0, 'l'},
+		{0, 0, 0, 0}
+	};
+
 	int c;
-	while ((c = getopt(argc, argv, "hb:f:F:a:m:l:")) != -1) {
+	int option_index = 0;
+	while ((c = getopt_long(argc, argv, "hb:f:F:a:m:l:", long_options, &option_index)) != -1) {
 		switch (c) {
 		case 'b':
 			state.background = parse_color(optarg);
@@ -441,35 +444,94 @@ int main(int argc, char *argv[]) {
 			state.use_mpris = false; // Explicit file disables MPRIS
 			break;
 		case 'h':
+			// Normal help requested - use stdout
+			fprintf(stdout, "Usage: lyrics [OPTIONS]\n\n");
+			fprintf(stdout, "Wayland lyrics overlay with MPRIS integration\n\n");
+			fprintf(stdout, "Options:\n");
+			fprintf(stdout, "  -h, --help                   Show this help message\n");
+			fprintf(stdout, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
+			fprintf(stdout, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
+			fprintf(stdout, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
+			fprintf(stdout, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
+			fprintf(stdout, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
+			fprintf(stdout, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n");
+			fprintf(stdout, "  -l, --lyrics-file=FILE       Load specific lyrics file (disables MPRIS auto-detection)\n");
+			fprintf(stdout, "                               Supports: .lrc, .srt, .vtt formats\n\n");
+			fprintf(stdout, "MPRIS Mode (default):\n");
+			fprintf(stdout, "  When -l/--lyrics-file is not provided, automatically detects currently playing track\n");
+			fprintf(stdout, "  and searches for lyrics files in:\n");
+			fprintf(stdout, "    1. Same directory as the music file\n");
+			fprintf(stdout, "    2. Current directory\n");
+			fprintf(stdout, "    3. ~/.lyrics/\n");
+			fprintf(stdout, "    4. $HOME\n");
+			fprintf(stdout, "    5. Online from lrclib.net API (if local files not found)\n\n");
+			fprintf(stdout, "Online Lyrics API:\n");
+			fprintf(stdout, "  Automatically fetches synchronized lyrics from https://lrclib.net\n");
+			fprintf(stdout, "  - Requires track title and artist metadata\n");
+			fprintf(stdout, "  - Only uses synchronized lyrics (LRC format with timestamps)\n");
+			fprintf(stdout, "  - Falls back gracefully if no internet connection\n");
+			fprintf(stdout, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
+			fprintf(stdout, "Examples:\n");
+			fprintf(stdout, "  lyrics                                    # Auto-detect with MPRIS\n");
+			fprintf(stdout, "  lyrics -F \"Sans Bold 24\"                  # Larger font\n");
+			fprintf(stdout, "  lyrics --font=\"Sans Bold 24\"              # Same as above (long option)\n");
+			fprintf(stdout, "  lyrics -a top -m 50                       # Top of screen, 50px margin\n");
+			fprintf(stdout, "  lyrics --anchor=top --margin=50           # Same as above (long options)\n");
+			fprintf(stdout, "  lyrics -b 000000AA -f FFFF00FF            # Custom colors\n");
+			fprintf(stdout, "  lyrics --background=000000AA              # Custom background (long option)\n");
+			fprintf(stdout, "  lyrics -l song.lrc                        # Load specific file\n");
+			fprintf(stdout, "  lyrics --lyrics-file=song.lrc             # Same as above (long option)\n");
+			return 0;
 		default:
+			// Error case - invalid option, use stderr
 			fprintf(stderr, "Usage: lyrics [OPTIONS]\n\n");
 			fprintf(stderr, "Wayland lyrics overlay with MPRIS integration\n\n");
 			fprintf(stderr, "Options:\n");
-			fprintf(stderr, "  -h              Show this help message\n");
-			fprintf(stderr, "  -b COLOR        Background color in #RRGGBB[AA] format (default: #00000080)\n");
-			fprintf(stderr, "  -f COLOR        Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
-			fprintf(stderr, "  -F FONT         Font specification (default: \"Sans 20\")\n");
-			fprintf(stderr, "                  Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
-			fprintf(stderr, "  -a POSITION     Anchor position: top, bottom, left, right (default: bottom)\n");
-			fprintf(stderr, "  -m PIXELS       Margin from screen edge in pixels (default: 32)\n");
-			fprintf(stderr, "  -l FILE         Load specific lyrics file (disables MPRIS auto-detection)\n");
-			fprintf(stderr, "                  Supports: .lrc, .srt, .vtt formats\n\n");
+			fprintf(stderr, "  -h, --help                   Show this help message\n");
+			fprintf(stderr, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
+			fprintf(stderr, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
+			fprintf(stderr, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
+			fprintf(stderr, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
+			fprintf(stderr, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
+			fprintf(stderr, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n");
+			fprintf(stderr, "  -l, --lyrics-file=FILE       Load specific lyrics file (disables MPRIS auto-detection)\n");
+			fprintf(stderr, "                               Supports: .lrc, .srt, .vtt formats\n\n");
 			fprintf(stderr, "MPRIS Mode (default):\n");
-			fprintf(stderr, "  When -l is not provided, automatically detects currently playing track\n");
+			fprintf(stderr, "  When -l/--lyrics-file is not provided, automatically detects currently playing track\n");
 			fprintf(stderr, "  and searches for lyrics files in:\n");
 			fprintf(stderr, "    1. Same directory as the music file\n");
 			fprintf(stderr, "    2. Current directory\n");
 			fprintf(stderr, "    3. ~/.lyrics/\n");
-			fprintf(stderr, "    4. $HOME\n\n");
+			fprintf(stderr, "    4. $HOME\n");
+			fprintf(stderr, "    5. Online from lrclib.net API (if local files not found)\n\n");
+			fprintf(stderr, "Online Lyrics API:\n");
+			fprintf(stderr, "  Automatically fetches synchronized lyrics from https://lrclib.net\n");
+			fprintf(stderr, "  - Requires track title and artist metadata\n");
+			fprintf(stderr, "  - Only uses synchronized lyrics (LRC format with timestamps)\n");
+			fprintf(stderr, "  - Falls back gracefully if no internet connection\n");
+			fprintf(stderr, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
 			fprintf(stderr, "Examples:\n");
-			fprintf(stderr, "  lyrics                              # Auto-detect with MPRIS\n");
-			fprintf(stderr, "  lyrics -F \"Sans Bold 24\"            # Larger font\n");
-			fprintf(stderr, "  lyrics -a top -m 50                 # Top of screen, 50px margin\n");
-			fprintf(stderr, "  lyrics -b 000000AA -f FFFF00FF      # Custom colors\n");
-			fprintf(stderr, "  lyrics -l song.lrc                  # Load specific file\n");
-			return c == 'h' ? 0 : 1;
+			fprintf(stderr, "  lyrics                                    # Auto-detect with MPRIS\n");
+			fprintf(stderr, "  lyrics -F \"Sans Bold 24\"                  # Larger font\n");
+			fprintf(stderr, "  lyrics --font=\"Sans Bold 24\"              # Same as above (long option)\n");
+			fprintf(stderr, "  lyrics -a top -m 50                       # Top of screen, 50px margin\n");
+			fprintf(stderr, "  lyrics --anchor=top --margin=50           # Same as above (long options)\n");
+			fprintf(stderr, "  lyrics -b 000000AA -f FFFF00FF            # Custom colors\n");
+			fprintf(stderr, "  lyrics --background=000000AA              # Custom background (long option)\n");
+			fprintf(stderr, "  lyrics -l song.lrc                        # Load specific file\n");
+			fprintf(stderr, "  lyrics --lyrics-file=song.lrc             # Same as above (long option)\n");
+			return 1;
 		}
 	}
+
+	// Fontconfig initializations
+	if(!FcInit()) {
+		fprintf(stderr, "Failed to initialize fontconfig\n");
+		return 1;
+	}
+
+	printf("Compositor: %s\n", getenv("WAYLAND_DISPLAY") ?: "wayland-0");
+	printf("Using compositor interfaces...\n");
 
 	// Initialize lyrics providers
 	lyrics_providers_init();
