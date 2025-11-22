@@ -287,7 +287,7 @@ static uint32_t parse_color(const char *color) {
 		return 0xFFFFFFFF;
 	}
 	uint32_t res = (uint32_t)strtoul(color, NULL, 16);
-	if (strlen(color) == 6) {
+	if (len == 6) {
 		res = (res << 8) | 0xFF;
 	}
 	return res;
