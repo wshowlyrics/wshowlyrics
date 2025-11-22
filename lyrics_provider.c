@@ -1,4 +1,5 @@
 #include "lyrics_provider.h"
+#include "lrclib_provider.h"
 #include "lrc_parser.h"
 #include "srt_parser.h"
 #include <stdio.h>
@@ -293,6 +294,7 @@ struct lyrics_provider local_provider = {
 
 static struct lyrics_provider *providers[] = {
 	&local_provider,
+	&lrclib_provider,  // Try online if local not found
 	NULL
 };
 

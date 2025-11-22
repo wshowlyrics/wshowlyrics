@@ -39,6 +39,7 @@ pango          = dependency('pango')
 pangocairo     = dependency('pangocairo')
 wayland_client = dependency('wayland-client')
 wayland_protos = dependency('wayland-protocols')
+libcurl        = dependency('libcurl')
 
 rt = cc.find_library('rt')
 
@@ -54,11 +55,13 @@ executable(
 		'lrc_parser.c',
 		'srt_parser.c',
 		'lyrics_provider.c',
+		'lrclib_provider.c',
 	),
 	dependencies: [
 		cairo,
 		client_protos,
 		fontconfig,
+		libcurl,
 		pango,
 		pangocairo,
 		rt,
