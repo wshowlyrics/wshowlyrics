@@ -29,13 +29,22 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 		int scale, uint32_t *width, uint32_t *height) {
 	const char *text_to_display = " "; // Default to single space
 	bool has_lyrics = (state->current_line && state->current_line->text);
+	bool is_empty_line = false; // Track if current line is empty (instrumental break)
 
 	if (has_lyrics) {
-		text_to_display = state->current_line->text;
+		// Check if the text is empty or only whitespace
+		const char *text = state->current_line->text;
+		if (text[0] == '\0') {
+			// Empty string - treat as idle/instrumental break
+			is_empty_line = true;
+			text_to_display = " "; // Display single space to keep surface visible
+		} else {
+			text_to_display = text;
+		}
 	}
 
-	// Use transparent background when no lyrics, normal background when lyrics present
-	uint32_t background_color = has_lyrics ? state->background : 0x00000000;
+	// Use transparent background when no lyrics or during instrumental breaks (empty lines)
+	uint32_t background_color = (has_lyrics && !is_empty_line) ? state->background : 0x00000000;
 
 	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
 	cairo_set_source_u32(cairo, background_color);

@@ -121,23 +121,43 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 					text_start++;
 				}
 
+				// Create new line even if text is empty or whitespace-only
+				// This allows instrumental breaks to be represented
+				struct lyrics_line *new_line = calloc(1, sizeof(struct lyrics_line));
+				if (!new_line) {
+					free(content_copy);
+					lrc_free_data(data);
+					return false;
+				}
+
+				// Apply offset
+				new_line->timestamp_us = timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+
+				// If text is empty or only whitespace, use empty string
 				if (text_start && *text_start) {
-					// Create new line
-					struct lyrics_line *new_line = calloc(1, sizeof(struct lyrics_line));
-					if (!new_line) {
-						free(content_copy);
-						lrc_free_data(data);
-						return false;
+					// Check if text is only whitespace
+					const char *check = text_start;
+					bool only_whitespace = true;
+					while (*check) {
+						if (!isspace(*check)) {
+							only_whitespace = false;
+							break;
+						}
+						check++;
 					}
 
-					// Apply offset
-					new_line->timestamp_us = timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
-					new_line->text = strdup(text_start);
-
-					*next_line = new_line;
-					next_line = &new_line->next;
-					data->line_count++;
+					if (only_whitespace) {
+						new_line->text = strdup("");
+					} else {
+						new_line->text = strdup(text_start);
+					}
+				} else {
+					new_line->text = strdup("");
 				}
+
+				*next_line = new_line;
+				next_line = &new_line->next;
+				data->line_count++;
 			}
 		}
 
