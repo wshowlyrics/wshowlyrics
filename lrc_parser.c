@@ -146,7 +146,11 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 						check++;
 					}
 
-					if (only_whitespace) {
+					// Check if text contains URL pattern (://)
+					// This filters out Spotify URIs and other URLs from being displayed
+					bool has_url = strstr(text_start, "://") != NULL;
+
+					if (only_whitespace || has_url) {
 						new_line->text = strdup("");
 					} else {
 						new_line->text = strdup(text_start);
