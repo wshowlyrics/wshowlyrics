@@ -391,6 +391,10 @@ static void update_current_line(struct lyrics_state *state) {
 int main(int argc, char *argv[]) {
 	int ret = 0;
 
+	// Extract program name for help messages
+	char *argv0_copy = strdup(argv[0]);
+	const char *program_name = basename(argv0_copy);
+
 	unsigned int anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
 	int margin = 32;
 	struct lyrics_state state = { 0 };
@@ -445,7 +449,7 @@ int main(int argc, char *argv[]) {
 			break;
 		case 'h':
 			// Normal help requested - use stdout
-			fprintf(stdout, "Usage: lyrics [OPTIONS]\n\n");
+			fprintf(stdout, "Usage: %s [OPTIONS]\n\n", program_name);
 			fprintf(stdout, "Wayland lyrics overlay with MPRIS integration\n\n");
 			fprintf(stdout, "Options:\n");
 			fprintf(stdout, "  -h, --help                   Show this help message\n");
@@ -472,19 +476,20 @@ int main(int argc, char *argv[]) {
 			fprintf(stdout, "  - Falls back gracefully if no internet connection\n");
 			fprintf(stdout, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
 			fprintf(stdout, "Examples:\n");
-			fprintf(stdout, "  lyrics                                    # Auto-detect with MPRIS\n");
-			fprintf(stdout, "  lyrics -F \"Sans Bold 24\"                  # Larger font\n");
-			fprintf(stdout, "  lyrics --font=\"Sans Bold 24\"              # Same as above (long option)\n");
-			fprintf(stdout, "  lyrics -a top -m 50                       # Top of screen, 50px margin\n");
-			fprintf(stdout, "  lyrics --anchor=top --margin=50           # Same as above (long options)\n");
-			fprintf(stdout, "  lyrics -b 000000AA -f FFFF00FF            # Custom colors\n");
-			fprintf(stdout, "  lyrics --background=000000AA              # Custom background (long option)\n");
-			fprintf(stdout, "  lyrics -l song.lrc                        # Load specific file\n");
-			fprintf(stdout, "  lyrics --lyrics-file=song.lrc             # Same as above (long option)\n");
+			fprintf(stdout, "  %s                                    # Auto-detect with MPRIS\n", program_name);
+			fprintf(stdout, "  %s -F \"Sans Bold 24\"                  # Larger font\n", program_name);
+			fprintf(stdout, "  %s --font=\"Sans Bold 24\"              # Same as above (long option)\n", program_name);
+			fprintf(stdout, "  %s -a top -m 50                       # Top of screen, 50px margin\n", program_name);
+			fprintf(stdout, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
+			fprintf(stdout, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
+			fprintf(stdout, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
+			fprintf(stdout, "  %s -l song.lrc                        # Load specific file\n", program_name);
+			fprintf(stdout, "  %s --lyrics-file=song.lrc             # Same as above (long option)\n", program_name);
+			free(argv0_copy);
 			return 0;
 		default:
 			// Error case - invalid option, use stderr
-			fprintf(stderr, "Usage: lyrics [OPTIONS]\n\n");
+			fprintf(stderr, "Usage: %s [OPTIONS]\n\n", program_name);
 			fprintf(stderr, "Wayland lyrics overlay with MPRIS integration\n\n");
 			fprintf(stderr, "Options:\n");
 			fprintf(stderr, "  -h, --help                   Show this help message\n");
@@ -511,15 +516,16 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "  - Falls back gracefully if no internet connection\n");
 			fprintf(stderr, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
 			fprintf(stderr, "Examples:\n");
-			fprintf(stderr, "  lyrics                                    # Auto-detect with MPRIS\n");
-			fprintf(stderr, "  lyrics -F \"Sans Bold 24\"                  # Larger font\n");
-			fprintf(stderr, "  lyrics --font=\"Sans Bold 24\"              # Same as above (long option)\n");
-			fprintf(stderr, "  lyrics -a top -m 50                       # Top of screen, 50px margin\n");
-			fprintf(stderr, "  lyrics --anchor=top --margin=50           # Same as above (long options)\n");
-			fprintf(stderr, "  lyrics -b 000000AA -f FFFF00FF            # Custom colors\n");
-			fprintf(stderr, "  lyrics --background=000000AA              # Custom background (long option)\n");
-			fprintf(stderr, "  lyrics -l song.lrc                        # Load specific file\n");
-			fprintf(stderr, "  lyrics --lyrics-file=song.lrc             # Same as above (long option)\n");
+			fprintf(stderr, "  %s                                    # Auto-detect with MPRIS\n", program_name);
+			fprintf(stderr, "  %s -F \"Sans Bold 24\"                  # Larger font\n", program_name);
+			fprintf(stderr, "  %s --font=\"Sans Bold 24\"              # Same as above (long option)\n", program_name);
+			fprintf(stderr, "  %s -a top -m 50                       # Top of screen, 50px margin\n", program_name);
+			fprintf(stderr, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
+			fprintf(stderr, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
+			fprintf(stderr, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
+			fprintf(stderr, "  %s -l song.lrc                        # Load specific file\n", program_name);
+			fprintf(stderr, "  %s --lyrics-file=song.lrc             # Same as above (long option)\n", program_name);
+			free(argv0_copy);
 			return 1;
 		}
 	}
@@ -706,5 +712,6 @@ exit:
 		wl_display_disconnect(state.display);
 	}
 	FcFini();
+	free(argv0_copy);
 	return ret;
 }
