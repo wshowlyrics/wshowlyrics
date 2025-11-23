@@ -54,49 +54,86 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 	cairo_paint(cairo);
 
 	if (is_karaoke) {
-		// Karaoke-style rendering with word highlighting
+		// Karaoke-style rendering with progressive word fill (wipe effect)
 		int x_offset = 0;
 		struct word_segment *segment = state->current_line->segments;
-		bool found_current = false;
+
+		// Get current playback position for progressive fill
+		int64_t position_us = mpris_get_position();
+
+		// First pass: draw all text in dimmed color
+		uint32_t dimmed = state->foreground;
+		uint8_t alpha = (dimmed & 0xFF);
+		dimmed = (dimmed & 0xFFFFFF00) | (alpha / 2);
+		cairo_set_source_u32(cairo, dimmed);
+
+		struct word_segment *seg_iter = segment;
+		int x_iter = 0;
+		while (seg_iter) {
+			int seg_w, seg_h;
+			get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", seg_iter->text);
+
+			cairo_move_to(cairo, x_iter, 0);
+			pango_printf(cairo, state->font, scale, "%s", seg_iter->text);
+
+			x_iter += seg_w;
+			if (seg_iter->next) {
+				int space_w, space_h;
+				get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
+				x_iter += space_w;
+			}
+			seg_iter = seg_iter->next;
+		}
+
+		// Second pass: draw filled portions with clipping
+		x_offset = 0;
+		segment = state->current_line->segments;
 
 		while (segment) {
-			// Determine segment state: past, current, or future
-			bool is_current = (segment == state->current_segment);
-			bool is_past = !found_current && !is_current;
-
-			if (is_current) {
-				found_current = true;
-			}
-
-			// Set color based on state:
-			// - Past (sung): foreground color (like normal LRC)
-			// - Current (singing): highlight color (sky blue by default)
-			// - Future (not yet): dimmed (50% alpha)
-			if (is_past) {
-				// Already sung - use normal foreground
-				cairo_set_source_u32(cairo, state->foreground);
-			} else if (is_current) {
-				// Currently singing - use highlight color
-				cairo_set_source_u32(cairo, state->highlight);
-			} else {
-				// Not yet sung - dimmed
-				uint32_t dimmed = state->foreground;
-				uint8_t alpha = (dimmed & 0xFF);
-				dimmed = (dimmed & 0xFFFFFF00) | (alpha / 2);
-				cairo_set_source_u32(cairo, dimmed);
-			}
-
-			// Get size of this word segment
 			int seg_w, seg_h;
 			get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", segment->text);
 
-			// Draw this word segment
-			cairo_move_to(cairo, x_offset, 0);
-			pango_printf(cairo, state->font, scale, "%s", segment->text);
+			// Calculate fill ratio for this segment
+			double fill_ratio = 0.0;
+
+			if (position_us >= segment->timestamp_us) {
+				if (segment->next && position_us < segment->next->timestamp_us) {
+					// Currently in this segment - calculate progressive fill
+					int64_t segment_duration = segment->next->timestamp_us - segment->timestamp_us;
+					int64_t elapsed = position_us - segment->timestamp_us;
+					fill_ratio = (double)elapsed / (double)segment_duration;
+					if (fill_ratio > 1.0) fill_ratio = 1.0;
+					if (fill_ratio < 0.0) fill_ratio = 0.0;
+				} else if (!segment->next) {
+					// Last segment - fill completely if we've passed its start
+					fill_ratio = 1.0;
+				} else {
+					// Past segment - fill completely
+					fill_ratio = 1.0;
+				}
+			}
+
+			if (fill_ratio > 0.0) {
+				// Save cairo state
+				cairo_save(cairo);
+
+				// Set clipping rectangle for progressive fill
+				double fill_width = seg_w * fill_ratio;
+				cairo_rectangle(cairo, x_offset, 0, fill_width, seg_h);
+				cairo_clip(cairo);
+
+				// Draw filled text
+				cairo_set_source_u32(cairo, state->foreground);
+				cairo_move_to(cairo, x_offset, 0);
+				pango_printf(cairo, state->font, scale, "%s", segment->text);
+
+				// Restore cairo state
+				cairo_restore(cairo);
+			}
 
 			x_offset += seg_w;
 
-			// Add space between words (except for last word)
+			// Add space between words
 			if (segment->next) {
 				int space_w, space_h;
 				get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
@@ -478,14 +515,12 @@ int main(int argc, char *argv[]) {
 	struct lyrics_state state = { 0 };
 	state.background = 0x00000080;
 	state.foreground = 0xFFFFFFFF;
-	state.highlight = 0x87CEEBFF; // Sky blue (default karaoke highlight color)
 	state.font = "Sans 20";
 
 	static struct option long_options[] = {
 		{"help", no_argument, 0, 'h'},
 		{"background", required_argument, 0, 'b'},
 		{"foreground", required_argument, 0, 'f'},
-		{"highlight", required_argument, 0, 'H'},
 		{"font", required_argument, 0, 'F'},
 		{"anchor", required_argument, 0, 'a'},
 		{"margin", required_argument, 0, 'm'},
@@ -494,16 +529,13 @@ int main(int argc, char *argv[]) {
 
 	int c;
 	int option_index = 0;
-	while ((c = getopt_long(argc, argv, "hb:f:H:F:a:m:", long_options, &option_index)) != -1) {
+	while ((c = getopt_long(argc, argv, "hb:f:F:a:m:", long_options, &option_index)) != -1) {
 		switch (c) {
 		case 'b':
 			state.background = parse_color(optarg);
 			break;
 		case 'f':
 			state.foreground = parse_color(optarg);
-			break;
-		case 'H':
-			state.highlight = parse_color(optarg);
 			break;
 		case 'F':
 			state.font = optarg;
@@ -531,8 +563,6 @@ int main(int argc, char *argv[]) {
 			fprintf(stdout, "  -h, --help                   Show this help message\n");
 			fprintf(stdout, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
 			fprintf(stdout, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
-			fprintf(stdout, "  -H, --highlight=COLOR        Karaoke highlight color in #RRGGBB[AA] format (default: #87CEEBFF)\n");
-			fprintf(stdout, "                               Used for currently singing word in LRCX format\n");
 			fprintf(stdout, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
 			fprintf(stdout, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
 			fprintf(stdout, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
@@ -545,7 +575,7 @@ int main(int argc, char *argv[]) {
 			fprintf(stdout, "    4. $HOME\n");
 			fprintf(stdout, "    5. Online from lrclib.net API (if local files not found)\n\n");
 			fprintf(stdout, "Supported Formats:\n");
-			fprintf(stdout, "  - .lrcx: Karaoke-style with word-level timing\n");
+			fprintf(stdout, "  - .lrcx: Karaoke-style with word-level timing and progressive fill effect\n");
 			fprintf(stdout, "  - .lrc:  Standard LRC format with line-level timing\n");
 			fprintf(stdout, "  - .srt:  SubRip subtitle format\n\n");
 			fprintf(stdout, "Online Lyrics API:\n");
@@ -562,8 +592,6 @@ int main(int argc, char *argv[]) {
 			fprintf(stdout, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
 			fprintf(stdout, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
 			fprintf(stdout, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
-			fprintf(stdout, "  %s -H FF1493FF                        # Pink karaoke highlight\n", program_name);
-			fprintf(stdout, "  %s --highlight=00FF00FF               # Green karaoke highlight\n", program_name);
 			free(argv0_copy);
 			return 0;
 		default:

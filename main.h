@@ -45,7 +45,7 @@ struct lyrics_output {
 };
 
 struct lyrics_state {
-	uint32_t foreground, background, highlight;
+	uint32_t foreground, background;
 	const char *font;
 
 	struct wl_display *display;

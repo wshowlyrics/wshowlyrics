@@ -71,14 +71,3 @@ executable(
 	],
 	install: true,
 )
-
-# Test program for LRCX parser
-executable(
-	'test_lrcx_parser',
-	files(
-		'test_lrcx_parser.c',
-		'lrcx_parser.c',
-		'lrc_parser.c',
-	),
-	install: false,
-)
