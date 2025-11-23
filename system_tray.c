@@ -335,6 +335,7 @@ void system_tray_reset_icon(void) {
 
 void system_tray_update_tooltip(const char *text) {
 	if (indicator && text) {
+		printf("Updating tray tooltip: %s\n", text);
 		app_indicator_set_title(indicator, text);
 	}
 }

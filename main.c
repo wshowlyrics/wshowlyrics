@@ -429,11 +429,46 @@ static bool update_track_info(struct lyrics_state *state) {
 		system_tray_reset_icon();
 
 		// Update tooltip
-		char tooltip[256];
-		if (new_track.artist) {
-			snprintf(tooltip, sizeof(tooltip), "%s - %s", new_track.artist, new_track.title);
+		char tooltip[512];
+		char cleaned_title[256];
+
+		// Clean up title: remove YouTube ID and file extension
+		if (new_track.title) {
+			strncpy(cleaned_title, new_track.title, sizeof(cleaned_title) - 1);
+			cleaned_title[sizeof(cleaned_title) - 1] = '\0';
+
+			// Remove file extension first
+			char *ext = strrchr(cleaned_title, '.');
+			if (ext) {
+				// Common video/audio extensions
+				if (strcmp(ext, ".mkv") == 0 || strcmp(ext, ".mp4") == 0 ||
+				    strcmp(ext, ".webm") == 0 || strcmp(ext, ".mp3") == 0 ||
+				    strcmp(ext, ".flac") == 0 || strcmp(ext, ".opus") == 0 ||
+				    strcmp(ext, ".ogg") == 0 || strcmp(ext, ".m4a") == 0) {
+					*ext = '\0';
+				}
+			}
+
+			// Remove YouTube ID pattern [xxxxx]
+			char *youtube_id = strrchr(cleaned_title, '[');
+			if (youtube_id) {
+				char *bracket_end = strchr(youtube_id, ']');
+				if (bracket_end && bracket_end[1] == '\0') {
+					// Remove trailing space before bracket if exists
+					if (youtube_id > cleaned_title && youtube_id[-1] == ' ') {
+						youtube_id--;
+					}
+					*youtube_id = '\0';
+				}
+			}
 		} else {
-			snprintf(tooltip, sizeof(tooltip), "%s", new_track.title);
+			cleaned_title[0] = '\0';
+		}
+
+		if (new_track.artist && strlen(new_track.artist) > 0) {
+			snprintf(tooltip, sizeof(tooltip), "%s - %s", new_track.artist, cleaned_title);
+		} else {
+			snprintf(tooltip, sizeof(tooltip), "%s", cleaned_title);
 		}
 		system_tray_update_tooltip(tooltip);
 
