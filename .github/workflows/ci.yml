@@ -38,6 +38,8 @@ jobs:
           libpango1.0-dev \
           libfontconfig1-dev \
           libcurl4-openssl-dev \
+          libappindicator3-dev \
+          libgdk-pixbuf2.0-dev \
           pkg-config
 
     - name: Setup build directory
