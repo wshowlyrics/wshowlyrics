@@ -122,7 +122,7 @@ Karaoke-style lyrics with word-level timing:
 The LRCX format will support ruby text (furigana) for Japanese lyrics or pronunciation guides:
 
 ```lrcx
-[00:12.00][00:12.34]こころ{心}[00:13.50]そっと
+[00:12.00][00:12.34]心{こころ}[00:13.50]そっと
 ```
 
 - Syntax: `main_text{ruby_text}` - Ruby text appears above the main text in smaller font
