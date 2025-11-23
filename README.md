@@ -12,11 +12,10 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
   - **Online fallback**: Automatically fetches lyrics from [lrclib.net](https://lrclib.net) when local files are not found
   - URL decoding support for Unicode paths (Korean, Japanese, etc.)
   - Automatic filename-based matching
-- **Karaoke Mode**: LRCX format with word-level timing and highlighting
+- **Karaoke Mode**: LRCX format with word-level timing and progressive fill effect
   - Past words: normal color (already sung)
-  - Current word: highlight color (currently singing)
+  - Current word: progressively fills from left to right (currently singing)
   - Future words: dimmed (not yet sung)
-  - Customizable highlight color
 - **Synchronized Lyrics**: Supports LRC, LRCX, and SRT formats
 - **Real-time Sync**: Automatically displays lyrics based on music playback position
 - Uses Wayland protocol (wlr-layer-shell)
@@ -53,7 +52,6 @@ mpv --force-window=yes song.mp3
 | `-h` | `--help` | Show help | - |
 | `-b COLOR` | `--background=COLOR` | Background color (#RRGGBB[AA] format) | `#00000080` (black, 50% transparent) |
 | `-f COLOR` | `--foreground=COLOR` | Foreground/text color (#RRGGBB[AA] format) | `#FFFFFFFF` (white, opaque) |
-| `-H COLOR` | `--highlight=COLOR` | Karaoke highlight color (#RRGGBB[AA] format) | `#87CEEBFF` (sky blue) |
 | `-F FONT` | `--font=FONT` | Font setting | `"Sans 20"` |
 | `-a POSITION` | `--anchor=POSITION` | Screen position (top/bottom/left/right) | `bottom` |
 | `-m PIXELS` | `--margin=PIXELS` | Screen edge margin (pixels) | `32` |
@@ -91,10 +89,6 @@ mpv --force-window=yes song.mp3
 ./build/lyrics -b 00000066 -f FFFF00FF
 ./build/lyrics --background=00000066 --foreground=FFFF00FF
 
-# Custom karaoke highlight color
-./build/lyrics -H FF1493FF  # Pink highlight
-./build/lyrics --highlight=00FF00FF  # Green highlight
-
 # Large bold font at bottom of screen
 ./build/lyrics -F "Sans Bold 28" -a bottom -m 40
 ./build/lyrics --font="Sans Bold 28" --anchor=bottom --margin=40
@@ -116,7 +110,7 @@ Karaoke-style lyrics with word-level timing:
 
 - First timestamp: Line start time
 - Subsequent timestamps: Individual word timing
-- Words highlight one by one as they're sung
+- Words progressively fill from left to right as they're sung
 - Use `.lrcx` file extension
 
 ### LRC Format (Standard)
