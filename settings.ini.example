@@ -27,10 +27,8 @@ font_weight = normal
 #   808080FF = Gray, fully opaque
 
 # Active text color (highlighted/current lyrics)
+# Note: Pending/waiting text is automatically displayed as 50% dimmed version of this color
 color_active = FFFFFFFF
-
-# Inactive text color (past/future lyrics - currently not used)
-color_inactive = 808080FF
 
 # Background color
 color_background = 00000080
@@ -66,5 +64,5 @@ extensions = lrcx,lrc,srt
 enable_lrclib = true
 
 [behavior]
-# Auto-hide when no playback (currently not implemented)
-auto_hide = true
+# Reserved for future behavior settings
+# This section is currently not used but may be expanded in future releases

@@ -12,7 +12,6 @@ struct display_config {
 
 	// Colors in RGBA format (0.0 - 1.0)
 	double color_active[4];
-	double color_inactive[4];
 	double color_background[4];
 
 	int margin_bottom;
@@ -26,16 +25,10 @@ struct lyrics_config {
 	bool enable_lrclib;
 };
 
-// Behavior settings
-struct behavior_config {
-	bool auto_hide;
-};
-
 // Main configuration
 struct config {
 	struct display_config display;
 	struct lyrics_config lyrics;
-	struct behavior_config behavior;
 };
 
 // Global configuration instance

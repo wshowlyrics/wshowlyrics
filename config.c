@@ -60,7 +60,6 @@ void config_init_defaults(struct config *cfg) {
 
 	// Default colors (matching original hardcoded values)
 	parse_hex_color("FFFFFFFF", cfg->display.color_active);
-	parse_hex_color("808080FF", cfg->display.color_inactive);
 	parse_hex_color("00000080", cfg->display.color_background);
 
 	cfg->display.margin_bottom = 32;
@@ -70,9 +69,6 @@ void config_init_defaults(struct config *cfg) {
 	cfg->lyrics.search_dirs = strdup("");  // Empty = use hardcoded defaults
 	cfg->lyrics.extensions = strdup("lrcx,lrc,srt");  // All formats
 	cfg->lyrics.enable_lrclib = true;
-
-	// Behavior defaults
-	cfg->behavior.auto_hide = true;
 }
 
 void config_free(struct config *cfg) {
@@ -158,8 +154,6 @@ bool config_load(struct config *cfg, const char *path) {
 				cfg->display.font_weight = strdup(value);
 			} else if (strcmp(key, "color_active") == 0) {
 				parse_hex_color(value, cfg->display.color_active);
-			} else if (strcmp(key, "color_inactive") == 0) {
-				parse_hex_color(value, cfg->display.color_inactive);
 			} else if (strcmp(key, "color_background") == 0) {
 				parse_hex_color(value, cfg->display.color_background);
 			} else if (strcmp(key, "margin_bottom") == 0) {
@@ -176,10 +170,6 @@ bool config_load(struct config *cfg, const char *path) {
 				cfg->lyrics.extensions = strdup(value);
 			} else if (strcmp(key, "enable_lrclib") == 0) {
 				cfg->lyrics.enable_lrclib = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
-			}
-		} else if (strcmp(section, "behavior") == 0) {
-			if (strcmp(key, "auto_hide") == 0) {
-				cfg->behavior.auto_hide = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
 			}
 		}
 	}
