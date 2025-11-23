@@ -35,7 +35,7 @@ jobs:
 
       - name: Checkout AUR repository (wshowlyrics)
         run: |
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git clone ssh://aur@aur.archlinux.org/wshowlyrics.git aur
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git clone ssh://aur@aur.archlinux.org/wshowlyrics.git aur
 
       - name: Create or Update PKGBUILD
         run: |
@@ -94,7 +94,7 @@ jobs:
           git config user.email "assa0620@gmail.com"
           git add PKGBUILD .SRCINFO
           git diff --staged --quiet || git commit -m "Update to version ${{ steps.get_version.outputs.version }}"
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git push origin master
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git push origin master
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
