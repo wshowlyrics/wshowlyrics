@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to release (e.g., v0.1.0)'
-        required: true
-        type: string
 
 jobs:
   aur-release:
@@ -18,18 +12,13 @@ jobs:
       - name: Checkout lyrics repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
           fetch-depth: 0
 
       - name: Get version from tag
         id: get_version
         run: |
-          # Get tag from manual input or push event
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            TAG="${{ github.event.inputs.tag }}"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
-          fi
+          # Get tag from push event
+          TAG="${GITHUB_REF#refs/tags/}"
 
           # Remove 'v' prefix from tag (v0.1.0 -> 0.1.0)
           VERSION="${TAG#v}"
