@@ -528,20 +528,26 @@ static void update_current_line(struct lyrics_state *state) {
 		// This prevents lyrics from disappearing too quickly during instrumental breaks
 	}
 
-	bool line_changed = (new_line != state->current_line);
+	// Check if line text is empty (instrumental break in LRC/LRCX)
+	bool is_empty_text = (new_line && new_line->text && new_line->text[0] == '\0');
+
+	// Treat empty text lines as NULL (no lyrics to display)
+	struct lyrics_line *display_line = is_empty_text ? NULL : new_line;
+
+	bool line_changed = (display_line != state->current_line);
 	if (line_changed) {
-		state->current_line = new_line;
+		state->current_line = display_line;
 		state->current_segment = NULL; // Reset word segment when line changes
 
-		if (new_line && new_line->text) {
-			int index = lrc_get_line_index(&state->lyrics, new_line);
-			printf("Line %d/%d: %s\n", index + 1, state->lyrics.line_count, new_line->text);
+		if (display_line && display_line->text) {
+			int index = lrc_get_line_index(&state->lyrics, display_line);
+			printf("Line %d/%d: %s\n", index + 1, state->lyrics.line_count, display_line->text);
 
 			// For karaoke (LRCX), set initial segment
-			if (new_line->segments) {
-				state->current_segment = new_line->segments;
+			if (display_line->segments) {
+				state->current_segment = display_line->segments;
 			}
-		} else if (!new_line) {
+		} else {
 			printf("Instrumental break - clearing lyrics\n");
 		}
 
