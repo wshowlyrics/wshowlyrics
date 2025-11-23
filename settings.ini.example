@@ -10,11 +10,11 @@
 [display]
 # Font settings
 # font_family: Font family name (default: Sans)
-# font_size: Font size in points (default: 24)
-# font_weight: Font weight - normal, bold, etc. (default: bold)
+# font_size: Font size in points (default: 20)
+# font_weight: Font weight - normal, bold, etc. (default: normal)
 font_family = Sans
-font_size = 24
-font_weight = bold
+font_size = 20
+font_weight = normal
 
 # Colors in RRGGBBAA hex format (Red Green Blue Alpha)
 # Each color component is 00-FF (0-255)
@@ -33,12 +33,12 @@ color_active = FFFFFFFF
 color_inactive = 808080FF
 
 # Background color
-color_background = 000000CC
+color_background = 00000080
 
 # Position and spacing
-# margin_bottom: Distance from bottom of screen in pixels (default: 50)
+# margin_bottom: Distance from bottom of screen in pixels (default: 32)
 # line_spacing: Space between lines in pixels (default: 10)
-margin_bottom = 50
+margin_bottom = 32
 line_spacing = 10
 
 [lyrics]
