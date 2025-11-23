@@ -1,4 +1,5 @@
 #include "main.h"
+#include "config.h"
 
 static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
 	cairo_set_source_rgba(cairo,
@@ -563,12 +564,89 @@ int main(int argc, char *argv[]) {
 	char *argv0_copy = strdup(argv[0]);
 	const char *program_name = basename(argv0_copy);
 
+	// Initialize configuration with defaults
+	config_init_defaults(&g_config);
+
+	// Try to load configuration in priority order:
+	// 1. ~/.config/wshowlyrics/settings.ini (user config)
+	// 2. /etc/wshowlyrics/settings.ini (system-wide config)
+
+	bool config_loaded = false;
+
+	// Try user config first
+	char *user_config_path = config_get_path();
+	if (user_config_path) {
+		// Create config directory if it doesn't exist
+		char *dir_path = strdup(user_config_path);
+		char *last_slash = strrchr(dir_path, '/');
+		if (last_slash) {
+			*last_slash = '\0';
+			mkdir(dir_path, 0755);  // Create ~/.config/wshowlyrics/
+		}
+		free(dir_path);
+
+		// Check if user config exists
+		struct stat st;
+		if (stat(user_config_path, &st) != 0) {
+			// User config doesn't exist - try to copy from system config
+			const char *system_config = "/etc/wshowlyrics/settings.ini";
+			if (stat(system_config, &st) == 0) {
+				// System config exists - copy it
+				FILE *src = fopen(system_config, "r");
+				if (src) {
+					FILE *dst = fopen(user_config_path, "w");
+					if (dst) {
+						char buf[4096];
+						size_t n;
+						while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+							fwrite(buf, 1, n, dst);
+						}
+						fclose(dst);
+						printf("Copied system config to user config: %s\n", user_config_path);
+					}
+					fclose(src);
+				}
+			}
+		}
+
+		// Try to load user config
+		if (config_load(&g_config, user_config_path)) {
+			config_loaded = true;
+		}
+		free(user_config_path);
+	}
+
+	// If user config not found, try system-wide config
+	if (!config_loaded) {
+		config_load(&g_config, "/etc/wshowlyrics/settings.ini");
+		// Note: config_load returns false if file doesn't exist, which is fine
+		// We'll just use the defaults initialized above
+	}
+
 	unsigned int anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
-	int margin = 32;
+	int margin = g_config.display.margin_bottom;
 	struct lyrics_state state = { 0 };
-	state.background = 0x00000080;
-	state.foreground = 0xFFFFFFFF;
-	state.font = "Sans 20";
+
+	// Convert hex colors to uint32 format
+	state.background =
+		((uint32_t)(g_config.display.color_background[0] * 255) << 24) |
+		((uint32_t)(g_config.display.color_background[1] * 255) << 16) |
+		((uint32_t)(g_config.display.color_background[2] * 255) << 8) |
+		((uint32_t)(g_config.display.color_background[3] * 255));
+
+	state.foreground =
+		((uint32_t)(g_config.display.color_active[0] * 255) << 24) |
+		((uint32_t)(g_config.display.color_active[1] * 255) << 16) |
+		((uint32_t)(g_config.display.color_active[2] * 255) << 8) |
+		((uint32_t)(g_config.display.color_active[3] * 255));
+
+	// Build font string from config
+	char font_str[256];
+	snprintf(font_str, sizeof(font_str), "%s %s %d",
+		g_config.display.font_family,
+		g_config.display.font_weight,
+		g_config.display.font_size);
+	state.font = strdup(font_str);
 
 	static struct option long_options[] = {
 		{"help", no_argument, 0, 'h'},

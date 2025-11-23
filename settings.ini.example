@@ -1,0 +1,70 @@
+# wshowlyrics configuration file
+#
+# Configuration file locations (in priority order):
+#   1. ~/.config/wshowlyrics/settings.ini (user configuration)
+#   2. /etc/wshowlyrics/settings.ini (system-wide configuration)
+#
+# All settings are optional - if not specified, defaults will be used
+# You can also override settings using command-line arguments
+
+[display]
+# Font settings
+# font_family: Font family name (default: Sans)
+# font_size: Font size in points (default: 24)
+# font_weight: Font weight - normal, bold, etc. (default: bold)
+font_family = Sans
+font_size = 24
+font_weight = bold
+
+# Colors in RRGGBBAA hex format (Red Green Blue Alpha)
+# Each color component is 00-FF (0-255)
+# Examples:
+#   FFFFFFFF = White, fully opaque
+#   000000CC = Black, semi-transparent (80% opacity)
+#   FF0000FF = Red, fully opaque
+#   00FF00FF = Green, fully opaque
+#   0000FFFF = Blue, fully opaque
+#   808080FF = Gray, fully opaque
+
+# Active text color (highlighted/current lyrics)
+color_active = FFFFFFFF
+
+# Inactive text color (past/future lyrics - currently not used)
+color_inactive = 808080FF
+
+# Background color
+color_background = 000000CC
+
+# Position and spacing
+# margin_bottom: Distance from bottom of screen in pixels (default: 50)
+# line_spacing: Space between lines in pixels (default: 10)
+margin_bottom = 50
+line_spacing = 10
+
+[lyrics]
+# Search directories (colon-separated paths)
+# Empty string or not set = use default search locations
+# Default locations:
+#   1. Same directory as the music file
+#   2. Current directory (only for local builds, not /usr/bin)
+#   3. XDG_MUSIC_DIR environment variable
+#   4. ~/.lyrics/
+#   5. $HOME
+#
+# Example: search_dirs = ~/.lyrics:~/Music:~/Documents/Lyrics
+search_dirs =
+
+# File extensions to search (comma-separated, no dots)
+# Supported formats: lrcx, lrc, srt
+# If empty or not set, all formats are searched
+# Example: extensions = lrc,srt (this would skip .lrcx files)
+extensions = lrcx,lrc,srt
+
+# Online lyrics provider (lrclib.net)
+# Set to false to disable online lyrics fetching
+# Only used when local files are not found
+enable_lrclib = true
+
+[behavior]
+# Auto-hide when no playback (currently not implemented)
+auto_hide = true

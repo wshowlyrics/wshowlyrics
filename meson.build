@@ -60,6 +60,7 @@ executable(
 		'lyrics_provider.c',
 		'lrclib_provider.c',
 		'system_tray.c',
+		'config.c',
 	),
 	dependencies: [
 		appindicator,
@@ -75,4 +76,11 @@ executable(
 		wayland_protos,
 	],
 	install: true,
+)
+
+# Install system-wide configuration file
+install_data(
+	'settings.ini.example',
+	install_dir: '/etc/wshowlyrics',
+	rename: 'settings.ini',
 )

@@ -3,6 +3,7 @@
 #include "lrc_parser.h"
 #include "srt_parser.h"
 #include "lrcx_parser.h"
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -68,25 +69,35 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
 
 	// Check file extension to determine parser
 	const char *ext = strrchr(path, '.');
+	if (!ext) return false;
+
+	// Check if this extension is enabled in config
+	if (!config_is_extension_enabled(ext)) {
+		return false;
+	}
 
 	// Try LRCX only for .lrcx files
-	if (ext && strcasecmp(ext, ".lrcx") == 0) {
+	if (strcasecmp(ext, ".lrcx") == 0) {
 		if (lrcx_parse_file(path, data)) {
 			printf("Loaded LRCX file: %s\n", path);
 			return true;
 		}
 	}
 
-	// Try LRC for .lrc files or if LRCX failed
-	if (lrc_parse_file(path, data)) {
-		printf("Loaded LRC file: %s\n", path);
-		return true;
+	// Try LRC for .lrc files
+	if (strcasecmp(ext, ".lrc") == 0) {
+		if (lrc_parse_file(path, data)) {
+			printf("Loaded LRC file: %s\n", path);
+			return true;
+		}
 	}
 
-	// Try SRT
-	if (srt_parse_file(path, data)) {
-		printf("Loaded SRT file: %s\n", path);
-		return true;
+	// Try SRT for .srt files
+	if (strcasecmp(ext, ".srt") == 0) {
+		if (srt_parse_file(path, data)) {
+			printf("Loaded SRT file: %s\n", path);
+			return true;
+		}
 	}
 
 	return false;
@@ -212,8 +223,25 @@ static bool local_search(const char *title, const char *artist, const char *albu
 		search_dirs[dir_count++] = current_dir;
 	}
 
-	// Then try standard locations
-	search_dirs[dir_count++] = ".";
+	// Check if running from local build (e.g., ./build/lyrics)
+	// to enable current directory search for development
+	bool is_local_build = false;
+	char exe_path[1024];
+	ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+	if (len != -1) {
+		exe_path[len] = '\0';
+		// Check if executable path contains "build/" or ends with "/lyrics" in local directory
+		if (strstr(exe_path, "/build/") != NULL ||
+		    (strstr(exe_path, "/lyrics") != NULL && exe_path[0] != '/' && strncmp(exe_path, "/usr/", 5) != 0)) {
+			is_local_build = true;
+		}
+	}
+
+	// Only search current directory for local builds (not installed to /usr/bin)
+	if (is_local_build) {
+		search_dirs[dir_count++] = ".";
+	}
+
 	if (xdg_music) search_dirs[dir_count++] = xdg_music;
 
 	// Add ~/.lyrics directory

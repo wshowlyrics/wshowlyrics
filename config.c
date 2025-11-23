@@ -1,0 +1,218 @@
+#include "config.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <ctype.h>
+#include <sys/stat.h>
+#include <errno.h>
+
+// Global configuration instance
+struct config g_config;
+
+// Parse hex color string (RRGGBBAA) to RGBA array
+static bool parse_hex_color(const char *hex, double rgba[4]) {
+	if (!hex) return false;
+
+	// Skip leading # if present
+	if (hex[0] == '#') hex++;
+
+	size_t len = strlen(hex);
+	if (len != 8) return false;  // Must be exactly 8 hex digits
+
+	char *endptr;
+	unsigned long color = strtoul(hex, &endptr, 16);
+	if (*endptr != '\0') return false;
+
+	// Extract RGBA components
+	rgba[0] = ((color >> 24) & 0xFF) / 255.0;  // R
+	rgba[1] = ((color >> 16) & 0xFF) / 255.0;  // G
+	rgba[2] = ((color >> 8) & 0xFF) / 255.0;   // B
+	rgba[3] = (color & 0xFF) / 255.0;          // A
+
+	return true;
+}
+
+// Trim whitespace from string
+static char* trim_whitespace(char *str) {
+	if (!str) return NULL;
+
+	// Trim leading
+	while (isspace(*str)) str++;
+
+	if (*str == '\0') return str;
+
+	// Trim trailing
+	char *end = str + strlen(str) - 1;
+	while (end > str && isspace(*end)) end--;
+	*(end + 1) = '\0';
+
+	return str;
+}
+
+void config_init_defaults(struct config *cfg) {
+	memset(cfg, 0, sizeof(*cfg));
+
+	// Display defaults
+	cfg->display.font_family = strdup("Sans");
+	cfg->display.font_size = 24;
+	cfg->display.font_weight = strdup("bold");
+
+	// Default colors (white active, gray inactive, semi-transparent black background)
+	parse_hex_color("FFFFFFFF", cfg->display.color_active);
+	parse_hex_color("808080FF", cfg->display.color_inactive);
+	parse_hex_color("000000CC", cfg->display.color_background);
+
+	cfg->display.margin_bottom = 50;
+	cfg->display.line_spacing = 10;
+
+	// Lyrics defaults
+	cfg->lyrics.search_dirs = strdup("");  // Empty = use hardcoded defaults
+	cfg->lyrics.extensions = strdup("lrcx,lrc,srt");  // All formats
+	cfg->lyrics.enable_lrclib = true;
+
+	// Behavior defaults
+	cfg->behavior.auto_hide = true;
+}
+
+void config_free(struct config *cfg) {
+	free(cfg->display.font_family);
+	free(cfg->display.font_weight);
+	free(cfg->lyrics.search_dirs);
+	free(cfg->lyrics.extensions);
+	memset(cfg, 0, sizeof(*cfg));
+}
+
+// Get user config path (~/.config/wshowlyrics/settings.ini)
+static char* config_get_user_path(void) {
+	const char *config_home = getenv("XDG_CONFIG_HOME");
+	const char *home = getenv("HOME");
+
+	if (!config_home && !home) {
+		return NULL;
+	}
+
+	char *path = malloc(512);
+	if (!path) return NULL;
+
+	if (config_home) {
+		snprintf(path, 512, "%s/wshowlyrics/settings.ini", config_home);
+	} else {
+		snprintf(path, 512, "%s/.config/wshowlyrics/settings.ini", home);
+	}
+
+	return path;
+}
+
+// Get config path (for backward compatibility - returns user path)
+char* config_get_path(void) {
+	return config_get_user_path();
+}
+
+// Simple INI parser
+bool config_load(struct config *cfg, const char *path) {
+	FILE *f = fopen(path, "r");
+	if (!f) {
+		fprintf(stderr, "Config file not found: %s (using defaults)\n", path);
+		return false;
+	}
+
+	char line[512];
+	char section[64] = {0};
+
+	while (fgets(line, sizeof(line), f)) {
+		char *trimmed = trim_whitespace(line);
+
+		// Skip empty lines and comments
+		if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
+			continue;
+		}
+
+		// Section header
+		if (trimmed[0] == '[') {
+			char *end = strchr(trimmed, ']');
+			if (end) {
+				*end = '\0';
+				strncpy(section, trimmed + 1, sizeof(section) - 1);
+			}
+			continue;
+		}
+
+		// Key-value pair
+		char *equals = strchr(trimmed, '=');
+		if (!equals) continue;
+
+		*equals = '\0';
+		char *key = trim_whitespace(trimmed);
+		char *value = trim_whitespace(equals + 1);
+
+		// Parse based on section
+		if (strcmp(section, "display") == 0) {
+			if (strcmp(key, "font_family") == 0) {
+				free(cfg->display.font_family);
+				cfg->display.font_family = strdup(value);
+			} else if (strcmp(key, "font_size") == 0) {
+				cfg->display.font_size = atoi(value);
+			} else if (strcmp(key, "font_weight") == 0) {
+				free(cfg->display.font_weight);
+				cfg->display.font_weight = strdup(value);
+			} else if (strcmp(key, "color_active") == 0) {
+				parse_hex_color(value, cfg->display.color_active);
+			} else if (strcmp(key, "color_inactive") == 0) {
+				parse_hex_color(value, cfg->display.color_inactive);
+			} else if (strcmp(key, "color_background") == 0) {
+				parse_hex_color(value, cfg->display.color_background);
+			} else if (strcmp(key, "margin_bottom") == 0) {
+				cfg->display.margin_bottom = atoi(value);
+			} else if (strcmp(key, "line_spacing") == 0) {
+				cfg->display.line_spacing = atoi(value);
+			}
+		} else if (strcmp(section, "lyrics") == 0) {
+			if (strcmp(key, "search_dirs") == 0) {
+				free(cfg->lyrics.search_dirs);
+				cfg->lyrics.search_dirs = strdup(value);
+			} else if (strcmp(key, "extensions") == 0) {
+				free(cfg->lyrics.extensions);
+				cfg->lyrics.extensions = strdup(value);
+			} else if (strcmp(key, "enable_lrclib") == 0) {
+				cfg->lyrics.enable_lrclib = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+			}
+		} else if (strcmp(section, "behavior") == 0) {
+			if (strcmp(key, "auto_hide") == 0) {
+				cfg->behavior.auto_hide = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+			}
+		}
+	}
+
+	fclose(f);
+	printf("Loaded configuration from: %s\n", path);
+	return true;
+}
+
+bool config_is_extension_enabled(const char *ext) {
+	if (!ext || !g_config.lyrics.extensions) return true;
+
+	// If extensions is empty, enable all
+	if (g_config.lyrics.extensions[0] == '\0') return true;
+
+	// Skip leading dot if present
+	if (ext[0] == '.') ext++;
+
+	// Check if extension is in the comma-separated list
+	char *exts = strdup(g_config.lyrics.extensions);
+	if (!exts) return true;
+
+	bool found = false;
+	char *token = strtok(exts, ",");
+	while (token) {
+		char *trimmed = trim_whitespace(token);
+		if (strcasecmp(trimmed, ext) == 0) {
+			found = true;
+			break;
+		}
+		token = strtok(NULL, ",");
+	}
+
+	free(exts);
+	return found;
+}
