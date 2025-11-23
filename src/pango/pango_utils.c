@@ -93,8 +93,8 @@ void get_ruby_text_size(cairo_t *cairo, const char *font, int *width, int *heigh
 		get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", ruby_text);
 	}
 
-	// Width is maximum of base and ruby
-	*width = base_w > ruby_w ? base_w : ruby_w;
+	// Width is base text width (ruby is centered over base)
+	*width = base_w;
 
 	// Height is base + ruby (if present)
 	*height = base_h + ruby_h;
@@ -114,30 +114,25 @@ int pango_printf_ruby(cairo_t *cairo, const char *font, double scale,
 		get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", ruby_text);
 	}
 
-	// Calculate total width (max of base and ruby)
-	int total_w = base_w > ruby_w ? base_w : ruby_w;
-
 	// Save current position
 	double x, y;
 	cairo_get_current_point(cairo, &x, &y);
 
-	// Draw ruby text above (centered over base text)
+	// Draw ruby text above, centered over base text
 	if (ruby_text && ruby_text[0] != '\0') {
 		cairo_save(cairo);
-		double ruby_offset_x = (total_w - ruby_w) / 2.0;
+		// Center ruby over base text (not over total width)
+		double ruby_offset_x = (base_w - ruby_w) / 2.0;
 		cairo_move_to(cairo, x + ruby_offset_x, y);
 		pango_printf(cairo, font, scale * 0.5, "%s", ruby_text);
 		cairo_restore(cairo);
 	}
 
-	// Draw base text below (centered if narrower than ruby)
-	double base_offset_x = (total_w - base_w) / 2.0;
-	cairo_move_to(cairo, x + base_offset_x, y + ruby_h);
+	// Draw base text below
+	cairo_move_to(cairo, x, y + ruby_h);
 	pango_printf(cairo, font, scale, "%s", base_text);
 
-	// Move to end of this ruby text segment (x + total_w, original y)
-	// This ensures next segment starts at correct position
-	cairo_move_to(cairo, x + total_w, y);
-
-	return total_w;
+	// Don't move cairo current point - let caller manage position
+	// Return base text width for caller to update position
+	return base_w;
 }

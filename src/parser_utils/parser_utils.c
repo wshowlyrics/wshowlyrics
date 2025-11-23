@@ -193,13 +193,71 @@ static bool is_space_char(const char *p, const char *text_start, const char *tex
 	return false;
 }
 
+// Helper: Check if a UTF-8 character is a CJK ideograph (kanji/hanzi)
+static bool is_cjk_ideograph(const char *p, const char *limit, const char *text_end) {
+	if (p >= text_end || p < limit) {
+		return false;
+	}
+
+	// Decode UTF-8 to get Unicode code point
+	unsigned char c1 = (unsigned char)p[0];
+
+	// 3-byte UTF-8 (most common for CJK)
+	if ((c1 & 0xF0) == 0xE0 && p + 2 < text_end) {
+		unsigned char c2 = (unsigned char)p[1];
+		unsigned char c3 = (unsigned char)p[2];
+		uint32_t codepoint = ((c1 & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F);
+
+		// CJK Unified Ideographs: U+4E00 - U+9FFF
+		// CJK Extension A: U+3400 - U+4DBF
+		return (codepoint >= 0x4E00 && codepoint <= 0x9FFF) ||
+		       (codepoint >= 0x3400 && codepoint <= 0x4DBF);
+	}
+
+	// 4-byte UTF-8 (for extension B and beyond)
+	if ((c1 & 0xF8) == 0xF0 && p + 3 < text_end) {
+		unsigned char c2 = (unsigned char)p[1];
+		unsigned char c3 = (unsigned char)p[2];
+		unsigned char c4 = (unsigned char)p[3];
+		uint32_t codepoint = ((c1 & 0x07) << 18) | ((c2 & 0x3F) << 12) |
+		                     ((c3 & 0x3F) << 6) | (c4 & 0x3F);
+
+		// CJK Extension B-F: U+20000 - U+2CEAF
+		return (codepoint >= 0x20000 && codepoint <= 0x2CEAF);
+	}
+
+	return false;
+}
+
 // Helper: Find the start of the word that ends at 'end'
-// Scans backwards from 'end' to find word boundary (space)
+// For ruby text, scan backwards to find kanji sequence
 // Will not go before 'limit'
 static const char* find_word_start(const char *limit, const char *end, const char *text_end) {
 	const char *p = end;
 
-	// Scan backwards to find the start of the word (non-space sequence)
+	// First, check if the character right before '{' is a kanji
+	// If not, use space-based word boundary (old behavior)
+	const char *check = p - 1;
+	while (check > limit && ((unsigned char)*check & 0xC0) == 0x80) {
+		check--;
+	}
+
+	if (!is_cjk_ideograph(check, limit, text_end)) {
+		// Not a kanji - use space-based boundary
+		while (p > limit) {
+			const char *prev = p - 1;
+			while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
+				prev--;
+			}
+			if (is_space_char(prev, limit, text_end)) {
+				return p;
+			}
+			p = prev;
+		}
+		return limit;
+	}
+
+	// Scan backwards to find start of kanji sequence
 	while (p > limit) {
 		// Move back one character
 		const char *prev = p - 1;
@@ -209,8 +267,8 @@ static const char* find_word_start(const char *limit, const char *end, const cha
 			prev--;
 		}
 
-		// Check if we're now at a space
-		if (is_space_char(prev, limit, text_end)) {
+		// Check if previous character is a space or not a kanji
+		if (is_space_char(prev, limit, text_end) || !is_cjk_ideograph(prev, limit, text_end)) {
 			return p; // Found word boundary
 		}
 

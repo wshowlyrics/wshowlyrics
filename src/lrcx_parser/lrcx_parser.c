@@ -77,7 +77,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 				size_t estimated_len = 0;
 				while (seg) {
 					if (seg->text && seg->text[0] != '\n') {
-						estimated_len += strlen(seg->text) + 1;
+						estimated_len += strlen(seg->text);
 					}
 					seg = seg->next;
 				}
@@ -93,9 +93,6 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 				while (seg) {
 					if (seg->text && seg->text[0] != '\n') {
 						size_t seg_len = strlen(seg->text);
-						if (full_text_len > 0) {
-							full_text[full_text_len++] = ' ';
-						}
 						memcpy(full_text + full_text_len, seg->text, seg_len);
 						full_text_len += seg_len;
 					}
@@ -154,44 +151,73 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 				segment->timestamp_us = segment_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
 
 				if (word_end > word_start) {
-					// Has text
+					// Has text - parse ruby annotations
 					char *raw_text = strndup(word_start, word_end - word_start);
 
-					// Parse ruby text (furigana) if present
-					char *ruby = NULL;
-					segment->text = parse_ruby_text(raw_text, &ruby);
-					segment->ruby = ruby;
-					free(raw_text);
+					// Parse ruby text into segments
+					struct word_segment *word_segments = NULL;
+					int word_seg_count = parse_ruby_segments(raw_text, segment_timestamp_us + (int64_t)data->metadata.offset_ms * 1000, &word_segments);
 
-					// Add to full text (base text only, without ruby notation)
-					size_t word_len = strlen(segment->text);
-					if (full_text_len + word_len + 1 > full_text_capacity) {
-						full_text_capacity = (full_text_len + word_len + 1) * 2;
-						char *new_full_text = realloc(full_text, full_text_capacity);
-						if (!new_full_text) {
-							free(segment->text);
-							free(segment);
-							free(full_text);
-							free(new_line);
-							return false;
+					if (word_seg_count > 0 && word_segments) {
+						// Free raw_text and temporary segment
+						free(raw_text);
+						free(segment);
+
+						// Add all parsed segments to the line
+						struct word_segment *ws = word_segments;
+						while (ws) {
+							*next_segment = ws;
+							next_segment = &ws->next;
+							new_line->segment_count++;
+
+							// Add to full text (base text only)
+							if (ws->text && ws->text[0] != '\0') {
+								size_t word_len = strlen(ws->text);
+								if (full_text_len + word_len + 1 > full_text_capacity) {
+									full_text_capacity = (full_text_len + word_len + 1) * 2;
+									char *new_full_text = realloc(full_text, full_text_capacity);
+									if (!new_full_text) {
+										free(full_text);
+										free(new_line);
+										return false;
+									}
+									full_text = new_full_text;
+								}
+
+								if (full_text_len > 0) {
+									full_text[full_text_len++] = ' ';
+								}
+								memcpy(full_text + full_text_len, ws->text, word_len);
+								full_text_len += word_len;
+								full_text[full_text_len] = '\0';
+							}
+
+							ws = ws->next;
 						}
-						full_text = new_full_text;
-					}
+					} else {
+						// No segments - use raw text directly
+						segment->text = raw_text;  // Take ownership
+						segment->ruby = NULL;
 
-					if (full_text_len > 0) {
-						full_text[full_text_len++] = ' '; // Add space between words
+						*next_segment = segment;
+						next_segment = &segment->next;
+						new_line->segment_count++;
+
+						if (full_text_len > 0) {
+							full_text[full_text_len++] = ' ';
+						}
+						size_t word_len = strlen(segment->text);
+						memcpy(full_text + full_text_len, segment->text, word_len);
+						full_text_len += word_len;
+						full_text[full_text_len] = '\0';
 					}
-					memcpy(full_text + full_text_len, word_start, word_len);
-					full_text_len += word_len;
-					full_text[full_text_len] = '\0';
 				} else {
 					// Empty text for idle display (e.g., [00:01.00] or [00:01.00][00:01.20]...)
 					segment->text = strdup("");
+					*next_segment = segment;
+					next_segment = &segment->next;
+					new_line->segment_count++;
 				}
-
-				*next_segment = segment;
-				next_segment = &segment->next;
-				new_line->segment_count++;
 
 				pos = word_end;
 			} else {
