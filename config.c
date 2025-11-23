@@ -53,17 +53,17 @@ static char* trim_whitespace(char *str) {
 void config_init_defaults(struct config *cfg) {
 	memset(cfg, 0, sizeof(*cfg));
 
-	// Display defaults
+	// Display defaults (matching original hardcoded values)
 	cfg->display.font_family = strdup("Sans");
-	cfg->display.font_size = 24;
-	cfg->display.font_weight = strdup("bold");
+	cfg->display.font_size = 20;
+	cfg->display.font_weight = strdup("normal");
 
-	// Default colors (white active, gray inactive, semi-transparent black background)
+	// Default colors (matching original hardcoded values)
 	parse_hex_color("FFFFFFFF", cfg->display.color_active);
 	parse_hex_color("808080FF", cfg->display.color_inactive);
-	parse_hex_color("000000CC", cfg->display.color_background);
+	parse_hex_color("00000080", cfg->display.color_background);
 
-	cfg->display.margin_bottom = 50;
+	cfg->display.margin_bottom = 32;
 	cfg->display.line_spacing = 10;
 
 	// Lyrics defaults
