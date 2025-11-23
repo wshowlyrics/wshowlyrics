@@ -413,6 +413,7 @@ static bool update_track_info(struct lyrics_state *state) {
 		printf("Title: %s\n", new_track.title);
 		printf("Artist: %s\n", new_track.artist ? new_track.artist : "Unknown");
 		printf("Album: %s\n", new_track.album ? new_track.album : "Unknown");
+		printf("Art URL: %s\n", new_track.art_url ? new_track.art_url : "None");
 
 		mpris_free_metadata(&state->current_track);
 		state->current_track = new_track;
@@ -423,6 +424,23 @@ static bool update_track_info(struct lyrics_state *state) {
 		clock_gettime(CLOCK_MONOTONIC, &now);
 		state->track_start_time_us = (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
 		state->track_start_time_us -= state->current_track.position_us;
+
+		// Reset tray icon to default before updating
+		system_tray_reset_icon();
+
+		// Update tooltip
+		char tooltip[256];
+		if (new_track.artist) {
+			snprintf(tooltip, sizeof(tooltip), "%s - %s", new_track.artist, new_track.title);
+		} else {
+			snprintf(tooltip, sizeof(tooltip), "%s", new_track.title);
+		}
+		system_tray_update_tooltip(tooltip);
+
+		// Update system tray icon with album art (after a short delay for visual feedback)
+		if (new_track.art_url) {
+			system_tray_update_icon(new_track.art_url);
+		}
 	} else {
 		mpris_free_metadata(&new_track);
 	}
@@ -624,6 +642,13 @@ int main(int argc, char *argv[]) {
 	}
 	printf("MPRIS mode enabled - will track currently playing music\n");
 
+	// Initialize system tray
+	if (system_tray_init()) {
+		printf("System tray initialized (album art display)\n");
+	} else {
+		fprintf(stderr, "Warning: Failed to initialize system tray\n");
+	}
+
 	state.display = wl_display_connect(NULL);
 	if (!state.display) {
 		fprintf(stderr, "wl_display_connect: %s\n", strerror(errno));
@@ -746,9 +771,13 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "wl_display_dispatch: %s\n", strerror(errno));
 			break;
 		}
+
+		// Update system tray (process GTK events)
+		system_tray_update();
 	}
 
 exit:
+	system_tray_cleanup();
 	lrc_free_data(&state.lyrics);
 	mpris_free_metadata(&state.current_track);
 	mpris_cleanup();

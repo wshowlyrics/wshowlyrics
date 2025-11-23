@@ -58,10 +58,10 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 	memset(metadata, 0, sizeof(struct track_metadata));
 
 	// Get all metadata in a single command to ensure consistency
-	// Format: title|artist|album|url|length
+	// Format: title|artist|album|url|artUrl|length
 	char *result = execute_command(
 		"playerctl --player=%any metadata --format "
-		"'{{title}}|||{{artist}}|||{{album}}|||{{xesam:url}}|||{{mpris:length}}' 2>/dev/null"
+		"'{{title}}|||{{artist}}|||{{album}}|||{{xesam:url}}|||{{mpris:artUrl}}|||{{mpris:length}}' 2>/dev/null"
 	);
 
 	if (!result) {
@@ -94,7 +94,15 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 	*url_start = '\0';
 	url_start += 3;
 
-	char *length_start = strstr(url_start, "|||");
+	char *art_url_start = strstr(url_start, "|||");
+	if (!art_url_start) {
+		free(result);
+		return false;
+	}
+	*art_url_start = '\0';
+	art_url_start += 3;
+
+	char *length_start = strstr(art_url_start, "|||");
 	if (!length_start) {
 		free(result);
 		return false;
@@ -112,6 +120,9 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 	}
 	if (strlen(url_start) > 0) {
 		metadata->url = strdup(url_start);
+	}
+	if (strlen(art_url_start) > 0) {
+		metadata->art_url = strdup(art_url_start);
 	}
 	if (strlen(length_start) > 0) {
 		metadata->length_us = atoll(length_start);
@@ -162,6 +173,7 @@ void mpris_free_metadata(struct track_metadata *metadata) {
 	free(metadata->artist);
 	free(metadata->album);
 	free(metadata->url);
+	free(metadata->art_url);
 	memset(metadata, 0, sizeof(struct track_metadata));
 }
 

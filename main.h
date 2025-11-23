@@ -32,6 +32,7 @@
 #include "srt_parser.h"
 #include "lrcx_parser.h"
 #include "lyrics_provider.h"
+#include "system_tray.h"
 
 /* Forward declarations */
 struct lyrics_output;

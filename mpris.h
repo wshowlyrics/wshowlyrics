@@ -9,6 +9,7 @@ struct track_metadata {
 	char *artist;
 	char *album;
 	char *url; // File path or URL
+	char *art_url; // Album art URL (mpris:artUrl)
 	int64_t length_us; // Length in microseconds
 	int64_t position_us; // Current position in microseconds
 };

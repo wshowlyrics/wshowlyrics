@@ -40,6 +40,8 @@ pangocairo     = dependency('pangocairo')
 wayland_client = dependency('wayland-client')
 wayland_protos = dependency('wayland-protocols')
 libcurl        = dependency('libcurl')
+appindicator   = dependency('appindicator3-0.1')
+gdkpixbuf      = dependency('gdk-pixbuf-2.0')
 
 rt = cc.find_library('rt')
 
@@ -57,11 +59,14 @@ executable(
 		'lrcx_parser.c',
 		'lyrics_provider.c',
 		'lrclib_provider.c',
+		'system_tray.c',
 	),
 	dependencies: [
+		appindicator,
 		cairo,
 		client_protos,
 		fontconfig,
+		gdkpixbuf,
 		libcurl,
 		pango,
 		pangocairo,

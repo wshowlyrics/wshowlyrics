@@ -7,6 +7,10 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
 ## Features
 
 - **MPRIS Integration**: Automatically detects currently playing songs via playerctl (supports all MPRIS-compatible players: mpv, Spotify, VLC, etc.)
+- **System Tray Integration**: Displays album art in system tray (Swaybar/Waybar)
+  - Automatically loads album art from MPRIS metadata
+  - Shows default music icon when album art is unavailable
+  - Tooltip displays current track info (Artist - Title)
 - **Smart Lyrics Search**:
   - **Local file search**: Prioritizes searching in the same directory as the currently playing file
   - **Online fallback**: Automatically fetches lyrics from [lrclib.net](https://lrclib.net) when local files are not found
@@ -190,12 +194,28 @@ If no local lyrics file is found, the program automatically fetches synchronized
 - wayland-client
 - wayland-protocols
 - wlr-layer-shell protocol
+- libappindicator-gtk3 (appindicator3-0.1)
+- gdk-pixbuf-2.0
 - meson & ninja
 
 ### Runtime Requirements
 - curl (for online lyrics fetching)
 - playerctl (for MPRIS mode)
 - Wayland compositor with wlr-layer-shell support (Sway, Hyprland, etc.)
+
+### Optional Dependencies
+- **Swaybar users**:
+  - `snixembed` - SNI (StatusNotifierItem) bridge for Swaybar (optional, but recommended for tray icons)
+  - Enable system tray in Swaybar config:
+    ```
+    bar {
+        tray {
+            icon_theme Adwaita
+            tray_padding 2
+        }
+    }
+    ```
+- **Waybar users**: System tray is supported by default, no additional configuration needed
 
 ## Installation
 
@@ -220,7 +240,8 @@ makepkg -si
 Install dependencies:
 
 ```bash
-sudo pacman -S cairo curl fontconfig pango wayland wayland-protocols meson ninja playerctl
+sudo pacman -S cairo curl fontconfig pango wayland wayland-protocols meson ninja playerctl \
+               libappindicator-gtk3 gdk-pixbuf2
 ```
 
 Build and install:
@@ -238,6 +259,7 @@ Install dependencies:
 ```bash
 sudo apt install libcairo2-dev libcurl4-openssl-dev libfontconfig1-dev libpango1.0-dev \
                  libwayland-dev wayland-protocols \
+                 libappindicator3-dev libgdk-pixbuf2.0-dev \
                  meson ninja-build playerctl
 ```
 
