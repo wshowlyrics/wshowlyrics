@@ -1,5 +1,5 @@
-#ifndef _LYRICS_PANGO_H
-#define _LYRICS_PANGO_H
+#ifndef _LYRICS_PANGO_UTILS_H
+#define _LYRICS_PANGO_UTILS_H
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>

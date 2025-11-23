@@ -1,5 +1,5 @@
 #include "main.h"
-#include "config.h"
+#include "config/config.h"
 #include "constants.h"
 
 static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {

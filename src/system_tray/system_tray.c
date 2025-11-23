@@ -1,5 +1,5 @@
 #include "system_tray.h"
-#include "curl_utils.h"
+#include "../curl_utils/curl_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

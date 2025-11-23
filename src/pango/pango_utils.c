@@ -1,12 +1,10 @@
-#include <cairo/cairo.h>
-#include <pango/pangocairo.h>
+#include "pango_utils.h"
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "pango.h"
 
 PangoLayout *get_pango_layout(cairo_t *cairo, const char *font,
 		const char *text, double scale) {

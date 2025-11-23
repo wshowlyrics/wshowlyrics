@@ -1,10 +1,10 @@
 #include "lyrics_provider.h"
-#include "lrclib_provider.h"
-#include "lrc_parser.h"
-#include "srt_parser.h"
-#include "lrcx_parser.h"
-#include "config.h"
-#include "constants.h"
+#include "../lrclib_provider/lrclib_provider.h"
+#include "../lrc_parser/lrc_parser.h"
+#include "../srt_parser/srt_parser.h"
+#include "../lrcx_parser/lrcx_parser.h"
+#include "../config/config.h"
+#include "../constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

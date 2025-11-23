@@ -1,6 +1,6 @@
 #include "srt_parser.h"
-#include "parser_utils.h"
-#include "constants.h"
+#include "../parser_utils/parser_utils.h"
+#include "../constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

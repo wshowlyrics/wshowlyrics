@@ -26,14 +26,14 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
 /* Project headers */
-#include "pango.h"
-#include "shm.h"
-#include "mpris.h"
-#include "lrc_parser.h"
-#include "srt_parser.h"
-#include "lrcx_parser.h"
-#include "lyrics_provider.h"
-#include "system_tray.h"
+#include "pango/pango_utils.h"
+#include "shm/shm.h"
+#include "mpris/mpris.h"
+#include "lrc_parser/lrc_parser.h"
+#include "srt_parser/srt_parser.h"
+#include "lrcx_parser/lrcx_parser.h"
+#include "lyrics_provider/lyrics_provider.h"
+#include "system_tray/system_tray.h"
 
 /* Forward declarations */
 struct lyrics_output;

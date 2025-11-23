@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "lyrics_provider.h"
+#include "../lyrics_provider/lyrics_provider.h"
 
 // Parse timestamp in [MM:SS.xx] format
 // Supports both centiseconds (2 digits) and milliseconds (3 digits)

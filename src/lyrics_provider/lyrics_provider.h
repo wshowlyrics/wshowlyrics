@@ -1,8 +1,8 @@
 #ifndef _LYRICS_PROVIDER_H
 #define _LYRICS_PROVIDER_H
 
-#include "lrc_parser.h"
-#include "mpris.h"
+#include "../lrc_parser/lrc_parser.h"
+#include "../mpris/mpris.h"
 #include <stdbool.h>
 
 // Abstract interface for lyrics providers

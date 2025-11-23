@@ -1,7 +1,7 @@
 #include "lrclib_provider.h"
-#include "lrc_parser.h"
-#include "curl_utils.h"
-#include "constants.h"
+#include "../lrc_parser/lrc_parser.h"
+#include "../curl_utils/curl_utils.h"
+#include "../constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
