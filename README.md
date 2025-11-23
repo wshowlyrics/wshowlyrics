@@ -12,7 +12,12 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
   - **Online fallback**: Automatically fetches lyrics from [lrclib.net](https://lrclib.net) when local files are not found
   - URL decoding support for Unicode paths (Korean, Japanese, etc.)
   - Automatic filename-based matching
-- **Synchronized Lyrics**: Supports LRC and SRT formats
+- **Karaoke Mode**: LRCX format with word-level timing and highlighting
+  - Past words: normal color (already sung)
+  - Current word: highlight color (currently singing)
+  - Future words: dimmed (not yet sung)
+  - Customizable highlight color
+- **Synchronized Lyrics**: Supports LRC, LRCX, and SRT formats
 - **Real-time Sync**: Automatically displays lyrics based on music playback position
 - Uses Wayland protocol (wlr-layer-shell)
 - Transparent background support
@@ -29,9 +34,7 @@ meson compile -C build
 
 ## Usage
 
-### MPRIS Mode (Default)
-
-Automatically displays lyrics for the currently playing music:
+Automatically displays lyrics for the currently playing music via MPRIS:
 
 ```bash
 # Basic execution - automatically finds and displays lyrics for the current song
@@ -43,14 +46,6 @@ mpv --force-window=yes song.mp3
 # Also works with other MPRIS-compatible players like Spotify, VLC, etc.
 ```
 
-### Manual Mode
-
-Display a specific LRC/SRT file:
-
-```bash
-./build/lyrics -l sample.lrc
-```
-
 ### Options
 
 | Short | Long | Description | Default |
@@ -58,10 +53,10 @@ Display a specific LRC/SRT file:
 | `-h` | `--help` | Show help | - |
 | `-b COLOR` | `--background=COLOR` | Background color (#RRGGBB[AA] format) | `#00000080` (black, 50% transparent) |
 | `-f COLOR` | `--foreground=COLOR` | Foreground/text color (#RRGGBB[AA] format) | `#FFFFFFFF` (white, opaque) |
+| `-H COLOR` | `--highlight=COLOR` | Karaoke highlight color (#RRGGBB[AA] format) | `#87CEEBFF` (sky blue) |
 | `-F FONT` | `--font=FONT` | Font setting | `"Sans 20"` |
 | `-a POSITION` | `--anchor=POSITION` | Screen position (top/bottom/left/right) | `bottom` |
 | `-m PIXELS` | `--margin=PIXELS` | Screen edge margin (pixels) | `32` |
-| `-l FILE` | `--lyrics-file=FILE` | Load specific lyrics file (.lrc/.srt/.vtt) | MPRIS auto-detect |
 
 **Color Format:**
 - `#RRGGBB`: RGB value (e.g., `#FF0000` = red)
@@ -96,9 +91,9 @@ Display a specific LRC/SRT file:
 ./build/lyrics -b 00000066 -f FFFF00FF
 ./build/lyrics --background=00000066 --foreground=FFFF00FF
 
-# Display specific LRC file
-./build/lyrics -l "Artist - Song.lrc"
-./build/lyrics --lyrics-file="Artist - Song.lrc"
+# Custom karaoke highlight color
+./build/lyrics -H FF1493FF  # Pink highlight
+./build/lyrics --highlight=00FF00FF  # Green highlight
 
 # Large bold font at bottom of screen
 ./build/lyrics -F "Sans Bold 28" -a bottom -m 40
@@ -107,7 +102,24 @@ Display a specific LRC/SRT file:
 
 ## Lyrics File Formats
 
-### LRC Format (Recommended)
+### LRCX Format (Karaoke)
+
+Karaoke-style lyrics with word-level timing:
+
+```lrcx
+[ar:Artist]
+[ti:Song Title]
+
+[00:12.00][00:12.20]First [00:12.50]word [00:12.80]by [00:13.00]word
+[00:17.00][00:17.15]Karaoke [00:17.40]style [00:17.70]lyrics
+```
+
+- First timestamp: Line start time
+- Subsequent timestamps: Individual word timing
+- Words highlight one by one as they're sung
+- Use `.lrcx` file extension
+
+### LRC Format (Standard)
 
 Synchronized lyrics file format:
 
@@ -145,17 +157,17 @@ Automatically searches for lyrics files in the following **priority order**:
 
 1. **Same directory as the currently playing music file** (highest priority!)
    - First searches for a lyrics file with the same name as the music file
-   - Example: `song.mp3` → `song.lrc` or `song.srt`
+   - Example: `song.mp3` → `song.lrcx`, `song.lrc`, or `song.srt`
 2. Title-based search (starting from current directory)
 3. `$XDG_MUSIC_DIR`
 4. `~/.lyrics/`
 5. `$HOME`
 
-Filename formats:
-- `filename.lrc` / `filename.srt` (recommended! same name as music file)
-- `title.lrc` / `title.srt`
-- `artist - title.lrc` / `artist - title.srt`
-- `artist/title.lrc`
+Filename formats (searched in order):
+- `filename.lrcx` / `filename.lrc` / `filename.srt` (recommended! same name as music file)
+- `title.lrcx` / `title.lrc` / `title.srt`
+- `artist - title.lrcx` / `artist - title.lrc` / `artist - title.srt`
+- `artist/title.lrcx` / `artist/title.lrc`
 
 **Tips:**
 - Place lyrics files with the **same name in the same directory** as your music files!

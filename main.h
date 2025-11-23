@@ -30,6 +30,7 @@
 #include "mpris.h"
 #include "lrc_parser.h"
 #include "srt_parser.h"
+#include "lrcx_parser.h"
 #include "lyrics_provider.h"
 
 /* Forward declarations */
@@ -44,10 +45,8 @@ struct lyrics_output {
 };
 
 struct lyrics_state {
-	uint32_t foreground, background;
+	uint32_t foreground, background, highlight;
 	const char *font;
-	const char *lyrics_file;
-	bool use_mpris;
 
 	struct wl_display *display;
 	struct wl_registry *registry;
@@ -66,6 +65,7 @@ struct lyrics_state {
 	struct lyrics_data lyrics;
 	struct track_metadata current_track;
 	struct lyrics_line *current_line;
+	struct word_segment *current_segment; // For karaoke highlighting (LRCX)
 	int64_t track_start_time_us; // When the track started (monotonic clock)
 	bool track_changed;
 

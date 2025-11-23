@@ -1,0 +1,317 @@
+#include "lrcx_parser.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+// Parse LRC timestamp like [00:12.34] or [00:12.340]
+static bool parse_timestamp(const char *str, int64_t *timestamp_us, const char **end_ptr) {
+	int minutes = 0, seconds = 0, centiseconds = 0;
+
+	// Try [MM:SS.xx] format
+	int matched = sscanf(str, "[%d:%d.%d]", &minutes, &seconds, &centiseconds);
+	if (matched == 3) {
+		// Handle both centiseconds (2 digits) and milliseconds (3 digits)
+		int len = 0;
+		const char *dot = strchr(str, '.');
+		if (dot) {
+			const char *bracket = strchr(dot, ']');
+			if (bracket) {
+				len = bracket - dot - 1;
+				if (end_ptr) {
+					*end_ptr = bracket + 1; // Point to character after ']'
+				}
+			}
+		}
+
+		if (len == 2) {
+			// Centiseconds
+			*timestamp_us = (int64_t)minutes * 60 * 1000000 +
+			                (int64_t)seconds * 1000000 +
+			                (int64_t)centiseconds * 10000;
+		} else {
+			// Milliseconds
+			*timestamp_us = (int64_t)minutes * 60 * 1000000 +
+			                (int64_t)seconds * 1000000 +
+			                (int64_t)centiseconds * 1000;
+		}
+		return true;
+	}
+
+	return false;
+}
+
+// Parse metadata tag like [ti:Title]
+static bool parse_metadata_tag(const char *line, struct lyrics_metadata *metadata) {
+	if (strncmp(line, "[ti:", 4) == 0) {
+		const char *end = strchr(line + 4, ']');
+		if (end) {
+			size_t len = end - (line + 4);
+			free(metadata->title);
+			metadata->title = strndup(line + 4, len);
+			return true;
+		}
+	} else if (strncmp(line, "[ar:", 4) == 0) {
+		const char *end = strchr(line + 4, ']');
+		if (end) {
+			size_t len = end - (line + 4);
+			free(metadata->artist);
+			metadata->artist = strndup(line + 4, len);
+			return true;
+		}
+	} else if (strncmp(line, "[al:", 4) == 0) {
+		const char *end = strchr(line + 4, ']');
+		if (end) {
+			size_t len = end - (line + 4);
+			free(metadata->album);
+			metadata->album = strndup(line + 4, len);
+			return true;
+		}
+	} else if (strncmp(line, "[offset:", 8) == 0) {
+		const char *end = strchr(line + 8, ']');
+		if (end) {
+			metadata->offset_ms = atoi(line + 8);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// Parse a line with word-level timestamps
+// Example: [00:05.00][00:05.20]첫 [00:05.50]번 [00:05.80]째 [00:06.00]줄
+static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct lyrics_line **line_ptr) {
+	if (line[0] != '[') {
+		return false;
+	}
+
+	// Parse the first timestamp (line timestamp)
+	int64_t line_timestamp_us;
+	const char *pos = line;
+	if (!parse_timestamp(pos, &line_timestamp_us, &pos)) {
+		return false;
+	}
+
+	// Create new lyrics line
+	struct lyrics_line *new_line = calloc(1, sizeof(struct lyrics_line));
+	if (!new_line) {
+		return false;
+	}
+
+	// Apply offset to line timestamp
+	new_line->timestamp_us = line_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+
+	// Build full text and parse word segments
+	struct word_segment **next_segment = &new_line->segments;
+	char *full_text = NULL;
+	size_t full_text_len = 0;
+	size_t full_text_capacity = 0;
+
+	while (*pos) {
+		// Skip whitespace
+		while (*pos && isspace(*pos)) {
+			pos++;
+		}
+
+		if (*pos == '\0') {
+			break;
+		}
+
+		// Check for timestamp
+		if (*pos == '[') {
+			int64_t segment_timestamp_us;
+			const char *after_timestamp = NULL;
+			if (parse_timestamp(pos, &segment_timestamp_us, &after_timestamp)) {
+				// This is a word timestamp
+				pos = after_timestamp;
+
+				// Skip whitespace after timestamp
+				while (*pos && isspace(*pos)) {
+					pos++;
+				}
+
+				// Find end of word (next '[' or end of string)
+				const char *word_start = pos;
+				const char *word_end = pos;
+				while (*word_end && *word_end != '[') {
+					word_end++;
+				}
+
+				// Trim trailing whitespace
+				while (word_end > word_start && isspace(*(word_end - 1))) {
+					word_end--;
+				}
+
+				// Create word segment
+				if (word_end > word_start) {
+					struct word_segment *segment = calloc(1, sizeof(struct word_segment));
+					if (!segment) {
+						free(full_text);
+						free(new_line);
+						return false;
+					}
+
+					segment->timestamp_us = segment_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+					segment->text = strndup(word_start, word_end - word_start);
+
+					// Add to full text
+					size_t word_len = word_end - word_start;
+					if (full_text_len + word_len + 1 > full_text_capacity) {
+						full_text_capacity = (full_text_len + word_len + 1) * 2;
+						char *new_full_text = realloc(full_text, full_text_capacity);
+						if (!new_full_text) {
+							free(segment->text);
+							free(segment);
+							free(full_text);
+							free(new_line);
+							return false;
+						}
+						full_text = new_full_text;
+					}
+
+					if (full_text_len > 0) {
+						full_text[full_text_len++] = ' '; // Add space between words
+					}
+					memcpy(full_text + full_text_len, word_start, word_len);
+					full_text_len += word_len;
+					full_text[full_text_len] = '\0';
+
+					*next_segment = segment;
+					next_segment = &segment->next;
+					new_line->segment_count++;
+				}
+
+				pos = word_end;
+			} else {
+				// Not a valid timestamp, skip this character
+				pos++;
+			}
+		} else {
+			// Text without timestamp - skip
+			pos++;
+		}
+	}
+
+	// Set the full line text
+	if (full_text) {
+		new_line->text = full_text;
+	} else {
+		new_line->text = strdup("");
+	}
+
+	// If no segments were parsed, create empty segment
+	if (new_line->segment_count == 0) {
+		struct word_segment *segment = calloc(1, sizeof(struct word_segment));
+		if (!segment) {
+			free(new_line->text);
+			free(new_line);
+			return false;
+		}
+		segment->timestamp_us = new_line->timestamp_us;
+		segment->text = strdup("");
+		new_line->segments = segment;
+		new_line->segment_count = 1;
+	}
+
+	*line_ptr = new_line;
+	return true;
+}
+
+bool lrcx_parse_string(const char *content, struct lyrics_data *data) {
+	if (!content || !data) {
+		return false;
+	}
+
+	memset(data, 0, sizeof(struct lyrics_data));
+
+	char *content_copy = strdup(content);
+	if (!content_copy) {
+		return false;
+	}
+
+	struct lyrics_line **next_line = &data->lines;
+	char *line = strtok(content_copy, "\n");
+
+	while (line) {
+		// Skip empty lines
+		while (*line && isspace(*line)) {
+			line++;
+		}
+
+		if (*line == '\0') {
+			line = strtok(NULL, "\n");
+			continue;
+		}
+
+		// Try to parse as metadata
+		if (parse_metadata_tag(line, &data->metadata)) {
+			line = strtok(NULL, "\n");
+			continue;
+		}
+
+		// Try to parse as LRCX line
+		struct lyrics_line *new_line = NULL;
+		if (parse_lrcx_line(line, data, &new_line)) {
+			*next_line = new_line;
+			next_line = &new_line->next;
+			data->line_count++;
+		}
+
+		line = strtok(NULL, "\n");
+	}
+
+	free(content_copy);
+	return data->line_count > 0;
+}
+
+bool lrcx_parse_file(const char *filename, struct lyrics_data *data) {
+	FILE *fp = fopen(filename, "r");
+	if (!fp) {
+		fprintf(stderr, "Failed to open LRCX file: %s\n", filename);
+		return false;
+	}
+
+	// Read entire file into memory
+	fseek(fp, 0, SEEK_END);
+	long size = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	char *content = malloc(size + 1);
+	if (!content) {
+		fclose(fp);
+		return false;
+	}
+
+	size_t read = fread(content, 1, size, fp);
+	content[read] = '\0';
+	fclose(fp);
+
+	bool result = lrcx_parse_string(content, data);
+	free(content);
+
+	return result;
+}
+
+struct word_segment* lrcx_find_segment_at_time(struct lyrics_line *line, int64_t timestamp_us, int *segment_index) {
+	if (!line || !line->segments) {
+		return NULL;
+	}
+
+	struct word_segment *current = NULL;
+	struct word_segment *segment = line->segments;
+	int index = 0;
+
+	while (segment) {
+		if (segment->timestamp_us > timestamp_us) {
+			break;
+		}
+		current = segment;
+		if (segment_index && segment == current) {
+			*segment_index = index;
+		}
+		segment = segment->next;
+		index++;
+	}
+
+	return current;
+}

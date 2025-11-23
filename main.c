@@ -30,6 +30,7 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 	const char *text_to_display = " "; // Default to single space
 	bool has_lyrics = (state->current_line && state->current_line->text);
 	bool is_empty_line = false; // Track if current line is empty (instrumental break)
+	bool is_karaoke = false; // Track if this is karaoke-style LRCX
 
 	if (has_lyrics) {
 		// Check if the text is empty or only whitespace
@@ -40,6 +41,8 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 			text_to_display = " "; // Display single space to keep surface visible
 		} else {
 			text_to_display = text;
+			// Check if this line has word segments for karaoke
+			is_karaoke = (state->current_line->segment_count > 0 && state->current_line->segments != NULL);
 		}
 	}
 
@@ -50,18 +53,79 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 	cairo_set_source_u32(cairo, background_color);
 	cairo_paint(cairo);
 
-	cairo_set_source_u32(cairo, state->foreground);
+	if (is_karaoke) {
+		// Karaoke-style rendering with word highlighting
+		int x_offset = 0;
+		struct word_segment *segment = state->current_line->segments;
+		bool found_current = false;
 
-	// Calculate text size
-	int w, h;
-	get_text_size(cairo, state->font, &w, &h, NULL, scale, "%s", text_to_display);
+		while (segment) {
+			// Determine segment state: past, current, or future
+			bool is_current = (segment == state->current_segment);
+			bool is_past = !found_current && !is_current;
 
-	// Draw text at the beginning of the surface (surface itself will be centered by layer-shell)
-	cairo_move_to(cairo, 0, 0);
-	pango_printf(cairo, state->font, scale, "%s", text_to_display);
+			if (is_current) {
+				found_current = true;
+			}
 
-	*width = w;
-	*height = h;
+			// Set color based on state:
+			// - Past (sung): foreground color (like normal LRC)
+			// - Current (singing): highlight color (sky blue by default)
+			// - Future (not yet): dimmed (50% alpha)
+			if (is_past) {
+				// Already sung - use normal foreground
+				cairo_set_source_u32(cairo, state->foreground);
+			} else if (is_current) {
+				// Currently singing - use highlight color
+				cairo_set_source_u32(cairo, state->highlight);
+			} else {
+				// Not yet sung - dimmed
+				uint32_t dimmed = state->foreground;
+				uint8_t alpha = (dimmed & 0xFF);
+				dimmed = (dimmed & 0xFFFFFF00) | (alpha / 2);
+				cairo_set_source_u32(cairo, dimmed);
+			}
+
+			// Get size of this word segment
+			int seg_w, seg_h;
+			get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", segment->text);
+
+			// Draw this word segment
+			cairo_move_to(cairo, x_offset, 0);
+			pango_printf(cairo, state->font, scale, "%s", segment->text);
+
+			x_offset += seg_w;
+
+			// Add space between words (except for last word)
+			if (segment->next) {
+				int space_w, space_h;
+				get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
+				x_offset += space_w;
+			}
+
+			segment = segment->next;
+		}
+
+		// Calculate total width and height
+		int total_w, total_h;
+		get_text_size(cairo, state->font, &total_w, &total_h, NULL, scale, "%s", text_to_display);
+		*width = total_w;
+		*height = total_h;
+	} else {
+		// Normal rendering (non-karaoke)
+		cairo_set_source_u32(cairo, state->foreground);
+
+		// Calculate text size
+		int w, h;
+		get_text_size(cairo, state->font, &w, &h, NULL, scale, "%s", text_to_display);
+
+		// Draw text at the beginning of the surface (surface itself will be centered by layer-shell)
+		cairo_move_to(cairo, 0, 0);
+		pango_printf(cairo, state->font, scale, "%s", text_to_display);
+
+		*width = w;
+		*height = h;
+	}
 }
 
 static void render_frame(struct lyrics_state *state) {
@@ -294,9 +358,6 @@ static uint32_t parse_color(const char *color) {
 }
 
 static bool update_track_info(struct lyrics_state *state) {
-	if (!state->use_mpris) {
-		return false;
-	}
 
 	struct track_metadata new_track = {0};
 	if (!mpris_get_metadata(&new_track)) {
@@ -353,7 +414,7 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
 }
 
 static void update_current_line(struct lyrics_state *state) {
-	if (!state->lyrics.lines || !state->use_mpris) {
+	if (!state->lyrics.lines) {
 		return;
 	}
 
@@ -375,15 +436,32 @@ static void update_current_line(struct lyrics_state *state) {
 		// This prevents lyrics from disappearing too quickly during instrumental breaks
 	}
 
-	if (new_line != state->current_line) {
+	bool line_changed = (new_line != state->current_line);
+	if (line_changed) {
 		state->current_line = new_line;
-		set_dirty(state);
+		state->current_segment = NULL; // Reset word segment when line changes
 
 		if (new_line && new_line->text) {
 			int index = lrc_get_line_index(&state->lyrics, new_line);
 			printf("Line %d/%d: %s\n", index + 1, state->lyrics.line_count, new_line->text);
+
+			// For karaoke (LRCX), set initial segment
+			if (new_line->segments) {
+				state->current_segment = new_line->segments;
+			}
 		} else if (!new_line) {
 			printf("Instrumental break - clearing lyrics\n");
+		}
+
+		set_dirty(state);
+	}
+
+	// Update word segment for karaoke highlighting (LRCX)
+	if (new_line && new_line->segments) {
+		struct word_segment *new_segment = lrcx_find_segment_at_time(new_line, position_us, NULL);
+		if (new_segment != state->current_segment) {
+			state->current_segment = new_segment;
+			set_dirty(state);
 		}
 	}
 }
@@ -400,30 +478,32 @@ int main(int argc, char *argv[]) {
 	struct lyrics_state state = { 0 };
 	state.background = 0x00000080;
 	state.foreground = 0xFFFFFFFF;
+	state.highlight = 0x87CEEBFF; // Sky blue (default karaoke highlight color)
 	state.font = "Sans 20";
-	state.lyrics_file = NULL;
-	state.use_mpris = true; // Default to MPRIS mode
 
 	static struct option long_options[] = {
 		{"help", no_argument, 0, 'h'},
 		{"background", required_argument, 0, 'b'},
 		{"foreground", required_argument, 0, 'f'},
+		{"highlight", required_argument, 0, 'H'},
 		{"font", required_argument, 0, 'F'},
 		{"anchor", required_argument, 0, 'a'},
 		{"margin", required_argument, 0, 'm'},
-		{"lyrics-file", required_argument, 0, 'l'},
 		{0, 0, 0, 0}
 	};
 
 	int c;
 	int option_index = 0;
-	while ((c = getopt_long(argc, argv, "hb:f:F:a:m:l:", long_options, &option_index)) != -1) {
+	while ((c = getopt_long(argc, argv, "hb:f:H:F:a:m:", long_options, &option_index)) != -1) {
 		switch (c) {
 		case 'b':
 			state.background = parse_color(optarg);
 			break;
 		case 'f':
 			state.foreground = parse_color(optarg);
+			break;
+		case 'H':
+			state.highlight = parse_color(optarg);
 			break;
 		case 'F':
 			state.font = optarg;
@@ -443,10 +523,6 @@ int main(int argc, char *argv[]) {
 		case 'm':
 			margin = atoi(optarg);
 			break;
-		case 'l':
-			state.lyrics_file = optarg;
-			state.use_mpris = false; // Explicit file disables MPRIS
-			break;
 		case 'h':
 			// Normal help requested - use stdout
 			fprintf(stdout, "Usage: %s [OPTIONS]\n\n", program_name);
@@ -455,20 +531,23 @@ int main(int argc, char *argv[]) {
 			fprintf(stdout, "  -h, --help                   Show this help message\n");
 			fprintf(stdout, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
 			fprintf(stdout, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
+			fprintf(stdout, "  -H, --highlight=COLOR        Karaoke highlight color in #RRGGBB[AA] format (default: #87CEEBFF)\n");
+			fprintf(stdout, "                               Used for currently singing word in LRCX format\n");
 			fprintf(stdout, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
 			fprintf(stdout, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
 			fprintf(stdout, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
-			fprintf(stdout, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n");
-			fprintf(stdout, "  -l, --lyrics-file=FILE       Load specific lyrics file (disables MPRIS auto-detection)\n");
-			fprintf(stdout, "                               Supports: .lrc, .srt, .vtt formats\n\n");
-			fprintf(stdout, "MPRIS Mode (default):\n");
-			fprintf(stdout, "  When -l/--lyrics-file is not provided, automatically detects currently playing track\n");
-			fprintf(stdout, "  and searches for lyrics files in:\n");
+			fprintf(stdout, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n\n");
+			fprintf(stdout, "Lyrics Detection:\n");
+			fprintf(stdout, "  Automatically detects currently playing track via MPRIS and searches for lyrics in:\n");
 			fprintf(stdout, "    1. Same directory as the music file\n");
 			fprintf(stdout, "    2. Current directory\n");
 			fprintf(stdout, "    3. ~/.lyrics/\n");
 			fprintf(stdout, "    4. $HOME\n");
 			fprintf(stdout, "    5. Online from lrclib.net API (if local files not found)\n\n");
+			fprintf(stdout, "Supported Formats:\n");
+			fprintf(stdout, "  - .lrcx: Karaoke-style with word-level timing\n");
+			fprintf(stdout, "  - .lrc:  Standard LRC format with line-level timing\n");
+			fprintf(stdout, "  - .srt:  SubRip subtitle format\n\n");
 			fprintf(stdout, "Online Lyrics API:\n");
 			fprintf(stdout, "  Automatically fetches synchronized lyrics from https://lrclib.net\n");
 			fprintf(stdout, "  - Requires track title and artist metadata\n");
@@ -483,48 +562,15 @@ int main(int argc, char *argv[]) {
 			fprintf(stdout, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
 			fprintf(stdout, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
 			fprintf(stdout, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
-			fprintf(stdout, "  %s -l song.lrc                        # Load specific file\n", program_name);
-			fprintf(stdout, "  %s --lyrics-file=song.lrc             # Same as above (long option)\n", program_name);
+			fprintf(stdout, "  %s -H FF1493FF                        # Pink karaoke highlight\n", program_name);
+			fprintf(stdout, "  %s --highlight=00FF00FF               # Green karaoke highlight\n", program_name);
 			free(argv0_copy);
 			return 0;
 		default:
-			// Error case - invalid option, use stderr
-			fprintf(stderr, "Usage: %s [OPTIONS]\n\n", program_name);
-			fprintf(stderr, "Wayland lyrics overlay with MPRIS integration\n\n");
-			fprintf(stderr, "Options:\n");
-			fprintf(stderr, "  -h, --help                   Show this help message\n");
-			fprintf(stderr, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
-			fprintf(stderr, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
-			fprintf(stderr, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
-			fprintf(stderr, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
-			fprintf(stderr, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
-			fprintf(stderr, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n");
-			fprintf(stderr, "  -l, --lyrics-file=FILE       Load specific lyrics file (disables MPRIS auto-detection)\n");
-			fprintf(stderr, "                               Supports: .lrc, .srt, .vtt formats\n\n");
-			fprintf(stderr, "MPRIS Mode (default):\n");
-			fprintf(stderr, "  When -l/--lyrics-file is not provided, automatically detects currently playing track\n");
-			fprintf(stderr, "  and searches for lyrics files in:\n");
-			fprintf(stderr, "    1. Same directory as the music file\n");
-			fprintf(stderr, "    2. Current directory\n");
-			fprintf(stderr, "    3. ~/.lyrics/\n");
-			fprintf(stderr, "    4. $HOME\n");
-			fprintf(stderr, "    5. Online from lrclib.net API (if local files not found)\n\n");
-			fprintf(stderr, "Online Lyrics API:\n");
-			fprintf(stderr, "  Automatically fetches synchronized lyrics from https://lrclib.net\n");
-			fprintf(stderr, "  - Requires track title and artist metadata\n");
-			fprintf(stderr, "  - Only uses synchronized lyrics (LRC format with timestamps)\n");
-			fprintf(stderr, "  - Falls back gracefully if no internet connection\n");
-			fprintf(stderr, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
-			fprintf(stderr, "Examples:\n");
-			fprintf(stderr, "  %s                                    # Auto-detect with MPRIS\n", program_name);
-			fprintf(stderr, "  %s -F \"Sans Bold 24\"                  # Larger font\n", program_name);
-			fprintf(stderr, "  %s --font=\"Sans Bold 24\"              # Same as above (long option)\n", program_name);
-			fprintf(stderr, "  %s -a top -m 50                       # Top of screen, 50px margin\n", program_name);
-			fprintf(stderr, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
-			fprintf(stderr, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
-			fprintf(stderr, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
-			fprintf(stderr, "  %s -l song.lrc                        # Load specific file\n", program_name);
-			fprintf(stderr, "  %s --lyrics-file=song.lrc             # Same as above (long option)\n", program_name);
+			// Error case - show brief error message
+			fprintf(stderr, "Error: Invalid option\n");
+			fprintf(stderr, "Usage: %s [OPTIONS]\n", program_name);
+			fprintf(stderr, "Try '%s --help' for more information.\n", program_name);
 			free(argv0_copy);
 			return 1;
 		}
@@ -542,38 +588,13 @@ int main(int argc, char *argv[]) {
 	// Initialize lyrics providers
 	lyrics_providers_init();
 
-	// If using MPRIS mode
-	if (state.use_mpris) {
-		if (!mpris_init()) {
-			fprintf(stderr, "Failed to initialize MPRIS (playerctl not found?)\n");
-			ret = 1;
-			goto exit;
-		}
-		printf("MPRIS mode enabled - will track currently playing music\n");
-	} else if (state.lyrics_file) {
-		// Load static lyrics file
-		printf("Loading static lyrics file: %s\n", state.lyrics_file);
-		if (!lrc_parse_file(state.lyrics_file, &state.lyrics) &&
-		    !srt_parse_file(state.lyrics_file, &state.lyrics)) {
-			fprintf(stderr, "Failed to load lyrics file\n");
-			ret = 1;
-			goto exit;
-		}
-
-		// In manual mode, still use MPRIS for timing if available
-		if (mpris_init()) {
-			printf("MPRIS available - will sync with playback position\n");
-			state.use_mpris = true;
-		} else {
-			printf("MPRIS not available - displaying first line only\n");
-		}
-
-		state.current_line = state.lyrics.lines;
-	} else {
-		fprintf(stderr, "Error: Either use MPRIS mode (default) or provide -l lyrics_file\n");
+	// Initialize MPRIS for automatic lyrics detection
+	if (!mpris_init()) {
+		fprintf(stderr, "Failed to initialize MPRIS (playerctl not found?)\n");
 		ret = 1;
 		goto exit;
 	}
+	printf("MPRIS mode enabled - will track currently playing music\n");
 
 	state.display = wl_display_connect(NULL);
 	if (!state.display) {
@@ -664,34 +685,31 @@ int main(int argc, char *argv[]) {
 			}
 		} while (errno == EAGAIN);
 
-		int timeout = state.use_mpris ? 100 : 1000; // 100ms for MPRIS, 1s for static
+		int timeout = 100; // 100ms update interval
 
 		if (poll(pollfds, sizeof(pollfds) / sizeof(pollfds[0]), timeout) < 0) {
 			fprintf(stderr, "poll: %s\n", strerror(errno));
 			break;
 		}
 
-		// In MPRIS mode, periodically check for track changes and update position
-		if (state.use_mpris) {
-			// Check for track changes every 2 seconds (20 * 100ms)
-			if (update_counter++ % 20 == 0) {
-				if (update_track_info(&state)) {
-					// Track changed, load new lyrics
-					load_lyrics_for_track(&state);
-					set_dirty(&state);
-				}
+		// Check for track changes every 2 seconds (20 * 100ms)
+		if (update_counter++ % 20 == 0) {
+			if (update_track_info(&state)) {
+				// Track changed, load new lyrics
+				load_lyrics_for_track(&state);
+				set_dirty(&state);
 			}
+		}
 
-			// Update current line based on playback position
-			if (mpris_is_playing()) {
-				update_current_line(&state);
-			} else {
-				// Clear lyrics when not playing (paused or stopped)
-				if (state.current_line != NULL) {
-					state.current_line = NULL;
-					set_dirty(&state);
-					printf("Playback stopped/paused - clearing lyrics\n");
-				}
+		// Update current line based on playback position
+		if (mpris_is_playing()) {
+			update_current_line(&state);
+		} else {
+			// Clear lyrics when not playing (paused or stopped)
+			if (state.current_line != NULL) {
+				state.current_line = NULL;
+				set_dirty(&state);
+				printf("Playback stopped/paused - clearing lyrics\n");
 			}
 		}
 

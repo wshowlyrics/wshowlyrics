@@ -213,6 +213,16 @@ void lrc_free_data(struct lyrics_data *data) {
 	while (line) {
 		struct lyrics_line *next = line->next;
 		free(line->text);
+
+		// Free word segments if present (LRCX format)
+		struct word_segment *segment = line->segments;
+		while (segment) {
+			struct word_segment *next_segment = segment->next;
+			free(segment->text);
+			free(segment);
+			segment = next_segment;
+		}
+
 		free(line);
 		line = next;
 	}

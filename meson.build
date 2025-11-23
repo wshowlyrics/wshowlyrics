@@ -54,6 +54,7 @@ executable(
 		'mpris.c',
 		'lrc_parser.c',
 		'srt_parser.c',
+		'lrcx_parser.c',
 		'lyrics_provider.c',
 		'lrclib_provider.c',
 	),
@@ -69,4 +70,15 @@ executable(
 		wayland_protos,
 	],
 	install: true,
+)
+
+# Test program for LRCX parser
+executable(
+	'test_lrcx_parser',
+	files(
+		'test_lrcx_parser.c',
+		'lrcx_parser.c',
+		'lrc_parser.c',
+	),
+	install: false,
 )

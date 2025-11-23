@@ -4,10 +4,19 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// Word segment with timestamp for karaoke highlighting (LRCX format)
+struct word_segment {
+	int64_t timestamp_us; // When this word should start highlighting
+	char *text; // The word/text segment
+	struct word_segment *next;
+};
+
 struct lyrics_line {
 	int64_t timestamp_us; // Timestamp in microseconds
 	int64_t end_timestamp_us; // End timestamp in microseconds (0 if not specified, e.g., LRC format)
-	char *text;
+	char *text; // Full line text (for non-karaoke display)
+	struct word_segment *segments; // Word-level timing for karaoke (NULL if not LRCX)
+	int segment_count; // Number of word segments (0 if not LRCX)
 	struct lyrics_line *next;
 };
 

@@ -2,6 +2,7 @@
 #include "lrclib_provider.h"
 #include "lrc_parser.h"
 #include "srt_parser.h"
+#include "lrcx_parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -65,7 +66,18 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
 		return false;
 	}
 
-	// Try LRC first
+	// Check file extension to determine parser
+	const char *ext = strrchr(path, '.');
+
+	// Try LRCX only for .lrcx files
+	if (ext && strcasecmp(ext, ".lrcx") == 0) {
+		if (lrcx_parse_file(path, data)) {
+			printf("Loaded LRCX file: %s\n", path);
+			return true;
+		}
+	}
+
+	// Try LRC for .lrc files or if LRCX failed
 	if (lrc_parse_file(path, data)) {
 		printf("Loaded LRC file: %s\n", path);
 		return true;
@@ -220,6 +232,12 @@ static bool local_search(const char *title, const char *artist, const char *albu
 
 		// HIGHEST PRIORITY: Try exact filename from URL (in current directory)
 		if (i == 0 && filename_from_url) {
+			snprintf(path, sizeof(path), "%s/%s.lrcx", search_dirs[i], filename_from_url);
+			printf("Trying: %s\n", path);
+			if (try_load_lyrics_file(path, data)) {
+				goto success;
+			}
+
 			snprintf(path, sizeof(path), "%s/%s.lrc", search_dirs[i], filename_from_url);
 			printf("Trying: %s\n", path);
 			if (try_load_lyrics_file(path, data)) {
@@ -231,6 +249,13 @@ static bool local_search(const char *title, const char *artist, const char *albu
 			if (try_load_lyrics_file(path, data)) {
 				goto success;
 			}
+		}
+
+		// Try: Title.lrcx
+		snprintf(path, sizeof(path), "%s/%s.lrcx", search_dirs[i], title_safe);
+		printf("Trying: %s\n", path);
+		if (try_load_lyrics_file(path, data)) {
+			goto success;
 		}
 
 		// Try: Title.lrc
@@ -248,6 +273,13 @@ static bool local_search(const char *title, const char *artist, const char *albu
 		}
 
 		if (artist_safe) {
+			// Try: Artist - Title.lrcx
+			snprintf(path, sizeof(path), "%s/%s - %s.lrcx",
+			         search_dirs[i], artist_safe, title_safe);
+			if (try_load_lyrics_file(path, data)) {
+				goto success;
+			}
+
 			// Try: Artist - Title.lrc
 			snprintf(path, sizeof(path), "%s/%s - %s.lrc",
 			         search_dirs[i], artist_safe, title_safe);
@@ -257,6 +289,13 @@ static bool local_search(const char *title, const char *artist, const char *albu
 
 			// Try: Artist - Title.srt
 			snprintf(path, sizeof(path), "%s/%s - %s.srt",
+			         search_dirs[i], artist_safe, title_safe);
+			if (try_load_lyrics_file(path, data)) {
+				goto success;
+			}
+
+			// Try: Artist/Title.lrcx
+			snprintf(path, sizeof(path), "%s/%s/%s.lrcx",
 			         search_dirs[i], artist_safe, title_safe);
 			if (try_load_lyrics_file(path, data)) {
 				goto success;
