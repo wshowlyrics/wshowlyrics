@@ -564,6 +564,54 @@ int main(int argc, char *argv[]) {
 	char *argv0_copy = strdup(argv[0]);
 	const char *program_name = basename(argv0_copy);
 
+	// Quick check for --help before doing any initialization
+	// This prevents config loading messages from appearing with help text
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+			fprintf(stdout, "Usage: %s [OPTIONS]\n\n", program_name);
+			fprintf(stdout, "Wayland lyrics overlay with MPRIS integration\n\n");
+			fprintf(stdout, "Options:\n");
+			fprintf(stdout, "  -h, --help                   Show this help message\n");
+			fprintf(stdout, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
+			fprintf(stdout, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
+			fprintf(stdout, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
+			fprintf(stdout, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
+			fprintf(stdout, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
+			fprintf(stdout, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n\n");
+			fprintf(stdout, "Configuration Files (in priority order):\n");
+			fprintf(stdout, "  1. ~/.config/wshowlyrics/settings.ini (user config)\n");
+			fprintf(stdout, "  2. /etc/wshowlyrics/settings.ini (system-wide config)\n");
+			fprintf(stdout, "  See settings.ini.example for configuration options\n\n");
+			fprintf(stdout, "Lyrics Detection:\n");
+			fprintf(stdout, "  Automatically detects currently playing track via MPRIS and searches for lyrics in:\n");
+			fprintf(stdout, "    1. Same directory as the music file\n");
+			fprintf(stdout, "    2. Current directory (only for local builds)\n");
+			fprintf(stdout, "    3. ~/.lyrics/\n");
+			fprintf(stdout, "    4. $HOME\n");
+			fprintf(stdout, "    5. Online from lrclib.net API (if local files not found)\n\n");
+			fprintf(stdout, "Supported Formats:\n");
+			fprintf(stdout, "  - .lrcx: Karaoke-style with word-level timing and progressive fill effect\n");
+			fprintf(stdout, "  - .lrc:  Standard LRC format with line-level timing\n");
+			fprintf(stdout, "  - .srt:  SubRip subtitle format\n\n");
+			fprintf(stdout, "Online Lyrics API:\n");
+			fprintf(stdout, "  Automatically fetches synchronized lyrics from https://lrclib.net\n");
+			fprintf(stdout, "  - Requires track title and artist metadata\n");
+			fprintf(stdout, "  - Only uses synchronized lyrics (LRC format with timestamps)\n");
+			fprintf(stdout, "  - Falls back gracefully if no internet connection\n");
+			fprintf(stdout, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
+			fprintf(stdout, "Examples:\n");
+			fprintf(stdout, "  %s                                    # Auto-detect with MPRIS\n", program_name);
+			fprintf(stdout, "  %s -F \"Sans Bold 24\"                  # Larger font\n", program_name);
+			fprintf(stdout, "  %s --font=\"Sans Bold 24\"              # Same as above (long option)\n", program_name);
+			fprintf(stdout, "  %s -a top -m 50                       # Top of screen, 50px margin\n", program_name);
+			fprintf(stdout, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
+			fprintf(stdout, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
+			fprintf(stdout, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
+			free(argv0_copy);
+			return 0;
+		}
+	}
+
 	// Initialize configuration with defaults
 	config_init_defaults(&g_config);
 
@@ -686,45 +734,6 @@ int main(int argc, char *argv[]) {
 		case 'm':
 			margin = atoi(optarg);
 			break;
-		case 'h':
-			// Normal help requested - use stdout
-			fprintf(stdout, "Usage: %s [OPTIONS]\n\n", program_name);
-			fprintf(stdout, "Wayland lyrics overlay with MPRIS integration\n\n");
-			fprintf(stdout, "Options:\n");
-			fprintf(stdout, "  -h, --help                   Show this help message\n");
-			fprintf(stdout, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
-			fprintf(stdout, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
-			fprintf(stdout, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
-			fprintf(stdout, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
-			fprintf(stdout, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
-			fprintf(stdout, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n\n");
-			fprintf(stdout, "Lyrics Detection:\n");
-			fprintf(stdout, "  Automatically detects currently playing track via MPRIS and searches for lyrics in:\n");
-			fprintf(stdout, "    1. Same directory as the music file\n");
-			fprintf(stdout, "    2. Current directory\n");
-			fprintf(stdout, "    3. ~/.lyrics/\n");
-			fprintf(stdout, "    4. $HOME\n");
-			fprintf(stdout, "    5. Online from lrclib.net API (if local files not found)\n\n");
-			fprintf(stdout, "Supported Formats:\n");
-			fprintf(stdout, "  - .lrcx: Karaoke-style with word-level timing and progressive fill effect\n");
-			fprintf(stdout, "  - .lrc:  Standard LRC format with line-level timing\n");
-			fprintf(stdout, "  - .srt:  SubRip subtitle format\n\n");
-			fprintf(stdout, "Online Lyrics API:\n");
-			fprintf(stdout, "  Automatically fetches synchronized lyrics from https://lrclib.net\n");
-			fprintf(stdout, "  - Requires track title and artist metadata\n");
-			fprintf(stdout, "  - Only uses synchronized lyrics (LRC format with timestamps)\n");
-			fprintf(stdout, "  - Falls back gracefully if no internet connection\n");
-			fprintf(stdout, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
-			fprintf(stdout, "Examples:\n");
-			fprintf(stdout, "  %s                                    # Auto-detect with MPRIS\n", program_name);
-			fprintf(stdout, "  %s -F \"Sans Bold 24\"                  # Larger font\n", program_name);
-			fprintf(stdout, "  %s --font=\"Sans Bold 24\"              # Same as above (long option)\n", program_name);
-			fprintf(stdout, "  %s -a top -m 50                       # Top of screen, 50px margin\n", program_name);
-			fprintf(stdout, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
-			fprintf(stdout, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
-			fprintf(stdout, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
-			free(argv0_copy);
-			return 0;
 		default:
 			// Error case - show brief error message
 			fprintf(stderr, "Error: Invalid option\n");
