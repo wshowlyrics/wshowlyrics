@@ -225,6 +225,17 @@ bool system_tray_init(void) {
 	menu = create_menu();
 	app_indicator_set_menu(indicator, GTK_MENU(menu));
 
+	// Set initial default icon
+	printf("Setting initial default icon\n");
+	mkdir(ICON_DIR, 0755);
+	if (save_default_icon(ICON_PATH)) {
+		app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+		app_indicator_set_icon_full(indicator, ICON_NAME, "Music Player");
+		printf("Initial icon set to default\n");
+	} else {
+		fprintf(stderr, "Warning: Could not save initial default icon, using system icon\n");
+	}
+
 	return true;
 }
 
