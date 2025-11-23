@@ -1,0 +1,165 @@
+name: Release to AUR
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.1.0) - only required if dry_run is false'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run - generate and validate PKGBUILD without pushing to AUR'
+        required: false
+        type: boolean
+        default: false
+      test_version:
+        description: 'Version for dry run (e.g., 0.1.0) - only used when dry_run is true'
+        required: false
+        type: string
+        default: '0.0.0'
+
+jobs:
+  aur-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout lyrics repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          DRY_RUN="${{ github.event.inputs.dry_run }}"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            # Dry run mode - use test_version
+            VERSION="${{ github.event.inputs.test_version }}"
+            TAG="v$VERSION"
+            echo "DRY RUN MODE - Using test version: $VERSION"
+          else
+            # Real release mode - get from tag
+            if [ -n "${{ github.event.inputs.tag }}" ]; then
+              TAG="${{ github.event.inputs.tag }}"
+            else
+              TAG="${GITHUB_REF#refs/tags/}"
+            fi
+
+            # Remove 'v' prefix from tag (v0.1.0 -> 0.1.0)
+            VERSION="${TAG#v}"
+            echo "Releasing version: $VERSION from tag: $TAG"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "dry_run=$DRY_RUN" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH for AUR
+        if: steps.get_version.outputs.dry_run != 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_KEY }}" | base64 -d > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Checkout AUR repository (wshowlyrics)
+        if: steps.get_version.outputs.dry_run != 'true'
+        run: |
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git clone ssh://aur@aur.archlinux.org/wshowlyrics.git aur
+
+      - name: Create temporary directory for dry run
+        if: steps.get_version.outputs.dry_run == 'true'
+        run: |
+          mkdir -p aur
+          echo "Created temporary directory for dry run"
+
+      - name: Create or Update PKGBUILD
+        run: |
+          cd aur
+
+          # If PKGBUILD doesn't exist, create it
+          if [ ! -f PKGBUILD ]; then
+            cat > PKGBUILD << 'EOF'
+          # Maintainer: unstable-code <assa0620@gmail.com>
+          pkgname=wshowlyrics
+          pkgver=0.1.0
+          pkgrel=1
+          pkgdesc="Wayland-native lyrics display for MPD with online fallback"
+          arch=('x86_64')
+          url="https://github.com/unstable-code/lyrics"
+          license=('GPL-3.0-or-later')
+          depends=('wayland' 'cairo' 'pango' 'curl' 'fontconfig')
+          makedepends=('meson' 'ninja' 'wayland-protocols')
+          source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+          sha256sums=('SKIP')
+
+          build() {
+              cd "lyrics-$pkgver"
+              meson setup build --prefix=/usr
+              meson compile -C build
+          }
+
+          package() {
+              cd "lyrics-$pkgver"
+              meson install -C build --destdir="$pkgdir"
+          }
+          EOF
+          fi
+
+          # Update version and reset pkgrel
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.get_version.outputs.version }}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+      - name: Generate .SRCINFO
+        run: |
+          USER_ID=$(id -u)
+          GROUP_ID=$(id -g)
+          docker run --rm -v "${{ github.workspace }}/aur:/pkg" archlinux:latest bash -c "
+            pacman -Sy --noconfirm --needed base-devel git sudo
+            useradd -m builder
+            chown -R builder:builder /pkg
+            cd /pkg
+            sudo -u builder makepkg --printsrcinfo > .SRCINFO
+            chown -R $USER_ID:$GROUP_ID /pkg
+          "
+
+      - name: Display generated files (dry run)
+        if: steps.get_version.outputs.dry_run == 'true'
+        run: |
+          echo "========== PKGBUILD =========="
+          cat aur/PKGBUILD
+          echo ""
+          echo "========== .SRCINFO =========="
+          cat aur/.SRCINFO
+          echo ""
+          echo "Dry run completed successfully! PKGBUILD validated."
+
+      - name: Commit and push to AUR
+        if: steps.get_version.outputs.dry_run != 'true'
+        run: |
+          cd aur
+          git config user.name "unstable-code"
+          git config user.email "assa0620@gmail.com"
+          git add PKGBUILD .SRCINFO
+          git diff --staged --quiet || git commit -m "Update to version ${{ steps.get_version.outputs.version }}"
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git push origin master
+
+      - name: Create GitHub Release
+        if: steps.get_version.outputs.dry_run != 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.tag }}
+          body: |
+            ## Release ${{ steps.get_version.outputs.version }}
+
+            This release has been automatically deployed to AUR as `wshowlyrics`.
+
+            ### Installation
+            ```bash
+            yay -S wshowlyrics
+            ```
+          generate_release_notes: true
