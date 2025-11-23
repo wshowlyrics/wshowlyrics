@@ -1,4 +1,6 @@
 #include "srt_parser.h"
+#include "parser_utils.h"
+#include "constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,7 +61,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 
 	int64_t current_start_us = 0;
 	int64_t current_end_us = 0;
-	char text_buffer[4096] = {0};
+	char text_buffer[CONTENT_BUFFER_SIZE] = {0};
 	int text_len = 0;
 
 	while (line) {
@@ -166,29 +168,5 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 }
 
 bool srt_parse_file(const char *filename, struct lyrics_data *data) {
-	FILE *fp = fopen(filename, "r");
-	if (!fp) {
-		fprintf(stderr, "Failed to open SRT file: %s\n", filename);
-		return false;
-	}
-
-	// Read entire file into memory
-	fseek(fp, 0, SEEK_END);
-	long size = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-
-	char *content = malloc(size + 1);
-	if (!content) {
-		fclose(fp);
-		return false;
-	}
-
-	size_t read = fread(content, 1, size, fp);
-	content[read] = '\0';
-	fclose(fp);
-
-	bool result = srt_parse_string(content, data);
-	free(content);
-
-	return result;
+	return parse_file_generic(filename, "SRT", data, srt_parse_string);
 }

@@ -49,4 +49,7 @@ char* config_get_path(void);
 // Helper: Check if extension is enabled in config
 bool config_is_extension_enabled(const char *ext);
 
+// Helper: Trim whitespace from string (modifies in-place)
+char* config_trim_whitespace(char *str);
+
 #endif // CONFIG_H

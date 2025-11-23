@@ -61,6 +61,8 @@ executable(
 		'lrclib_provider.c',
 		'system_tray.c',
 		'config.c',
+		'parser_utils.c',
+		'curl_utils.c',
 	),
 	dependencies: [
 		appindicator,

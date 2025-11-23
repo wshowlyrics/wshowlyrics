@@ -1,12 +1,13 @@
 #include "main.h"
 #include "config.h"
+#include "constants.h"
 
 static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
 	cairo_set_source_rgba(cairo,
-			(color >> (3*8) & 0xFF) / 255.0,
-			(color >> (2*8) & 0xFF) / 255.0,
-			(color >> (1*8) & 0xFF) / 255.0,
-			(color >> (0*8) & 0xFF) / 255.0);
+			COLOR_CAIRO_R(color),
+			COLOR_CAIRO_G(color),
+			COLOR_CAIRO_B(color),
+			COLOR_CAIRO_A(color));
 }
 
 static cairo_subpixel_order_t to_cairo_subpixel_order(
@@ -64,7 +65,7 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 
 		// First pass: draw all text in dimmed color
 		uint32_t dimmed = state->foreground;
-		uint8_t alpha = (dimmed & 0xFF);
+		uint8_t alpha = COLOR_EXTRACT_A(dimmed);
 		dimmed = (dimmed & 0xFFFFFF00) | (alpha / 2);
 		cairo_set_source_u32(cairo, dimmed);
 
@@ -430,8 +431,8 @@ static bool update_track_info(struct lyrics_state *state) {
 		system_tray_reset_icon();
 
 		// Update tooltip
-		char tooltip[512];
-		char cleaned_title[256];
+		char tooltip[TOOLTIP_BUFFER_SIZE];
+		char cleaned_title[TITLE_BUFFER_SIZE];
 
 		// Clean up title: remove YouTube ID and file extension
 		if (new_track.title) {
@@ -645,7 +646,7 @@ int main(int argc, char *argv[]) {
 				if (src) {
 					FILE *dst = fopen(user_config_path, "w");
 					if (dst) {
-						char buf[4096];
+						char buf[CONTENT_BUFFER_SIZE];
 						size_t n;
 						while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
 							fwrite(buf, 1, n, dst);
@@ -690,7 +691,7 @@ int main(int argc, char *argv[]) {
 		((uint32_t)(g_config.display.color_active[3] * 255));
 
 	// Build font string from config
-	char font_str[256];
+	char font_str[FONT_STRING_SIZE];
 	snprintf(font_str, sizeof(font_str), "%s %s %d",
 		g_config.display.font_family,
 		g_config.display.font_weight,

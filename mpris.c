@@ -1,4 +1,5 @@
 #include "mpris.h"
+#include "constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +21,7 @@ static char* execute_command(const char *cmd) {
 	}
 
 	char *result = NULL;
-	char buffer[1024];
+	char buffer[PATH_BUFFER_SIZE];
 	size_t total_size = 0;
 
 	while (fgets(buffer, sizeof(buffer), fp) != NULL) {
@@ -68,9 +69,11 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 		return false;
 	}
 
-	// Parse the result
+	// Parse the delimited result: title|||artist|||album|||url|||artUrl|||length
+	// Note: fields can be empty, so we need to carefully split by delimiter
 	char *title_start = result;
-	char *artist_start = strstr(result, "|||");
+
+	char *artist_start = strstr(title_start, "|||");
 	if (!artist_start) {
 		free(result);
 		return false;

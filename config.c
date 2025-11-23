@@ -1,4 +1,5 @@
 #include "config.h"
+#include "constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,17 +25,17 @@ static bool parse_hex_color(const char *hex, double rgba[4]) {
 	unsigned long color = strtoul(hex, &endptr, 16);
 	if (*endptr != '\0') return false;
 
-	// Extract RGBA components
-	rgba[0] = ((color >> 24) & 0xFF) / 255.0;  // R
-	rgba[1] = ((color >> 16) & 0xFF) / 255.0;  // G
-	rgba[2] = ((color >> 8) & 0xFF) / 255.0;   // B
-	rgba[3] = (color & 0xFF) / 255.0;          // A
+	// Extract RGBA components using color macros
+	rgba[0] = COLOR_CAIRO_R(color);
+	rgba[1] = COLOR_CAIRO_G(color);
+	rgba[2] = COLOR_CAIRO_B(color);
+	rgba[3] = COLOR_CAIRO_A(color);
 
 	return true;
 }
 
 // Trim whitespace from string
-static char* trim_whitespace(char *str) {
+char* config_trim_whitespace(char *str) {
 	if (!str) return NULL;
 
 	// Trim leading
@@ -88,13 +89,13 @@ static char* config_get_user_path(void) {
 		return NULL;
 	}
 
-	char *path = malloc(512);
+	char *path = malloc(CONFIG_PATH_SIZE);
 	if (!path) return NULL;
 
 	if (config_home) {
-		snprintf(path, 512, "%s/wshowlyrics/settings.ini", config_home);
+		snprintf(path, CONFIG_PATH_SIZE, "%s/wshowlyrics/settings.ini", config_home);
 	} else {
-		snprintf(path, 512, "%s/.config/wshowlyrics/settings.ini", home);
+		snprintf(path, CONFIG_PATH_SIZE, "%s/.config/wshowlyrics/settings.ini", home);
 	}
 
 	return path;
@@ -113,11 +114,11 @@ bool config_load(struct config *cfg, const char *path) {
 		return false;
 	}
 
-	char line[512];
-	char section[64] = {0};
+	char line[CONFIG_LINE_SIZE];
+	char section[SMALL_BUFFER_SIZE] = {0};
 
 	while (fgets(line, sizeof(line), f)) {
-		char *trimmed = trim_whitespace(line);
+		char *trimmed = config_trim_whitespace(line);
 
 		// Skip empty lines and comments
 		if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
@@ -139,8 +140,8 @@ bool config_load(struct config *cfg, const char *path) {
 		if (!equals) continue;
 
 		*equals = '\0';
-		char *key = trim_whitespace(trimmed);
-		char *value = trim_whitespace(equals + 1);
+		char *key = config_trim_whitespace(trimmed);
+		char *value = config_trim_whitespace(equals + 1);
 
 		// Parse based on section
 		if (strcmp(section, "display") == 0) {
@@ -195,7 +196,7 @@ bool config_is_extension_enabled(const char *ext) {
 	bool found = false;
 	char *token = strtok(exts, ",");
 	while (token) {
-		char *trimmed = trim_whitespace(token);
+		char *trimmed = config_trim_whitespace(token);
 		if (strcasecmp(trimmed, ext) == 0) {
 			found = true;
 			break;

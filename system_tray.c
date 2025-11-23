@@ -1,4 +1,5 @@
 #include "system_tray.h"
+#include "curl_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,42 +20,17 @@ static const char *ICON_DIR = "/tmp/lyrics-icons";
 static const char *ICON_PATH = "/tmp/lyrics-icons/album-art.png";
 static const char *ICON_NAME = "album-art";
 
-// Memory buffer for CURL downloads
-struct memory_buffer {
-	char *data;
-	size_t size;
-};
-
-static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, void *userp) {
-	size_t realsize = size * nmemb;
-	struct memory_buffer *mem = (struct memory_buffer *)userp;
-
-	char *ptr = realloc(mem->data, mem->size + realsize + 1);
-	if (!ptr) {
-		fprintf(stderr, "Out of memory\n");
-		return 0;
-	}
-
-	mem->data = ptr;
-	memcpy(&(mem->data[mem->size]), contents, realsize);
-	mem->size += realsize;
-	mem->data[mem->size] = 0;
-
-	return realsize;
-}
-
 // Download image from URL to memory
-static bool download_image(const char *url, struct memory_buffer *buffer) {
+static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
 	CURL *curl = curl_easy_init();
 	if (!curl) {
 		return false;
 	}
 
-	buffer->data = malloc(1);
-	buffer->size = 0;
+	curl_memory_buffer_init(buffer);
 
 	curl_easy_setopt(curl, CURLOPT_URL, url);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)buffer);
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
@@ -63,8 +39,7 @@ static bool download_image(const char *url, struct memory_buffer *buffer) {
 	curl_easy_cleanup(curl);
 
 	if (res != CURLE_OK) {
-		free(buffer->data);
-		buffer->data = NULL;
+		curl_memory_buffer_free(buffer);
 		return false;
 	}
 
@@ -142,7 +117,8 @@ static GdkPixbuf* load_image_from_url(const char *url) {
 	}
 	// Handle http:// or https:// URLs
 	else if (strncmp(url, "http://", 7) == 0 || strncmp(url, "https://", 8) == 0) {
-		struct memory_buffer buffer = {0};
+		struct curl_memory_buffer buffer;
+		curl_memory_buffer_init(&buffer);
 
 		if (!download_image(url, &buffer)) {
 			fprintf(stderr, "Failed to download image from URL\n");
@@ -155,7 +131,7 @@ static GdkPixbuf* load_image_from_url(const char *url) {
 			fprintf(stderr, "Failed to load image data: %s\n", error->message);
 			g_error_free(error);
 			g_object_unref(loader);
-			free(buffer.data);
+			curl_memory_buffer_free(&buffer);
 			return NULL;
 		}
 
@@ -167,7 +143,7 @@ static GdkPixbuf* load_image_from_url(const char *url) {
 		}
 
 		g_object_unref(loader);
-		free(buffer.data);
+		curl_memory_buffer_free(&buffer);
 	}
 
 	// Verify image is square

@@ -1,79 +1,9 @@
 #include "lrc_parser.h"
+#include "parser_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-
-// Parse LRC timestamp like [00:12.34] or [00:12.340]
-static bool parse_timestamp(const char *str, int64_t *timestamp_us) {
-	int minutes = 0, seconds = 0, centiseconds = 0;
-
-	// Try [MM:SS.xx] format
-	int matched = sscanf(str, "[%d:%d.%d]", &minutes, &seconds, &centiseconds);
-	if (matched == 3) {
-		// Handle both centiseconds (2 digits) and milliseconds (3 digits)
-		int len = 0;
-		const char *dot = strchr(str, '.');
-		if (dot) {
-			const char *bracket = strchr(dot, ']');
-			if (bracket) {
-				len = bracket - dot - 1;
-			}
-		}
-
-		if (len == 2) {
-			// Centiseconds
-			*timestamp_us = (int64_t)minutes * 60 * 1000000 +
-			                (int64_t)seconds * 1000000 +
-			                (int64_t)centiseconds * 10000;
-		} else {
-			// Milliseconds
-			*timestamp_us = (int64_t)minutes * 60 * 1000000 +
-			                (int64_t)seconds * 1000000 +
-			                (int64_t)centiseconds * 1000;
-		}
-		return true;
-	}
-
-	return false;
-}
-
-// Parse metadata tag like [ti:Title]
-static bool parse_metadata_tag(const char *line, struct lyrics_metadata *metadata) {
-	if (strncmp(line, "[ti:", 4) == 0) {
-		const char *end = strchr(line + 4, ']');
-		if (end) {
-			size_t len = end - (line + 4);
-			free(metadata->title);
-			metadata->title = strndup(line + 4, len);
-			return true;
-		}
-	} else if (strncmp(line, "[ar:", 4) == 0) {
-		const char *end = strchr(line + 4, ']');
-		if (end) {
-			size_t len = end - (line + 4);
-			free(metadata->artist);
-			metadata->artist = strndup(line + 4, len);
-			return true;
-		}
-	} else if (strncmp(line, "[al:", 4) == 0) {
-		const char *end = strchr(line + 4, ']');
-		if (end) {
-			size_t len = end - (line + 4);
-			free(metadata->album);
-			metadata->album = strndup(line + 4, len);
-			return true;
-		}
-	} else if (strncmp(line, "[offset:", 8) == 0) {
-		const char *end = strchr(line + 8, ']');
-		if (end) {
-			metadata->offset_ms = atoi(line + 8);
-			return true;
-		}
-	}
-
-	return false;
-}
 
 bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 	if (!content || !data) {
@@ -102,7 +32,7 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 		}
 
 		// Try to parse as metadata
-		if (parse_metadata_tag(line, &data->metadata)) {
+		if (parse_lrc_metadata_tag(line, &data->metadata)) {
 			line = strtok(NULL, "\n");
 			continue;
 		}
@@ -110,7 +40,7 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 		// Try to parse as timed line
 		if (line[0] == '[') {
 			int64_t timestamp_us;
-			if (parse_timestamp(line, &timestamp_us)) {
+			if (parse_lrc_timestamp(line, &timestamp_us, NULL)) {
 				// Find the end of timestamp(s)
 				const char *text_start = line;
 				while (*text_start == '[') {
@@ -173,31 +103,7 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 }
 
 bool lrc_parse_file(const char *filename, struct lyrics_data *data) {
-	FILE *fp = fopen(filename, "r");
-	if (!fp) {
-		fprintf(stderr, "Failed to open LRC file: %s\n", filename);
-		return false;
-	}
-
-	// Read entire file into memory
-	fseek(fp, 0, SEEK_END);
-	long size = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-
-	char *content = malloc(size + 1);
-	if (!content) {
-		fclose(fp);
-		return false;
-	}
-
-	size_t read = fread(content, 1, size, fp);
-	content[read] = '\0';
-	fclose(fp);
-
-	bool result = lrc_parse_string(content, data);
-	free(content);
-
-	return result;
+	return parse_file_generic(filename, "LRC", data, lrc_parse_string);
 }
 
 void lrc_free_data(struct lyrics_data *data) {

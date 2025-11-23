@@ -4,6 +4,7 @@
 #include "srt_parser.h"
 #include "lrcx_parser.h"
 #include "config.h"
+#include "constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -131,6 +132,60 @@ static char* url_decode_string(const char *str) {
 	return decoded;
 }
 
+// Get ordered list of extensions from config
+// Returns NULL-terminated array of extension strings
+// Caller must free the array and all strings
+static char** get_extension_priority(void) {
+	if (!g_config.lyrics.extensions || g_config.lyrics.extensions[0] == '\0') {
+		// Default: all extensions in default order
+		char **exts = malloc(4 * sizeof(char*));
+		if (!exts) return NULL;
+		exts[0] = strdup("lrcx");
+		exts[1] = strdup("lrc");
+		exts[2] = strdup("srt");
+		exts[3] = NULL;
+		return exts;
+	}
+
+	// Parse comma-separated list
+	char *exts_copy = strdup(g_config.lyrics.extensions);
+	if (!exts_copy) return NULL;
+
+	// Count extensions
+	int count = 1;
+	for (char *p = exts_copy; *p; p++) {
+		if (*p == ',') count++;
+	}
+
+	char **result = malloc((count + 1) * sizeof(char*));
+	if (!result) {
+		free(exts_copy);
+		return NULL;
+	}
+
+	// Split and trim
+	int idx = 0;
+	char *token = strtok(exts_copy, ",");
+	while (token && idx < count) {
+		char *trimmed = config_trim_whitespace(token);
+		result[idx++] = strdup(trimmed);
+		token = strtok(NULL, ",");
+	}
+	result[idx] = NULL;
+
+	free(exts_copy);
+	return result;
+}
+
+// Free extension priority array
+static void free_extension_priority(char **exts) {
+	if (!exts) return;
+	for (int i = 0; exts[i]; i++) {
+		free(exts[i]);
+	}
+	free(exts);
+}
+
 static char* get_directory_from_url(const char *url) {
 	if (!url) return NULL;
 
@@ -226,7 +281,7 @@ static bool local_search(const char *title, const char *artist, const char *albu
 	// Check if running from local build (e.g., ./build/lyrics)
 	// to enable current directory search for development
 	bool is_local_build = false;
-	char exe_path[1024];
+	char exe_path[PATH_BUFFER_SIZE];
 	ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
 	if (len != -1) {
 		exe_path[len] = '\0';
@@ -245,7 +300,7 @@ static bool local_search(const char *title, const char *artist, const char *albu
 	if (xdg_music) search_dirs[dir_count++] = xdg_music;
 
 	// Add ~/.lyrics directory
-	char lyrics_dir[256] = {0};
+	char lyrics_dir[FILENAME_BUFFER_SIZE] = {0};
 	if (home) {
 		snprintf(lyrics_dir, sizeof(lyrics_dir), "%s/.lyrics", home);
 		search_dirs[dir_count++] = lyrics_dir;
@@ -253,103 +308,76 @@ static bool local_search(const char *title, const char *artist, const char *albu
 
 	if (home) search_dirs[dir_count++] = home;
 
-	char path[1024];
+	char path[PATH_BUFFER_SIZE];
+	char **extensions = get_extension_priority();
+	if (!extensions) {
+		free(title_safe);
+		free(artist_safe);
+		free(current_dir);
+		free(filename_from_url);
+		return false;
+	}
 
 	for (int i = 0; i < dir_count; i++) {
 		if (!search_dirs[i]) continue;
 
-		// HIGHEST PRIORITY: Try exact filename from URL (in current directory)
-		if (i == 0 && filename_from_url) {
-			snprintf(path, sizeof(path), "%s/%s.lrcx", search_dirs[i], filename_from_url);
+		// Try each extension in priority order
+		for (int ext_idx = 0; extensions[ext_idx]; ext_idx++) {
+			const char *ext = extensions[ext_idx];
+
+			// HIGHEST PRIORITY: Try exact filename from URL (in current directory)
+			if (i == 0 && filename_from_url) {
+				snprintf(path, sizeof(path), "%s/%s.%s", search_dirs[i], filename_from_url, ext);
+				printf("Trying: %s\n", path);
+				if (try_load_lyrics_file(path, data)) {
+					goto success;
+				}
+			}
+		}
+
+		// Try each extension in priority order for other patterns
+		for (int ext_idx = 0; extensions[ext_idx]; ext_idx++) {
+			const char *ext = extensions[ext_idx];
+
+			// Try: Title.ext
+			snprintf(path, sizeof(path), "%s/%s.%s", search_dirs[i], title_safe, ext);
 			printf("Trying: %s\n", path);
 			if (try_load_lyrics_file(path, data)) {
 				goto success;
 			}
 
-			snprintf(path, sizeof(path), "%s/%s.lrc", search_dirs[i], filename_from_url);
-			printf("Trying: %s\n", path);
-			if (try_load_lyrics_file(path, data)) {
-				goto success;
-			}
+			if (artist_safe) {
+				// Try: Artist - Title.ext
+				snprintf(path, sizeof(path), "%s/%s - %s.%s",
+				         search_dirs[i], artist_safe, title_safe, ext);
+				if (try_load_lyrics_file(path, data)) {
+					goto success;
+				}
 
-			snprintf(path, sizeof(path), "%s/%s.srt", search_dirs[i], filename_from_url);
-			printf("Trying: %s\n", path);
-			if (try_load_lyrics_file(path, data)) {
-				goto success;
-			}
-		}
-
-		// Try: Title.lrcx
-		snprintf(path, sizeof(path), "%s/%s.lrcx", search_dirs[i], title_safe);
-		printf("Trying: %s\n", path);
-		if (try_load_lyrics_file(path, data)) {
-			goto success;
-		}
-
-		// Try: Title.lrc
-		snprintf(path, sizeof(path), "%s/%s.lrc", search_dirs[i], title_safe);
-		printf("Trying: %s\n", path);
-		if (try_load_lyrics_file(path, data)) {
-			goto success;
-		}
-
-		// Try: Title.srt
-		snprintf(path, sizeof(path), "%s/%s.srt", search_dirs[i], title_safe);
-		printf("Trying: %s\n", path);
-		if (try_load_lyrics_file(path, data)) {
-			goto success;
-		}
-
-		if (artist_safe) {
-			// Try: Artist - Title.lrcx
-			snprintf(path, sizeof(path), "%s/%s - %s.lrcx",
-			         search_dirs[i], artist_safe, title_safe);
-			if (try_load_lyrics_file(path, data)) {
-				goto success;
-			}
-
-			// Try: Artist - Title.lrc
-			snprintf(path, sizeof(path), "%s/%s - %s.lrc",
-			         search_dirs[i], artist_safe, title_safe);
-			if (try_load_lyrics_file(path, data)) {
-				goto success;
-			}
-
-			// Try: Artist - Title.srt
-			snprintf(path, sizeof(path), "%s/%s - %s.srt",
-			         search_dirs[i], artist_safe, title_safe);
-			if (try_load_lyrics_file(path, data)) {
-				goto success;
-			}
-
-			// Try: Artist/Title.lrcx
-			snprintf(path, sizeof(path), "%s/%s/%s.lrcx",
-			         search_dirs[i], artist_safe, title_safe);
-			if (try_load_lyrics_file(path, data)) {
-				goto success;
-			}
-
-			// Try: Artist/Title.lrc
-			snprintf(path, sizeof(path), "%s/%s/%s.lrc",
-			         search_dirs[i], artist_safe, title_safe);
-			if (try_load_lyrics_file(path, data)) {
-				goto success;
+				// Try: Artist/Title.ext
+				snprintf(path, sizeof(path), "%s/%s/%s.%s",
+				         search_dirs[i], artist_safe, title_safe, ext);
+				if (try_load_lyrics_file(path, data)) {
+					goto success;
+				}
 			}
 		}
 	}
 
-	free(title_safe);
-	free(artist_safe);
-	free(current_dir);
-	free(filename_from_url);
-	return false;
+	// No lyrics found
+	bool found = false;
+	goto cleanup;
 
 success:
+	found = true;
+
+cleanup:
+	free_extension_priority(extensions);
 	free(title_safe);
 	free(artist_safe);
 	free(current_dir);
 	free(filename_from_url);
-	return true;
+	return found;
 }
 
 static bool local_init(void) {
@@ -407,6 +435,12 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
 
 	// Try each provider in order
 	for (int i = 0; providers[i]; i++) {
+		// Skip lrclib if disabled in config
+		if (strcmp(providers[i]->name, "lrclib") == 0 && !g_config.lyrics.enable_lrclib) {
+			printf("Skipped provider: %s (disabled in config)\n", providers[i]->name);
+			continue;
+		}
+
 		printf("Trying provider: %s\n", providers[i]->name);
 		if (providers[i]->search(track->title, track->artist, track->album,
 		                         track->url, data)) {

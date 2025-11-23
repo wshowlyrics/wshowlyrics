@@ -1,34 +1,11 @@
 #include "lrclib_provider.h"
 #include "lrc_parser.h"
+#include "curl_utils.h"
+#include "constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
-
-// Memory buffer for CURL response
-struct memory_buffer {
-	char *data;
-	size_t size;
-};
-
-// CURL write callback
-static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
-	size_t realsize = size * nmemb;
-	struct memory_buffer *mem = (struct memory_buffer *)userp;
-
-	char *ptr = realloc(mem->data, mem->size + realsize + 1);
-	if (!ptr) {
-		fprintf(stderr, "Not enough memory for CURL response\n");
-		return 0;
-	}
-
-	mem->data = ptr;
-	memcpy(&(mem->data[mem->size]), contents, realsize);
-	mem->size += realsize;
-	mem->data[mem->size] = 0;
-
-	return realsize;
-}
 
 // URL encode a string for use in query parameters
 static char* url_encode(CURL *curl, const char *str) {
@@ -42,7 +19,7 @@ static char* extract_json_string(const char *json, const char *key) {
 	if (!json || !key) return NULL;
 
 	// Build search pattern: "key":"
-	char pattern[256];
+	char pattern[JSON_PATTERN_SIZE];
 	snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
 
 	char *start = strstr(json, pattern);
@@ -145,9 +122,10 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
 	curl_free(album_encoded);
 
 	// Setup CURL request
-	struct memory_buffer response = {0};
+	struct curl_memory_buffer response;
+	curl_memory_buffer_init(&response);
 	curl_easy_setopt(curl, CURLOPT_URL, request_url);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "wshowlyrics/0.1.0");
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
@@ -162,13 +140,13 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
 
 	if (res != CURLE_OK) {
 		fprintf(stderr, "lrclib API request failed: %s\n", curl_easy_strerror(res));
-		free(response.data);
+		curl_memory_buffer_free(&response);
 		return false;
 	}
 
-	if (http_code != 200) {
+	if (http_code != HTTP_OK) {
 		printf("lrclib API returned HTTP %ld (no lyrics found)\n", http_code);
-		free(response.data);
+		curl_memory_buffer_free(&response);
 		return false;
 	}
 
@@ -195,7 +173,7 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
 
 	free(synced_lyrics);
 	free(plain_lyrics);
-	free(response.data);
+	curl_memory_buffer_free(&response);
 
 	return success;
 }
