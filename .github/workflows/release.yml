@@ -9,7 +9,54 @@ permissions:
   contents: write
 
 jobs:
+  verify-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson \
+            ninja-build \
+            libwayland-dev \
+            wayland-protocols \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libfontconfig1-dev \
+            libcurl4-openssl-dev \
+            libappindicator3-dev \
+            libgdk-pixbuf2.0-dev \
+            pkg-config
+
+      - name: Setup build directory
+        run: meson setup build
+
+      - name: Compile
+        run: meson compile -C build
+
+      - name: Verify binary exists
+        run: |
+          if [ ! -f build/lyrics ]; then
+            echo "Error: lyrics binary not found"
+            exit 1
+          fi
+          echo "Build successful: lyrics binary created"
+          ls -lh build/lyrics
+
+      - name: Verify binary format
+        run: |
+          if file build/lyrics | grep -q "ELF.*executable"; then
+            echo "Binary format verified: ELF executable"
+          else
+            echo "Error: Invalid binary format"
+            exit 1
+          fi
+
   aur-release:
+    needs: verify-build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout lyrics repository
