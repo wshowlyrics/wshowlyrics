@@ -585,10 +585,11 @@ int main(int argc, char *argv[]) {
 			fprintf(stdout, "Lyrics Detection:\n");
 			fprintf(stdout, "  Automatically detects currently playing track via MPRIS and searches for lyrics in:\n");
 			fprintf(stdout, "    1. Same directory as the music file\n");
-			fprintf(stdout, "    2. Current directory (only for local builds)\n");
-			fprintf(stdout, "    3. ~/.lyrics/\n");
-			fprintf(stdout, "    4. $HOME\n");
-			fprintf(stdout, "    5. Online from lrclib.net API (if local files not found)\n\n");
+			fprintf(stdout, "    2. Current directory (only for local builds, not /usr/bin)\n");
+			fprintf(stdout, "    3. $XDG_MUSIC_DIR\n");
+			fprintf(stdout, "    4. ~/.lyrics/\n");
+			fprintf(stdout, "    5. $HOME\n");
+			fprintf(stdout, "    6. Online from lrclib.net API (if local files not found)\n\n");
 			fprintf(stdout, "Supported Formats:\n");
 			fprintf(stdout, "  - .lrcx: Karaoke-style with word-level timing and progressive fill effect\n");
 			fprintf(stdout, "  - .lrc:  Standard LRC format with line-level timing\n");
