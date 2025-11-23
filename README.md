@@ -117,18 +117,23 @@ Karaoke-style lyrics with word-level timing:
 - Words progressively fill from left to right as they're sung
 - Use `.lrcx` file extension
 
-**Future Feature: Ruby Text (Furigana) Support** _(Not yet implemented)_
+**Ruby Text (Furigana) Support**
 
-The LRCX format will support ruby text (furigana) for Japanese lyrics or pronunciation guides:
+All lyrics file formats (LRCX, LRC, SRT) support ruby text annotations:
 
 ```lrcx
-[00:12.00][00:12.34]心{こころ}[00:13.50]そっと
+[00:12.00][00:12.34]心{こころ}[00:13.50]の[00:13.80]中{なか}
+```
+
+```lrc
+[00:12.00]心{こころ}の中{なか}で　響{ひび}く
 ```
 
 - Syntax: `main_text{ruby_text}` - Ruby text appears above the main text in smaller font
 - Example: `心{こころ}` displays "こころ" (hiragana) above "心" (kanji)
 - Use cases: Japanese furigana, Chinese pinyin, Korean pronunciation guides
-- This feature is planned but not yet available in the current version
+- Format-agnostic: The `{}` syntax is automatically detected regardless of file extension
+- Ruby text is rendered at half size, centered above the base text
 
 ### LRC Format (Standard)
 

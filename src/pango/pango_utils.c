@@ -74,3 +74,70 @@ void pango_printf(cairo_t *cairo, const char *font, double scale,
 	g_object_unref(layout);
 	free(buf);
 }
+
+void get_ruby_text_size(cairo_t *cairo, const char *font, int *width, int *height,
+		double scale, const char *base_text, const char *ruby_text) {
+	if (!base_text) {
+		*width = 0;
+		*height = 0;
+		return;
+	}
+
+	// Get base text size
+	int base_w, base_h;
+	get_text_size(cairo, font, &base_w, &base_h, NULL, scale, "%s", base_text);
+
+	// Get ruby text size (smaller font)
+	int ruby_w = 0, ruby_h = 0;
+	if (ruby_text && ruby_text[0] != '\0') {
+		get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", ruby_text);
+	}
+
+	// Width is maximum of base and ruby
+	*width = base_w > ruby_w ? base_w : ruby_w;
+
+	// Height is base + ruby (if present)
+	*height = base_h + ruby_h;
+}
+
+int pango_printf_ruby(cairo_t *cairo, const char *font, double scale,
+		const char *base_text, const char *ruby_text) {
+	if (!base_text) {
+		return 0;
+	}
+
+	// Calculate sizes
+	int base_w, base_h, ruby_w = 0, ruby_h = 0;
+	get_text_size(cairo, font, &base_w, &base_h, NULL, scale, "%s", base_text);
+
+	if (ruby_text && ruby_text[0] != '\0') {
+		get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", ruby_text);
+	}
+
+	// Calculate total width (max of base and ruby)
+	int total_w = base_w > ruby_w ? base_w : ruby_w;
+
+	// Save current position
+	double x, y;
+	cairo_get_current_point(cairo, &x, &y);
+
+	// Draw ruby text above (centered over base text)
+	if (ruby_text && ruby_text[0] != '\0') {
+		cairo_save(cairo);
+		double ruby_offset_x = (total_w - ruby_w) / 2.0;
+		cairo_move_to(cairo, x + ruby_offset_x, y);
+		pango_printf(cairo, font, scale * 0.5, "%s", ruby_text);
+		cairo_restore(cairo);
+	}
+
+	// Draw base text below (centered if narrower than ruby)
+	double base_offset_x = (total_w - base_w) / 2.0;
+	cairo_move_to(cairo, x + base_offset_x, y + ruby_h);
+	pango_printf(cairo, font, scale, "%s", base_text);
+
+	// Move to end of this ruby text segment (x + total_w, original y)
+	// This ensures next segment starts at correct position
+	cairo_move_to(cairo, x + total_w, y);
+
+	return total_w;
+}

@@ -19,4 +19,20 @@ bool parse_file_generic(const char *filename, const char *format_name,
                         struct lyrics_data *data,
                         bool (*parser_func)(const char *, struct lyrics_data *));
 
+// Parse ruby text (furigana) from text
+// Syntax: base{ruby} - e.g., 心{こころ}
+// Returns: base text (without ruby markers), sets *ruby_text to ruby content (or NULL)
+// Caller must free returned string and *ruby_text
+// Example: parse_ruby_text("心{こころ}", &ruby) returns "心" and sets ruby to "こころ"
+char* parse_ruby_text(const char *text, char **ruby_text);
+
+// Split text with ruby annotations into word segments
+// Example: "目指せよ　快眠{かいみん}" becomes 2 segments:
+//   1. text="目指せよ　", ruby=NULL
+//   2. text="快眠", ruby="かいみん"
+// Returns number of segments created, or 0 on error
+// Caller must free segments using standard word_segment cleanup
+struct word_segment;
+int parse_ruby_segments(const char *text, int64_t timestamp_us, struct word_segment **segments);
+
 #endif // PARSER_UTILS_H

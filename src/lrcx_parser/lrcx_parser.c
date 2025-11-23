@@ -54,32 +54,55 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 		}
 
 		if (first_text_end > first_text_start) {
-			struct word_segment *segment = calloc(1, sizeof(struct word_segment));
-			if (!segment) {
-				free(new_line);
-				return false;
+			// Parse text into segments (handles multiple ruby annotations)
+			char *raw_text = strndup(first_text_start, first_text_end - first_text_start);
+
+			struct word_segment *segments = NULL;
+			int64_t timestamp_us = line_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+			int seg_count = parse_ruby_segments(raw_text, timestamp_us, &segments);
+			free(raw_text);
+
+			if (seg_count > 0 && segments) {
+				// Add all segments to the line
+				struct word_segment *seg = segments;
+				while (seg) {
+					*next_segment = seg;
+					next_segment = &seg->next;
+					new_line->segment_count++;
+					seg = seg->next;
+				}
+
+				// Build full text from segments (base text only, without ruby notation)
+				seg = segments;
+				size_t estimated_len = 0;
+				while (seg) {
+					if (seg->text && seg->text[0] != '\n') {
+						estimated_len += strlen(seg->text) + 1;
+					}
+					seg = seg->next;
+				}
+
+				full_text_capacity = estimated_len + 1;
+				full_text = malloc(full_text_capacity);
+				if (!full_text) {
+					free(new_line);
+					return false;
+				}
+
+				seg = segments;
+				while (seg) {
+					if (seg->text && seg->text[0] != '\n') {
+						size_t seg_len = strlen(seg->text);
+						if (full_text_len > 0) {
+							full_text[full_text_len++] = ' ';
+						}
+						memcpy(full_text + full_text_len, seg->text, seg_len);
+						full_text_len += seg_len;
+					}
+					seg = seg->next;
+				}
+				full_text[full_text_len] = '\0';
 			}
-
-			segment->timestamp_us = line_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
-			segment->text = strndup(first_text_start, first_text_end - first_text_start);
-
-			// Initialize full text with first segment
-			size_t word_len = first_text_end - first_text_start;
-			full_text_capacity = word_len * 2 + 1;
-			full_text = malloc(full_text_capacity);
-			if (!full_text) {
-				free(segment->text);
-				free(segment);
-				free(new_line);
-				return false;
-			}
-			memcpy(full_text, first_text_start, word_len);
-			full_text_len = word_len;
-			full_text[full_text_len] = '\0';
-
-			*next_segment = segment;
-			next_segment = &segment->next;
-			new_line->segment_count++;
 
 			pos = first_text_end;
 		}
@@ -132,10 +155,16 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 
 				if (word_end > word_start) {
 					// Has text
-					segment->text = strndup(word_start, word_end - word_start);
+					char *raw_text = strndup(word_start, word_end - word_start);
 
-					// Add to full text
-					size_t word_len = word_end - word_start;
+					// Parse ruby text (furigana) if present
+					char *ruby = NULL;
+					segment->text = parse_ruby_text(raw_text, &ruby);
+					segment->ruby = ruby;
+					free(raw_text);
+
+					// Add to full text (base text only, without ruby notation)
+					size_t word_len = strlen(segment->text);
 					if (full_text_len + word_len + 1 > full_text_capacity) {
 						full_text_capacity = (full_text_len + word_len + 1) * 2;
 						char *new_full_text = realloc(full_text, full_text_capacity);

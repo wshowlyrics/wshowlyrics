@@ -83,7 +83,39 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 					if (only_whitespace || has_url) {
 						new_line->text = strdup("");
 					} else {
-						new_line->text = strdup(text_start);
+						// Parse ruby text from the line into segments
+						// This allows ruby text to be rendered even in non-karaoke mode
+						struct word_segment *segments = NULL;
+						int seg_count = parse_ruby_segments(text_start, new_line->timestamp_us, &segments);
+
+						if (seg_count > 0 && segments) {
+							new_line->segments = segments;
+							new_line->segment_count = seg_count;
+
+							// Build full text without ruby notation for display
+							size_t text_len = 0;
+							struct word_segment *seg = segments;
+							while (seg) {
+								text_len += strlen(seg->text);
+								seg = seg->next;
+							}
+
+							char *full_text = malloc(text_len + 1);
+							if (full_text) {
+								full_text[0] = '\0';
+								seg = segments;
+								while (seg) {
+									strcat(full_text, seg->text);
+									seg = seg->next;
+								}
+								new_line->text = full_text;
+							} else {
+								new_line->text = strdup("");
+							}
+						} else {
+							// No segments created (error case) - use original text
+							new_line->text = strdup(text_start);
+						}
 					}
 				} else {
 					new_line->text = strdup("");
@@ -125,6 +157,7 @@ void lrc_free_data(struct lyrics_data *data) {
 		while (segment) {
 			struct word_segment *next_segment = segment->next;
 			free(segment->text);
+			free(segment->ruby);
 			free(segment);
 			segment = next_segment;
 		}

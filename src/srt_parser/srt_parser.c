@@ -125,7 +125,38 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 					if (new_line) {
 						new_line->timestamp_us = current_start_us;
 						new_line->end_timestamp_us = current_end_us;
-						new_line->text = strdup(text_buffer);
+
+						// Parse ruby text from the subtitle
+						struct word_segment *segments = NULL;
+						int seg_count = parse_ruby_segments(text_buffer, current_start_us, &segments);
+
+						if (seg_count > 0 && segments) {
+							new_line->segments = segments;
+							new_line->segment_count = seg_count;
+
+							// Build full text without ruby notation
+							size_t full_len = 0;
+							struct word_segment *seg = segments;
+							while (seg) {
+								full_len += strlen(seg->text);
+								seg = seg->next;
+							}
+
+							char *full_text = malloc(full_len + 1);
+							if (full_text) {
+								full_text[0] = '\0';
+								seg = segments;
+								while (seg) {
+									strcat(full_text, seg->text);
+									seg = seg->next;
+								}
+								new_line->text = full_text;
+							} else {
+								new_line->text = strdup(text_buffer);
+							}
+						} else {
+							new_line->text = strdup(text_buffer);
+						}
 
 						*next_line = new_line;
 						next_line = &new_line->next;
@@ -155,7 +186,38 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 		if (new_line) {
 			new_line->timestamp_us = current_start_us;
 			new_line->end_timestamp_us = current_end_us;
-			new_line->text = strdup(text_buffer);
+
+			// Parse ruby text from the subtitle
+			struct word_segment *segments = NULL;
+			int seg_count = parse_ruby_segments(text_buffer, current_start_us, &segments);
+
+			if (seg_count > 0 && segments) {
+				new_line->segments = segments;
+				new_line->segment_count = seg_count;
+
+				// Build full text without ruby notation
+				size_t full_len = 0;
+				struct word_segment *seg = segments;
+				while (seg) {
+					full_len += strlen(seg->text);
+					seg = seg->next;
+				}
+
+				char *full_text = malloc(full_len + 1);
+				if (full_text) {
+					full_text[0] = '\0';
+					seg = segments;
+					while (seg) {
+						strcat(full_text, seg->text);
+						seg = seg->next;
+					}
+					new_line->text = full_text;
+				} else {
+					new_line->text = strdup(text_buffer);
+				}
+			} else {
+				new_line->text = strdup(text_buffer);
+			}
 
 			*next_line = new_line;
 			next_line = &new_line->next;

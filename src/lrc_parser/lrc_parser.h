@@ -7,7 +7,8 @@
 // Word segment with timestamp for karaoke highlighting (LRCX format)
 struct word_segment {
 	int64_t timestamp_us; // When this word should start highlighting
-	char *text; // The word/text segment
+	char *text; // The word/text segment (main text, base text for ruby)
+	char *ruby; // Ruby text (furigana) to display above main text (NULL if none)
 	struct word_segment *next;
 };
 
