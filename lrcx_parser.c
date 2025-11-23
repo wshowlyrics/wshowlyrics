@@ -107,6 +107,57 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 	size_t full_text_len = 0;
 	size_t full_text_capacity = 0;
 
+	// Check if there's text immediately after first timestamp (before next '[')
+	// This handles: [00:01.00]今は[00:02.00]... where 今は should be first segment
+	const char *first_text_start = pos;
+	while (*first_text_start && isspace(*first_text_start)) {
+		first_text_start++;
+	}
+
+	if (*first_text_start && *first_text_start != '[') {
+		// Found text before next timestamp - create first segment with line timestamp
+		const char *first_text_end = first_text_start;
+		while (*first_text_end && *first_text_end != '[') {
+			first_text_end++;
+		}
+
+		// Trim trailing whitespace
+		while (first_text_end > first_text_start && isspace(*(first_text_end - 1))) {
+			first_text_end--;
+		}
+
+		if (first_text_end > first_text_start) {
+			struct word_segment *segment = calloc(1, sizeof(struct word_segment));
+			if (!segment) {
+				free(new_line);
+				return false;
+			}
+
+			segment->timestamp_us = line_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+			segment->text = strndup(first_text_start, first_text_end - first_text_start);
+
+			// Initialize full text with first segment
+			size_t word_len = first_text_end - first_text_start;
+			full_text_capacity = word_len * 2 + 1;
+			full_text = malloc(full_text_capacity);
+			if (!full_text) {
+				free(segment->text);
+				free(segment);
+				free(new_line);
+				return false;
+			}
+			memcpy(full_text, first_text_start, word_len);
+			full_text_len = word_len;
+			full_text[full_text_len] = '\0';
+
+			*next_segment = segment;
+			next_segment = &segment->next;
+			new_line->segment_count++;
+
+			pos = first_text_end;
+		}
+	}
+
 	while (*pos) {
 		// Skip whitespace
 		while (*pos && isspace(*pos)) {
@@ -142,16 +193,18 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 					word_end--;
 				}
 
-				// Create word segment
-				if (word_end > word_start) {
-					struct word_segment *segment = calloc(1, sizeof(struct word_segment));
-					if (!segment) {
-						free(full_text);
-						free(new_line);
-						return false;
-					}
+				// Always create segment for every timestamp (even if empty for idle display)
+				struct word_segment *segment = calloc(1, sizeof(struct word_segment));
+				if (!segment) {
+					free(full_text);
+					free(new_line);
+					return false;
+				}
 
-					segment->timestamp_us = segment_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+				segment->timestamp_us = segment_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+
+				if (word_end > word_start) {
+					// Has text
 					segment->text = strndup(word_start, word_end - word_start);
 
 					// Add to full text
@@ -175,11 +228,14 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 					memcpy(full_text + full_text_len, word_start, word_len);
 					full_text_len += word_len;
 					full_text[full_text_len] = '\0';
-
-					*next_segment = segment;
-					next_segment = &segment->next;
-					new_line->segment_count++;
+				} else {
+					// Empty text for idle display (e.g., [00:01.00] or [00:01.00][00:01.20]...)
+					segment->text = strdup("");
 				}
+
+				*next_segment = segment;
+				next_segment = &segment->next;
+				new_line->segment_count++;
 
 				pos = word_end;
 			} else {

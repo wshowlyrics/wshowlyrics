@@ -792,6 +792,10 @@ int main(int argc, char *argv[]) {
 		// Update current line based on playback position
 		if (mpris_is_playing()) {
 			update_current_line(&state);
+			// Continuously update for smooth karaoke highlighting (LRCX only)
+			if (state.current_line && state.current_line->segments && state.current_line->segment_count > 1) {
+				set_dirty(&state);
+			}
 		} else {
 			// Clear lyrics when not playing (paused or stopped)
 			if (state.current_line != NULL) {
