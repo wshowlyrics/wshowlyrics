@@ -1,6 +1,7 @@
 #include "main.h"
 #include "config/config.h"
 #include "constants.h"
+#include <ctype.h>
 
 static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
 	cairo_set_source_rgba(cairo,
@@ -757,19 +758,37 @@ static void update_current_line(struct lyrics_state *state) {
 	// Check if we should clear the lyrics
 	if (new_line) {
 		if (new_line->end_timestamp_us > 0) {
-			// SRT/WEBVTT format: clear if we've passed the explicit end timestamp
-			if (position_us > new_line->end_timestamp_us) {
-				new_line = NULL;
+			// For LRCX (karaoke mode), end_timestamp_us marks the last segment timestamp
+			// but we should keep displaying the line (segments handle the progression)
+			// For SRT/WEBVTT, end_timestamp_us marks when to clear the subtitle
+			bool is_karaoke = (new_line->segments != NULL);
+
+			if (!is_karaoke) {
+				// SRT/WEBVTT format: clear if we've passed the explicit end timestamp
+				if (position_us > new_line->end_timestamp_us) {
+					new_line = NULL;
+				}
 			}
 		}
-		// LRC format: Keep displaying until next line starts (no automatic clearing)
+		// LRC/LRCX format: Keep displaying until next line starts (no automatic clearing)
 		// This prevents lyrics from disappearing too quickly during instrumental breaks
 	}
 
-	// Check if line text is empty (instrumental break in LRC/LRCX)
-	bool is_empty_text = (new_line && new_line->text && new_line->text[0] == '\0');
+	// Check if line text is empty or whitespace-only (instrumental break in LRC/LRCX)
+	bool is_empty_text = false;
+	if (new_line && new_line->text) {
+		const char *p = new_line->text;
+		is_empty_text = true;
+		while (*p) {
+			if (!isspace(*p)) {
+				is_empty_text = false;
+				break;
+			}
+			p++;
+		}
+	}
 
-	// Treat empty text lines as NULL (no lyrics to display)
+	// Treat empty/whitespace-only text lines as NULL (no lyrics to display)
 	struct lyrics_line *display_line = is_empty_text ? NULL : new_line;
 
 	bool line_changed = (display_line != state->current_line);
@@ -786,7 +805,9 @@ static void update_current_line(struct lyrics_state *state) {
 				state->current_segment = display_line->segments;
 			}
 		} else {
-			printf("Instrumental break - clearing lyrics\n");
+			// Debug: why is this being printed?
+			printf("Instrumental break - clearing lyrics (new_line=%p, is_empty_text=%d, display_line=%p)\n",
+				(void*)new_line, is_empty_text, (void*)display_line);
 		}
 
 		set_dirty(state);
