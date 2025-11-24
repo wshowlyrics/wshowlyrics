@@ -3,40 +3,103 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool parse_lrc_timestamp(const char *str, int64_t *timestamp_us, const char **end_ptr) {
+bool parse_lrc_timestamp_ex(const char *str, int64_t *timestamp_us, const char **end_ptr, bool *is_unfill) {
 	int minutes = 0, seconds = 0, centiseconds = 0;
+	const char *parse_str = str;
+	bool unfill = false;
 
-	// Try [MM:SS.xx] format
-	int matched = sscanf(str, "[%d:%d.%d]", &minutes, &seconds, &centiseconds);
-	if (matched == 3) {
-		// Handle both centiseconds (2 digits) and milliseconds (3 digits)
-		int len = 0;
-		const char *dot = strchr(str, '.');
-		if (dot) {
-			const char *bracket = strchr(dot, ']');
-			if (bracket) {
-				len = bracket - dot - 1;
-				if (end_ptr) {
-					*end_ptr = bracket + 1; // Point to character after ']'
+	// Check for unfill marker [<MM:SS.xx]
+	if (str[0] == '[' && str[1] == '<') {
+		unfill = true;
+		parse_str = str + 1; // Skip '[', leaving '<MM:SS.xx]' which we'll adjust
+		// Create temporary string without '<': [MM:SS.xx]
+		char temp[64];
+		temp[0] = '[';
+		strncpy(temp + 1, parse_str + 1, sizeof(temp) - 2);
+		temp[sizeof(temp) - 1] = '\0';
+		parse_str = temp;
+
+		// Try [MM:SS.xx] format
+		int matched = sscanf(parse_str, "[%d:%d.%d]", &minutes, &seconds, &centiseconds);
+		if (matched == 3) {
+			// Handle both centiseconds (2 digits) and milliseconds (3 digits)
+			int len = 0;
+			const char *dot = strchr(parse_str, '.');
+			if (dot) {
+				const char *bracket = strchr(dot, ']');
+				if (bracket) {
+					len = bracket - dot - 1;
+					if (end_ptr) {
+						// Point to character after ']' in original string
+						const char *orig_dot = strchr(str, '.');
+						if (orig_dot) {
+							const char *orig_bracket = strchr(orig_dot, ']');
+							if (orig_bracket) {
+								*end_ptr = orig_bracket + 1;
+							}
+						}
+					}
 				}
 			}
-		}
 
-		if (len == 2) {
-			// Centiseconds
-			*timestamp_us = (int64_t)minutes * 60 * 1000000 +
-			                (int64_t)seconds * 1000000 +
-			                (int64_t)centiseconds * 10000;
-		} else {
-			// Milliseconds
-			*timestamp_us = (int64_t)minutes * 60 * 1000000 +
-			                (int64_t)seconds * 1000000 +
-			                (int64_t)centiseconds * 1000;
+			if (len == 2) {
+				// Centiseconds
+				*timestamp_us = (int64_t)minutes * 60 * 1000000 +
+				                (int64_t)seconds * 1000000 +
+				                (int64_t)centiseconds * 10000;
+			} else {
+				// Milliseconds
+				*timestamp_us = (int64_t)minutes * 60 * 1000000 +
+				                (int64_t)seconds * 1000000 +
+				                (int64_t)centiseconds * 1000;
+			}
+
+			if (is_unfill) {
+				*is_unfill = unfill;
+			}
+			return true;
 		}
-		return true;
+	} else {
+		// Normal timestamp [MM:SS.xx]
+		int matched = sscanf(str, "[%d:%d.%d]", &minutes, &seconds, &centiseconds);
+		if (matched == 3) {
+			// Handle both centiseconds (2 digits) and milliseconds (3 digits)
+			int len = 0;
+			const char *dot = strchr(str, '.');
+			if (dot) {
+				const char *bracket = strchr(dot, ']');
+				if (bracket) {
+					len = bracket - dot - 1;
+					if (end_ptr) {
+						*end_ptr = bracket + 1; // Point to character after ']'
+					}
+				}
+			}
+
+			if (len == 2) {
+				// Centiseconds
+				*timestamp_us = (int64_t)minutes * 60 * 1000000 +
+				                (int64_t)seconds * 1000000 +
+				                (int64_t)centiseconds * 10000;
+			} else {
+				// Milliseconds
+				*timestamp_us = (int64_t)minutes * 60 * 1000000 +
+				                (int64_t)seconds * 1000000 +
+				                (int64_t)centiseconds * 1000;
+			}
+
+			if (is_unfill) {
+				*is_unfill = unfill;
+			}
+			return true;
+		}
 	}
 
 	return false;
+}
+
+bool parse_lrc_timestamp(const char *str, int64_t *timestamp_us, const char **end_ptr) {
+	return parse_lrc_timestamp_ex(str, timestamp_us, end_ptr, NULL);
 }
 
 // Helper to parse string metadata tag

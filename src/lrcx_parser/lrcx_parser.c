@@ -33,6 +33,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 	char *full_text = NULL;
 	size_t full_text_len = 0;
 	size_t full_text_capacity = 0;
+	int64_t last_timestamp_us = line_timestamp_us; // Track last timestamp for end_timestamp_us
 
 	// Check if there's text immediately after first timestamp (before next '[')
 	// This handles: [00:01.00]今は[00:02.00]... where 今は should be first segment
@@ -119,7 +120,8 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 		if (*pos == '[') {
 			int64_t segment_timestamp_us;
 			const char *after_timestamp = NULL;
-			if (parse_lrc_timestamp(pos, &segment_timestamp_us, &after_timestamp)) {
+			bool is_unfill = false;
+			if (parse_lrc_timestamp_ex(pos, &segment_timestamp_us, &after_timestamp, &is_unfill)) {
 				// This is a word timestamp
 				pos = after_timestamp;
 
@@ -149,6 +151,8 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 				}
 
 				segment->timestamp_us = segment_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+				segment->is_unfill = is_unfill; // Set unfill flag
+				last_timestamp_us = segment_timestamp_us; // Update last seen timestamp
 
 				if (word_end > word_start) {
 					// Has text - parse ruby annotations
@@ -166,6 +170,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 						// Add all parsed segments to the line
 						struct word_segment *ws = word_segments;
 						while (ws) {
+							ws->is_unfill = is_unfill; // Inherit unfill flag
 							*next_segment = ws;
 							next_segment = &ws->next;
 							new_line->segment_count++;
@@ -249,6 +254,24 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 		segment->text = strdup("");
 		new_line->segments = segment;
 		new_line->segment_count = 1;
+	}
+
+	// Set line end timestamp if we saw more than the initial timestamp
+	if (last_timestamp_us > line_timestamp_us) {
+		new_line->end_timestamp_us = last_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+	}
+
+	// Calculate end_timestamp_us for each segment
+	struct word_segment *seg = new_line->segments;
+	while (seg) {
+		if (seg->next) {
+			// Use next segment's start time as this segment's end time
+			seg->end_timestamp_us = seg->next->timestamp_us;
+		} else {
+			// Last segment - use line's end timestamp if available, otherwise 0
+			seg->end_timestamp_us = new_line->end_timestamp_us;
+		}
+		seg = seg->next;
 	}
 
 	*line_ptr = new_line;

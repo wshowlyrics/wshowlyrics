@@ -5,10 +5,12 @@
 #include <stdint.h>
 #include "../lyrics_provider/lyrics_provider.h"
 
-// Parse timestamp in [MM:SS.xx] format
+// Parse timestamp in [MM:SS.xx] or [<MM:SS.xx] format
 // Supports both centiseconds (2 digits) and milliseconds (3 digits)
 // If end_ptr is provided, it will point to the character after ']'
+// If is_unfill is provided, it will be set to true for [<...] timestamps
 bool parse_lrc_timestamp(const char *str, int64_t *timestamp_us, const char **end_ptr);
+bool parse_lrc_timestamp_ex(const char *str, int64_t *timestamp_us, const char **end_ptr, bool *is_unfill);
 
 // Parse LRC metadata tags ([ti:], [ar:], [al:], [offset:])
 bool parse_lrc_metadata_tag(const char *line, struct lyrics_metadata *metadata);

@@ -44,13 +44,27 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 		} else {
 			text_to_display = text;
 			// Check if this line has word segments for karaoke
-			// True karaoke (LRCX) has multiple segments with different timestamps
-			if (state->current_line->segment_count > 1 && state->current_line->segments != NULL) {
-				// Check if segments have different timestamps (karaoke)
-				struct word_segment *first = state->current_line->segments;
-				struct word_segment *second = first->next;
-				if (second && second->timestamp_us != first->timestamp_us) {
-					is_karaoke = true;
+			// Karaoke mode is enabled if:
+			// 1. Multiple segments with different timestamps, OR
+			// 2. Any segment has an end_timestamp (for progressive fill)
+			if (state->current_line->segments != NULL) {
+				// Check for end_timestamp in any segment
+				struct word_segment *seg = state->current_line->segments;
+				while (seg) {
+					if (seg->end_timestamp_us > 0) {
+						is_karaoke = true;
+						break;
+					}
+					seg = seg->next;
+				}
+
+				// Also check for multiple segments with different timestamps (original logic)
+				if (!is_karaoke && state->current_line->segment_count > 1) {
+					struct word_segment *first = state->current_line->segments;
+					struct word_segment *second = first->next;
+					if (second && second->timestamp_us != first->timestamp_us) {
+						is_karaoke = true;
+					}
 				}
 			}
 		}
@@ -94,24 +108,29 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 		seg_iter = segment;
 		int x_iter = 0;
 		while (seg_iter) {
-			int seg_w, seg_h;
-			if (seg_iter->ruby) {
-				// Ruby text present - use ruby rendering
-				get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, seg_iter->text, seg_iter->ruby);
-				cairo_move_to(cairo, x_iter, 0);
-				pango_printf_ruby(cairo, state->font, scale, seg_iter->text, seg_iter->ruby);
-			} else {
-				// No ruby text - offset by max ruby height to align baseline
-				get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", seg_iter->text);
-				cairo_move_to(cairo, x_iter, max_ruby_height);
-				pango_printf(cairo, state->font, scale, "%s", seg_iter->text);
-			}
+			// Skip empty segments in first pass
+			bool is_empty_seg = (!seg_iter->text || seg_iter->text[0] == '\0');
 
-			x_iter += seg_w;
-			if (seg_iter->next) {
-				int space_w, space_h;
-				get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
-				x_iter += space_w;
+			if (!is_empty_seg) {
+				int seg_w, seg_h;
+				if (seg_iter->ruby) {
+					// Ruby text present - use ruby rendering
+					get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, seg_iter->text, seg_iter->ruby);
+					cairo_move_to(cairo, x_iter, 0);
+					pango_printf_ruby(cairo, state->font, scale, seg_iter->text, seg_iter->ruby);
+				} else {
+					// No ruby text - offset by max ruby height to align baseline
+					get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", seg_iter->text);
+					cairo_move_to(cairo, x_iter, max_ruby_height);
+					pango_printf(cairo, state->font, scale, "%s", seg_iter->text);
+				}
+
+				x_iter += seg_w;
+				if (seg_iter->next) {
+					int space_w, space_h;
+					get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
+					x_iter += space_w;
+				}
 			}
 			seg_iter = seg_iter->next;
 		}
@@ -121,30 +140,102 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 		segment = state->current_line->segments;
 
 		while (segment) {
+			// Check if any upcoming unfill segment is targeting this segment
+			bool has_active_unfill = false;
+			double unfill_override_ratio = 0.0;
+
+			// Look ahead for unfill segments
+			if (segment->text && segment->text[0] != '\0') {
+				struct word_segment *look = segment->next;
+				while (look) {
+					bool is_unfill = look->is_unfill && (!look->text || look->text[0] == '\0');
+					if (is_unfill && position_us >= look->timestamp_us &&
+					    (look->end_timestamp_us == 0 || position_us < look->end_timestamp_us)) {
+						has_active_unfill = true;
+						// Calculate unfill ratio
+						int64_t unfill_end = look->end_timestamp_us ? look->end_timestamp_us :
+							(look->next ? look->next->timestamp_us : 0);
+						if (unfill_end > 0) {
+							int64_t duration = unfill_end - look->timestamp_us;
+							if (duration > 0) {
+								int64_t elapsed = position_us - look->timestamp_us;
+								double ratio = (double)elapsed / (double)duration;
+								ratio = 1.0 - ratio; // reverse
+								unfill_override_ratio = ratio * 0.5; // scale to 0-50%
+							}
+						}
+						break;
+					}
+					// Only check empty segments
+					if (look->text && look->text[0] != '\0') break;
+					look = look->next;
+				}
+			}
+
+			// For unfill segments with empty text, use previous segment's text
+			const char *display_text = segment->text;
+			const char *display_ruby = segment->ruby;
+			int display_x_offset = x_offset;
+			bool is_empty_unfill = segment->is_unfill && (!segment->text || segment->text[0] == '\0');
+
+			// Skip rendering empty unfill segments themselves (they just modify previous segment)
+			if (is_empty_unfill) {
+				segment = segment->next;
+				continue;
+			}
+
 			int seg_w, seg_h;
-			if (segment->ruby) {
-				get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, segment->text, segment->ruby);
+			if (display_ruby) {
+				get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, display_text, display_ruby);
 			} else {
-				get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", segment->text);
+				get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", display_text ? display_text : "");
 			}
 
 			// Calculate fill ratio for this segment
 			double fill_ratio = 0.0;
 
-			if (position_us >= segment->timestamp_us) {
-				if (segment->next && position_us < segment->next->timestamp_us) {
+			// If unfill is active for this segment, use unfill ratio
+			if (has_active_unfill) {
+				fill_ratio = unfill_override_ratio;
+			} else if (position_us >= segment->timestamp_us) {
+				// Determine end time for this segment
+				int64_t segment_end_us = segment->end_timestamp_us;
+				if (segment_end_us == 0) {
+					// No end timestamp - use next segment's start time if available
+					if (segment->next) {
+						segment_end_us = segment->next->timestamp_us;
+					}
+				}
+
+				if (segment_end_us > 0 && position_us < segment_end_us) {
 					// Currently in this segment - calculate progressive fill
-					int64_t segment_duration = segment->next->timestamp_us - segment->timestamp_us;
-					int64_t elapsed = position_us - segment->timestamp_us;
-					fill_ratio = (double)elapsed / (double)segment_duration;
-					if (fill_ratio > 1.0) fill_ratio = 1.0;
-					if (fill_ratio < 0.0) fill_ratio = 0.0;
-				} else if (!segment->next) {
-					// Last segment - fill completely if we've passed its start
-					fill_ratio = 1.0;
-				} else {
-					// Past segment - fill completely
-					fill_ratio = 1.0;
+					int64_t segment_duration = segment_end_us - segment->timestamp_us;
+					if (segment_duration > 0) {
+						int64_t elapsed = position_us - segment->timestamp_us;
+						fill_ratio = (double)elapsed / (double)segment_duration;
+						if (fill_ratio > 1.0) fill_ratio = 1.0;
+						if (fill_ratio < 0.0) fill_ratio = 0.0;
+
+						// If this is an unfill segment, oscillate between 0% and 50%
+						if (segment->is_unfill) {
+							// Reverse: 1.0 -> 0.0 becomes 0.0 -> 1.0
+							fill_ratio = 1.0 - fill_ratio;
+							// Scale to 0%-50% range: 0.0 -> 0.0, 1.0 -> 0.5
+							fill_ratio = fill_ratio * 0.5;
+						}
+					} else {
+						// Zero or negative duration - fill completely
+						fill_ratio = segment->is_unfill ? 0.0 : 1.0;
+					}
+				} else if (segment_end_us == 0 || position_us >= segment_end_us) {
+					// Past segment or no end time
+					if (segment->is_unfill) {
+						// Unfill complete - empty (0%)
+						fill_ratio = 0.0;
+					} else {
+						// Normal fill complete - fully filled
+						fill_ratio = 1.0;
+					}
 				}
 			}
 
@@ -156,35 +247,38 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 				// Height should cover entire line (ruby + base text)
 				double fill_width = seg_w * fill_ratio;
 				int clip_height = seg_h;
-				if (!segment->ruby) {
+				if (!display_ruby) {
 					// For segments without ruby, add the ruby offset to clip height
 					clip_height += max_ruby_height;
 				}
-				cairo_rectangle(cairo, x_offset, 0, fill_width, clip_height);
+				cairo_rectangle(cairo, display_x_offset, 0, fill_width, clip_height);
 				cairo_clip(cairo);
 
 				// Draw filled text
 				cairo_set_source_u32(cairo, state->foreground);
-				if (segment->ruby) {
-					cairo_move_to(cairo, x_offset, 0);
-					pango_printf_ruby(cairo, state->font, scale, segment->text, segment->ruby);
+				if (display_ruby) {
+					cairo_move_to(cairo, display_x_offset, 0);
+					pango_printf_ruby(cairo, state->font, scale, display_text, display_ruby);
 				} else {
 					// Offset by max ruby height to align baseline
-					cairo_move_to(cairo, x_offset, max_ruby_height);
-					pango_printf(cairo, state->font, scale, "%s", segment->text);
+					cairo_move_to(cairo, display_x_offset, max_ruby_height);
+					pango_printf(cairo, state->font, scale, "%s", display_text);
 				}
 
 				// Restore cairo state
 				cairo_restore(cairo);
 			}
 
-			x_offset += seg_w;
+			// Only advance x_offset for non-empty segments
+			if (display_text && display_text[0] != '\0') {
+				x_offset += seg_w;
 
-			// Add space between words
-			if (segment->next) {
-				int space_w, space_h;
-				get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
-				x_offset += space_w;
+				// Add space between words
+				if (segment->next) {
+					int space_w, space_h;
+					get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
+					x_offset += space_w;
+				}
 			}
 
 			segment = segment->next;
