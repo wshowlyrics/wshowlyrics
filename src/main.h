@@ -80,6 +80,7 @@ static void cairo_set_source_u32(cairo_t *cairo, uint32_t color);
 static cairo_subpixel_order_t to_cairo_subpixel_order(enum wl_output_subpixel subpixel);
 static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 		int scale, uint32_t *width, uint32_t *height);
+static void render_transparent_frame(struct lyrics_state *state);
 static void render_frame(struct lyrics_state *state);
 static void set_dirty(struct lyrics_state *state);
 

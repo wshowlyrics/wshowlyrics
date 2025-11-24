@@ -394,6 +394,24 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 	}
 }
 
+static void render_transparent_frame(struct lyrics_state *state) {
+	const int scale = state->output ? state->output->scale : 1;
+	state->current_buffer = get_next_buffer(state->shm,
+			state->buffers, state->width * scale, state->height * scale);
+	if (state->current_buffer) {
+		cairo_t *shm = state->current_buffer->cairo;
+		cairo_save(shm);
+		cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
+		cairo_paint(shm);
+		cairo_restore(shm);
+
+		wl_surface_set_buffer_scale(state->surface, scale);
+		wl_surface_attach(state->surface, state->current_buffer->buffer, 0, 0);
+		wl_surface_damage_buffer(state->surface, 0, 0, state->width, state->height);
+		wl_surface_commit(state->surface);
+	}
+}
+
 static void render_frame(struct lyrics_state *state) {
 	cairo_surface_t *recorder = cairo_recording_surface_create(
 			CAIRO_CONTENT_COLOR_ALPHA, NULL);
@@ -421,21 +439,7 @@ static void render_frame(struct lyrics_state *state) {
 			|| width / scale != state->width
 			|| state->width == 0) {
 		// Size change detected - make overlay transparent during resize
-		// First, render a transparent frame
-		state->current_buffer = get_next_buffer(state->shm,
-				state->buffers, state->width * scale, state->height * scale);
-		if (state->current_buffer) {
-			cairo_t *shm = state->current_buffer->cairo;
-			cairo_save(shm);
-			cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
-			cairo_paint(shm);
-			cairo_restore(shm);
-
-			wl_surface_set_buffer_scale(state->surface, scale);
-			wl_surface_attach(state->surface, state->current_buffer->buffer, 0, 0);
-			wl_surface_damage_buffer(state->surface, 0, 0, state->width, state->height);
-			wl_surface_commit(state->surface);
-		}
+		render_transparent_frame(state);
 
 		// Reconfigure surface size
 		if (width == 0 || height == 0) {
@@ -1127,6 +1131,8 @@ int main(int argc, char *argv[]) {
 					if (calculate_file_md5(state.lyrics.source_file_path, current_checksum)) {
 						if (strcmp(current_checksum, state.lyrics.md5_checksum) != 0) {
 							printf("Lyrics file changed, reloading: %s\n", state.lyrics.source_file_path);
+							// Hide overlay during reload to prevent flickering
+							render_transparent_frame(&state);
 							load_lyrics_for_track(&state);
 							set_dirty(&state);
 						}
