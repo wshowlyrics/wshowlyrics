@@ -45,6 +45,11 @@ void render_ruby_segments(cairo_t *cairo, const char *font, int scale,
                          struct ruby_segment *segments, uint32_t foreground,
                          int *width, int *height);
 
+// Render LRCX word segments without karaoke effect (static display)
+void render_word_segments_static(cairo_t *cairo, const char *font, int scale,
+                                 struct word_segment *segments, uint32_t foreground,
+                                 int *width, int *height);
+
 // Render plain text without segments
 void render_plain_text(cairo_t *cairo, const char *font, int scale,
                       const char *text, uint32_t foreground,
