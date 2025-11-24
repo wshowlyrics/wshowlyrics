@@ -117,6 +117,19 @@ Karaoke-style lyrics with word-level timing:
 - Words progressively fill from left to right as they're sung
 - Use `.lrcx` file extension
 
+**Unfill Effect (Blinking)**
+
+For special vocal patterns where a character needs to blink/oscillate (e.g., エスオーエス), use the `[<MM:SS.xx]` unfill syntax:
+
+```lrcx
+[00:10.00]僕{ぼく}[00:10.50]の[00:11.00]S[<00:11.50][00:12.00][<00:12.50][00:13.00]OS[00:14.00]を
+```
+
+- `[<MM:SS.xx]`: Unfill timestamp (note the `<` prefix)
+- The character before the unfill timestamp will oscillate between 0% and 50% fill
+- Use case: When the same character is held/repeated in vocals (e.g., エスオーエス)
+- Creates a blinking effect during the unfill duration
+
 **Ruby Text (Furigana) Support**
 
 All lyrics file formats (LRCX, LRC, SRT) support ruby text annotations:
