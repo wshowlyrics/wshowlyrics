@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "../lyrics_provider/lyrics_provider.h"
+#include "../lyrics_types/lyrics_types.h"
 
 // Parse timestamp in [MM:SS.xx] or [<MM:SS.xx] format
 // Supports both centiseconds (2 digits) and milliseconds (3 digits)
@@ -28,13 +28,17 @@ bool parse_file_generic(const char *filename, const char *format_name,
 // Example: parse_ruby_text("心{こころ}", &ruby) returns "心" and sets ruby to "こころ"
 char* parse_ruby_text(const char *text, char **ruby_text);
 
-// Split text with ruby annotations into word segments
+// Split text with ruby annotations into ruby segments (for LRC/SRT)
 // Example: "目指せよ　快眠{かいみん}" becomes 2 segments:
 //   1. text="目指せよ　", ruby=NULL
 //   2. text="快眠", ruby="かいみん"
 // Returns number of segments created, or 0 on error
-// Caller must free segments using standard word_segment cleanup
-struct word_segment;
-int parse_ruby_segments(const char *text, int64_t timestamp_us, struct word_segment **segments);
+// No timestamp information - used for furigana display only
+int parse_ruby_segments(const char *text, struct ruby_segment **segments);
+
+// Split text with ruby annotations into karaoke segments (for LRCX)
+// Same as parse_ruby_segments but includes timestamp information for karaoke features
+// Returns number of segments created, or 0 on error
+int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_segment **segments);
 
 #endif // PARSER_UTILS_H

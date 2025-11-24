@@ -7,18 +7,18 @@
 
 // Abstract interface for lyrics providers
 struct lyrics_provider {
-	const char *name;
+    const char *name;
 
-	// Search for lyrics
-	// url: optional file path/URL for local file search optimization
-	bool (*search)(const char *title, const char *artist, const char *album,
-	               const char *url, struct lyrics_data *data);
+    // Search for lyrics
+    // url: optional file path/URL for local file search optimization
+    bool (*search)(const char *title, const char *artist, const char *album,
+                   const char *url, struct lyrics_data *data);
 
-	// Initialize provider
-	bool (*init)(void);
+    // Initialize provider
+    bool (*init)(void);
 
-	// Cleanup provider
-	void (*cleanup)(void);
+    // Cleanup provider
+    void (*cleanup)(void);
 };
 
 // Concrete implementations

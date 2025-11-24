@@ -6,29 +6,29 @@
 
 // Display settings
 struct display_config {
-	char *font_family;
-	int font_size;
-	char *font_weight;  // "normal", "bold", etc.
+    char *font_family;
+    int font_size;
+    char *font_weight;  // "normal", "bold", etc.
 
-	// Colors in RGBA format (0.0 - 1.0)
-	double color_active[4];
-	double color_background[4];
+    // Colors in RGBA format (0.0 - 1.0)
+    double color_active[4];
+    double color_background[4];
 
-	int margin_bottom;
-	int line_spacing;
+    int margin_bottom;
+    int line_spacing;
 };
 
 // Lyrics settings
 struct lyrics_config {
-	char *search_dirs;  // Colon-separated paths
-	char *extensions;   // Comma-separated extensions (e.g., "lrcx,lrc,srt")
-	bool enable_lrclib;
+    char *search_dirs;  // Colon-separated paths
+    char *extensions;   // Comma-separated extensions (e.g., "lrcx,lrc,srt")
+    bool enable_lrclib;
 };
 
 // Main configuration
 struct config {
-	struct display_config display;
-	struct lyrics_config lyrics;
+    struct display_config display;
+    struct lyrics_config lyrics;
 };
 
 // Global configuration instance

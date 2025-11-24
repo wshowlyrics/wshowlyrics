@@ -53,10 +53,10 @@ line_spacing = 10
 search_dirs =
 
 # File extensions to search (comma-separated, no dots)
-# Supported formats: lrcx, lrc, srt
+# Supported formats: lrcx, lrc, srt, vtt
 # If empty or not set, all formats are searched
-# Example: extensions = lrc,srt (this would skip .lrcx files)
-extensions = lrcx,lrc,srt
+# Example: extensions = lrc,srt (this would skip .lrcx and .vtt files)
+extensions = lrcx,lrc,srt,vtt
 
 # Online lyrics provider (lrclib.net)
 # Set to false to disable online lyrics fetching

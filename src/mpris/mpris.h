@@ -5,13 +5,13 @@
 #include <stdint.h>
 
 struct track_metadata {
-	char *title;
-	char *artist;
-	char *album;
-	char *url; // File path or URL
-	char *art_url; // Album art URL (mpris:artUrl)
-	int64_t length_us; // Length in microseconds
-	int64_t position_us; // Current position in microseconds
+    char *title;
+    char *artist;
+    char *album;
+    char *url; // File path or URL
+    char *art_url; // Album art URL (mpris:artUrl)
+    int64_t length_us; // Length in microseconds
+    int64_t position_us; // Current position in microseconds
 };
 
 // Initialize MPRIS connection

@@ -39,7 +39,7 @@
 
 // Create 32-bit color from RGBA components (0-255 range)
 #define COLOR_MAKE_RGBA(r, g, b, a) \
-	((uint32_t)(r) << 24 | (uint32_t)(g) << 16 | (uint32_t)(b) << 8 | (uint32_t)(a))
+    ((uint32_t)(r) << 24 | (uint32_t)(g) << 16 | (uint32_t)(b) << 8 | (uint32_t)(a))
 
 // Convert color component to Cairo range (0.0 - 1.0)
 #define COLOR_TO_CAIRO(component) ((component) / 255.0)

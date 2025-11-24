@@ -6,1178 +6,1253 @@
 
 // Helper function to check if current lyrics file is a specific format
 static bool is_lyrics_format(struct lyrics_state *state, const char *extension) {
-	if (!state->lyrics.source_file_path) {
-		return false;
-	}
-	const char *ext = strrchr(state->lyrics.source_file_path, '.');
-	return ext && strcasecmp(ext, extension) == 0;
+    if (!state->lyrics.source_file_path) {
+        return false;
+    }
+    const char *ext = strrchr(state->lyrics.source_file_path, '.');
+    return ext && strcasecmp(ext, extension) == 0;
 }
 
 static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
-	cairo_set_source_rgba(cairo,
-			COLOR_CAIRO_R(color),
-			COLOR_CAIRO_G(color),
-			COLOR_CAIRO_B(color),
-			COLOR_CAIRO_A(color));
+    cairo_set_source_rgba(cairo,
+            COLOR_CAIRO_R(color),
+            COLOR_CAIRO_G(color),
+            COLOR_CAIRO_B(color),
+            COLOR_CAIRO_A(color));
 }
 
 static cairo_subpixel_order_t to_cairo_subpixel_order(
-		enum wl_output_subpixel subpixel) {
-	switch (subpixel) {
-	case WL_OUTPUT_SUBPIXEL_HORIZONTAL_RGB:
-		return CAIRO_SUBPIXEL_ORDER_RGB;
-	case WL_OUTPUT_SUBPIXEL_HORIZONTAL_BGR:
-		return CAIRO_SUBPIXEL_ORDER_BGR;
-	case WL_OUTPUT_SUBPIXEL_VERTICAL_RGB:
-		return CAIRO_SUBPIXEL_ORDER_VRGB;
-	case WL_OUTPUT_SUBPIXEL_VERTICAL_BGR:
-		return CAIRO_SUBPIXEL_ORDER_VBGR;
-	default:
-		return CAIRO_SUBPIXEL_ORDER_DEFAULT;
-	}
-	return CAIRO_SUBPIXEL_ORDER_DEFAULT;
+        enum wl_output_subpixel subpixel) {
+    switch (subpixel) {
+    case WL_OUTPUT_SUBPIXEL_HORIZONTAL_RGB:
+        return CAIRO_SUBPIXEL_ORDER_RGB;
+    case WL_OUTPUT_SUBPIXEL_HORIZONTAL_BGR:
+        return CAIRO_SUBPIXEL_ORDER_BGR;
+    case WL_OUTPUT_SUBPIXEL_VERTICAL_RGB:
+        return CAIRO_SUBPIXEL_ORDER_VRGB;
+    case WL_OUTPUT_SUBPIXEL_VERTICAL_BGR:
+        return CAIRO_SUBPIXEL_ORDER_VBGR;
+    default:
+        return CAIRO_SUBPIXEL_ORDER_DEFAULT;
+    }
+    return CAIRO_SUBPIXEL_ORDER_DEFAULT;
 }
 
 static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
-		int scale, uint32_t *width, uint32_t *height) {
-	const char *text_to_display = " "; // Default to single space
-	bool has_lyrics = (state->current_line && state->current_line->text);
-	bool is_empty_line = false; // Track if current line is empty (instrumental break)
-	bool is_karaoke = false; // Track if this is karaoke-style LRCX
+        int scale, uint32_t *width, uint32_t *height) {
+    const char *text_to_display = " "; // Default to single space
+    bool has_lyrics = (state->current_line && state->current_line->text);
+    bool is_empty_line = false; // Track if current line is empty (instrumental break)
+    bool is_karaoke = false; // Track if this is karaoke-style LRCX
 
-	if (has_lyrics) {
-		// Check if the text is empty or only whitespace
-		const char *text = state->current_line->text;
-		if (text[0] == '\0') {
-			// Empty string - treat as idle/instrumental break
-			is_empty_line = true;
-			text_to_display = " "; // Display single space to keep surface visible
-		} else {
-			text_to_display = text;
-			// Karaoke mode is only enabled for LRCX format
-			is_karaoke = is_lyrics_format(state, ".lrcx");
-		}
-	}
+    if (has_lyrics) {
+        // Check if the text is empty or only whitespace
+        const char *text = state->current_line->text;
+        if (text[0] == '\0') {
+            // Empty string - treat as idle/instrumental break
+            is_empty_line = true;
+            text_to_display = " "; // Display single space to keep surface visible
+        } else {
+            text_to_display = text;
+            // Karaoke mode is only enabled for LRCX format
+            is_karaoke = is_lyrics_format(state, ".lrcx");
+        }
+    }
 
-	// Use transparent background when no lyrics or during instrumental breaks
-	uint32_t background_color = (has_lyrics && !is_empty_line) ? state->background : 0x00000000;
+    // Use transparent background when no lyrics or during instrumental breaks
+    uint32_t background_color = (has_lyrics && !is_empty_line) ? state->background : 0x00000000;
 
-	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
-	cairo_set_source_u32(cairo, background_color);
-	cairo_paint(cairo);
+    cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
+    cairo_set_source_u32(cairo, background_color);
+    cairo_paint(cairo);
 
-	if (is_karaoke) {
-		// Karaoke-style rendering with progressive word fill (wipe effect)
-		int x_offset = 0;
-		struct word_segment *segment = state->current_line->segments;
+    if (is_karaoke) {
+        // Karaoke-style rendering with progressive word fill (wipe effect)
+        int x_offset = 0;
+        struct word_segment *segment = state->current_line->segments;
 
-		// Get current playback position for progressive fill
-		int64_t position_us = mpris_get_position();
+        // Get current playback position for progressive fill
+        int64_t position_us = mpris_get_position();
 
-		// Calculate maximum ruby height across all segments for baseline alignment
-		int max_ruby_height = 0;
-		struct word_segment *seg_iter = segment;
-		while (seg_iter) {
-			if (seg_iter->ruby) {
-				int ruby_w, ruby_h;
-				get_text_size(cairo, state->font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", seg_iter->ruby);
-				if (ruby_h > max_ruby_height) {
-					max_ruby_height = ruby_h;
-				}
-			}
-			seg_iter = seg_iter->next;
-		}
+        // Calculate maximum ruby height across all segments for baseline alignment
+        int max_ruby_height = 0;
+        struct word_segment *seg_iter = segment;
+        while (seg_iter) {
+            if (seg_iter->ruby) {
+                int ruby_w, ruby_h;
+                get_text_size(cairo, state->font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", seg_iter->ruby);
+                if (ruby_h > max_ruby_height) {
+                    max_ruby_height = ruby_h;
+                }
+            }
+            seg_iter = seg_iter->next;
+        }
 
-		// First pass: draw all text in dimmed color
-		uint32_t dimmed = state->foreground;
-		uint8_t alpha = COLOR_EXTRACT_A(dimmed);
-		dimmed = (dimmed & 0xFFFFFF00) | (alpha / 2);
-		cairo_set_source_u32(cairo, dimmed);
+        // First pass: draw all text in dimmed color
+        uint32_t dimmed = state->foreground;
+        uint8_t alpha = COLOR_EXTRACT_A(dimmed);
+        dimmed = (dimmed & 0xFFFFFF00) | (alpha / 2);
+        cairo_set_source_u32(cairo, dimmed);
 
-		seg_iter = segment;
-		int x_iter = 0;
-		while (seg_iter) {
-			// Skip empty segments in first pass
-			bool is_empty_seg = (!seg_iter->text || seg_iter->text[0] == '\0');
+        seg_iter = segment;
+        int x_iter = 0;
+        while (seg_iter) {
+            // Skip empty segments in first pass
+            bool is_empty_seg = (!seg_iter->text || seg_iter->text[0] == '\0');
 
-			if (!is_empty_seg) {
-				int seg_w, seg_h;
-				if (seg_iter->ruby) {
-					// Ruby text present - use ruby rendering
-					get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, seg_iter->text, seg_iter->ruby);
-					cairo_move_to(cairo, x_iter, 0);
-					pango_printf_ruby(cairo, state->font, scale, seg_iter->text, seg_iter->ruby);
-				} else {
-					// No ruby text - offset by max ruby height to align baseline
-					get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", seg_iter->text);
-					cairo_move_to(cairo, x_iter, max_ruby_height);
-					pango_printf(cairo, state->font, scale, "%s", seg_iter->text);
-				}
+            if (!is_empty_seg) {
+                int seg_w, seg_h;
+                if (seg_iter->ruby) {
+                    // Ruby text present - use ruby rendering
+                    get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, seg_iter->text, seg_iter->ruby);
+                    cairo_move_to(cairo, x_iter, 0);
+                    pango_printf_ruby(cairo, state->font, scale, seg_iter->text, seg_iter->ruby);
+                } else {
+                    // No ruby text - offset by max ruby height to align baseline
+                    get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", seg_iter->text);
+                    cairo_move_to(cairo, x_iter, max_ruby_height);
+                    pango_printf(cairo, state->font, scale, "%s", seg_iter->text);
+                }
 
-				x_iter += seg_w;
-				if (seg_iter->next) {
-					int space_w, space_h;
-					get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
-					x_iter += space_w;
-				}
-			}
-			seg_iter = seg_iter->next;
-		}
+                x_iter += seg_w;
+                if (seg_iter->next) {
+                    int space_w, space_h;
+                    get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
+                    x_iter += space_w;
+                }
+            }
+            seg_iter = seg_iter->next;
+        }
 
-		// Second pass: draw filled portions with clipping
-		x_offset = 0;
-		segment = state->current_line->segments;
+        // Second pass: draw filled portions with clipping
+        x_offset = 0;
+        segment = state->current_line->segments;
 
-		while (segment) {
-			// Check if any upcoming unfill segment is targeting this segment
-			bool has_active_unfill = false;
-			double unfill_override_ratio = 0.0;
+        while (segment) {
+            // Check if any upcoming unfill segment is targeting this segment
+            bool has_active_unfill = false;
+            double unfill_override_ratio = 0.0;
 
-			// Look ahead for unfill segments
-			if (segment->text && segment->text[0] != '\0') {
-				struct word_segment *look = segment->next;
-				while (look) {
-					bool is_unfill = look->is_unfill && (!look->text || look->text[0] == '\0');
-					if (is_unfill && position_us >= look->timestamp_us &&
-					    (look->end_timestamp_us == 0 || position_us < look->end_timestamp_us)) {
-						has_active_unfill = true;
-						// Calculate unfill ratio
-						int64_t unfill_end = look->end_timestamp_us ? look->end_timestamp_us :
-							(look->next ? look->next->timestamp_us : 0);
-						if (unfill_end > 0) {
-							int64_t duration = unfill_end - look->timestamp_us;
-							if (duration > 0) {
-								int64_t elapsed = position_us - look->timestamp_us;
-								double ratio = (double)elapsed / (double)duration;
-								ratio = 1.0 - ratio; // reverse
-								unfill_override_ratio = ratio * 0.5; // scale to 0-50%
-							}
-						}
-						break;
-					}
-					// Only check empty segments
-					if (look->text && look->text[0] != '\0') break;
-					look = look->next;
-				}
-			}
+            // Look ahead for unfill segments
+            if (segment->text && segment->text[0] != '\0') {
+                struct word_segment *look = segment->next;
+                while (look) {
+                    bool is_unfill = look->is_unfill && (!look->text || look->text[0] == '\0');
+                    if (is_unfill && position_us >= look->timestamp_us &&
+                        (look->end_timestamp_us == 0 || position_us < look->end_timestamp_us)) {
+                        has_active_unfill = true;
+                        // Calculate unfill ratio
+                        int64_t unfill_end = look->end_timestamp_us ? look->end_timestamp_us :
+                            (look->next ? look->next->timestamp_us : 0);
+                        if (unfill_end > 0) {
+                            int64_t duration = unfill_end - look->timestamp_us;
+                            if (duration > 0) {
+                                int64_t elapsed = position_us - look->timestamp_us;
+                                double ratio = (double)elapsed / (double)duration;
+                                ratio = 1.0 - ratio; // reverse
+                                unfill_override_ratio = ratio * 0.5; // scale to 0-50%
+                            }
+                        }
+                        break;
+                    }
+                    // Only check empty segments
+                    if (look->text && look->text[0] != '\0') break;
+                    look = look->next;
+                }
+            }
 
-			// For unfill segments with empty text, use previous segment's text
-			const char *display_text = segment->text;
-			const char *display_ruby = segment->ruby;
-			int display_x_offset = x_offset;
-			bool is_empty_unfill = segment->is_unfill && (!segment->text || segment->text[0] == '\0');
+            // For unfill segments with empty text, use previous segment's text
+            const char *display_text = segment->text;
+            const char *display_ruby = segment->ruby;
+            int display_x_offset = x_offset;
+            bool is_empty_unfill = segment->is_unfill && (!segment->text || segment->text[0] == '\0');
 
-			// Skip rendering empty unfill segments themselves (they just modify previous segment)
-			if (is_empty_unfill) {
-				segment = segment->next;
-				continue;
-			}
+            // Skip rendering empty unfill segments themselves (they just modify previous segment)
+            if (is_empty_unfill) {
+                segment = segment->next;
+                continue;
+            }
 
-			int seg_w, seg_h;
-			if (display_ruby) {
-				get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, display_text, display_ruby);
-			} else {
-				get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", display_text ? display_text : "");
-			}
+            int seg_w, seg_h;
+            if (display_ruby) {
+                get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, display_text, display_ruby);
+            } else {
+                get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", display_text ? display_text : "");
+            }
 
-			// Calculate fill ratio for this segment
-			double fill_ratio = 0.0;
+            // Calculate fill ratio for this segment
+            double fill_ratio = 0.0;
 
-			// If unfill is active for this segment, use unfill ratio
-			if (has_active_unfill) {
-				fill_ratio = unfill_override_ratio;
-			} else if (position_us >= segment->timestamp_us) {
-				// Determine end time for this segment
-				int64_t segment_end_us = segment->end_timestamp_us;
-				if (segment_end_us == 0) {
-					// No end timestamp - use next segment's start time if available
-					if (segment->next) {
-						segment_end_us = segment->next->timestamp_us;
-					}
-				}
+            // If unfill is active for this segment, use unfill ratio
+            if (has_active_unfill) {
+                fill_ratio = unfill_override_ratio;
+            } else if (position_us >= segment->timestamp_us) {
+                // Determine end time for this segment
+                int64_t segment_end_us = segment->end_timestamp_us;
+                if (segment_end_us == 0) {
+                    // No end timestamp - use next segment's start time if available
+                    if (segment->next) {
+                        segment_end_us = segment->next->timestamp_us;
+                    }
+                }
 
-				if (segment_end_us > 0 && position_us < segment_end_us) {
-					// Currently in this segment - calculate progressive fill
-					int64_t segment_duration = segment_end_us - segment->timestamp_us;
-					if (segment_duration > 0) {
-						int64_t elapsed = position_us - segment->timestamp_us;
-						fill_ratio = (double)elapsed / (double)segment_duration;
-						if (fill_ratio > 1.0) fill_ratio = 1.0;
-						if (fill_ratio < 0.0) fill_ratio = 0.0;
+                if (segment_end_us > 0 && position_us < segment_end_us) {
+                    // Currently in this segment - calculate progressive fill
+                    int64_t segment_duration = segment_end_us - segment->timestamp_us;
+                    if (segment_duration > 0) {
+                        int64_t elapsed = position_us - segment->timestamp_us;
+                        fill_ratio = (double)elapsed / (double)segment_duration;
+                        if (fill_ratio > 1.0) fill_ratio = 1.0;
+                        if (fill_ratio < 0.0) fill_ratio = 0.0;
 
-						// If this is an unfill segment, oscillate between 0% and 50%
-						if (segment->is_unfill) {
-							// Reverse: 1.0 -> 0.0 becomes 0.0 -> 1.0
-							fill_ratio = 1.0 - fill_ratio;
-							// Scale to 0%-50% range: 0.0 -> 0.0, 1.0 -> 0.5
-							fill_ratio = fill_ratio * 0.5;
-						}
-					} else {
-						// Zero or negative duration - fill completely
-						fill_ratio = segment->is_unfill ? 0.0 : 1.0;
-					}
-				} else if (segment_end_us == 0 || position_us >= segment_end_us) {
-					// Past segment or no end time
-					if (segment->is_unfill) {
-						// Unfill complete - empty (0%)
-						fill_ratio = 0.0;
-					} else {
-						// Normal fill complete - fully filled
-						fill_ratio = 1.0;
-					}
-				}
-			}
+                        // If this is an unfill segment, oscillate between 0% and 50%
+                        if (segment->is_unfill) {
+                            // Reverse: 1.0 -> 0.0 becomes 0.0 -> 1.0
+                            fill_ratio = 1.0 - fill_ratio;
+                            // Scale to 0%-50% range: 0.0 -> 0.0, 1.0 -> 0.5
+                            fill_ratio = fill_ratio * 0.5;
+                        }
+                    } else {
+                        // Zero or negative duration - fill completely
+                        fill_ratio = segment->is_unfill ? 0.0 : 1.0;
+                    }
+                } else if (segment_end_us == 0 || position_us >= segment_end_us) {
+                    // Past segment or no end time
+                    if (segment->is_unfill) {
+                        // Unfill complete - empty (0%)
+                        fill_ratio = 0.0;
+                    } else {
+                        // Normal fill complete - fully filled
+                        fill_ratio = 1.0;
+                    }
+                }
+            }
 
-			if (fill_ratio > 0.0) {
-				// Save cairo state
-				cairo_save(cairo);
+            if (fill_ratio > 0.0) {
+                // Save cairo state
+                cairo_save(cairo);
 
-				// Set clipping rectangle for progressive fill
-				// Height should cover entire line (ruby + base text)
-				double fill_width = seg_w * fill_ratio;
-				int clip_height = seg_h;
-				if (!display_ruby) {
-					// For segments without ruby, add the ruby offset to clip height
-					clip_height += max_ruby_height;
-				}
-				cairo_rectangle(cairo, display_x_offset, 0, fill_width, clip_height);
-				cairo_clip(cairo);
+                // Set clipping rectangle for progressive fill
+                // Height should cover entire line (ruby + base text)
+                double fill_width = seg_w * fill_ratio;
+                int clip_height = seg_h;
+                if (!display_ruby) {
+                    // For segments without ruby, add the ruby offset to clip height
+                    clip_height += max_ruby_height;
+                }
+                cairo_rectangle(cairo, display_x_offset, 0, fill_width, clip_height);
+                cairo_clip(cairo);
 
-				// Draw filled text
-				cairo_set_source_u32(cairo, state->foreground);
-				if (display_ruby) {
-					cairo_move_to(cairo, display_x_offset, 0);
-					pango_printf_ruby(cairo, state->font, scale, display_text, display_ruby);
-				} else {
-					// Offset by max ruby height to align baseline
-					cairo_move_to(cairo, display_x_offset, max_ruby_height);
-					pango_printf(cairo, state->font, scale, "%s", display_text);
-				}
+                // Draw filled text
+                cairo_set_source_u32(cairo, state->foreground);
+                if (display_ruby) {
+                    cairo_move_to(cairo, display_x_offset, 0);
+                    pango_printf_ruby(cairo, state->font, scale, display_text, display_ruby);
+                } else {
+                    // Offset by max ruby height to align baseline
+                    cairo_move_to(cairo, display_x_offset, max_ruby_height);
+                    pango_printf(cairo, state->font, scale, "%s", display_text);
+                }
 
-				// Restore cairo state
-				cairo_restore(cairo);
-			}
+                // Restore cairo state
+                cairo_restore(cairo);
+            }
 
-			// Only advance x_offset for non-empty segments
-			if (display_text && display_text[0] != '\0') {
-				x_offset += seg_w;
+            // Only advance x_offset for non-empty segments
+            if (display_text && display_text[0] != '\0') {
+                x_offset += seg_w;
 
-				// Add space between words
-				if (segment->next) {
-					int space_w, space_h;
-					get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
-					x_offset += space_w;
-				}
-			}
+                // Add space between words
+                if (segment->next) {
+                    int space_w, space_h;
+                    get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
+                    x_offset += space_w;
+                }
+            }
 
-			segment = segment->next;
-		}
+            segment = segment->next;
+        }
 
-		// Calculate total width and height
-		// Need to recalculate with proper segment heights including ruby
-		int total_w = 0;
-		int total_h = 0;
+        // Calculate total width and height
+        // Need to recalculate with proper segment heights including ruby
+        int total_w = 0;
+        int total_h = 0;
 
-		struct word_segment *size_iter = state->current_line->segments;
-		while (size_iter) {
-			int seg_w, seg_h;
-			if (size_iter->ruby) {
-				get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, size_iter->text, size_iter->ruby);
-			} else {
-				get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", size_iter->text);
-				seg_h += max_ruby_height; // Add ruby offset for proper height
-			}
+        struct word_segment *size_iter = state->current_line->segments;
+        while (size_iter) {
+            int seg_w, seg_h;
+            if (size_iter->ruby) {
+                get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, size_iter->text, size_iter->ruby);
+            } else {
+                get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", size_iter->text);
+                seg_h += max_ruby_height; // Add ruby offset for proper height
+            }
 
-			total_w += seg_w;
-			if (seg_h > total_h) {
-				total_h = seg_h;
-			}
+            total_w += seg_w;
+            if (seg_h > total_h) {
+                total_h = seg_h;
+            }
 
-			if (size_iter->next) {
-				int space_w, space_h;
-				get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
-				total_w += space_w;
-			}
+            if (size_iter->next) {
+                int space_w, space_h;
+                get_text_size(cairo, state->font, &space_w, &space_h, NULL, scale, " ");
+                total_w += space_w;
+            }
 
-			size_iter = size_iter->next;
-		}
+            size_iter = size_iter->next;
+        }
 
-		*width = total_w;
-		*height = total_h;
-	} else {
-		// Normal rendering (non-karaoke)
-		cairo_set_source_u32(cairo, state->foreground);
+        *width = total_w;
+        *height = total_h;
+    } else {
+        // Normal rendering (non-karaoke)
+        cairo_set_source_u32(cairo, state->foreground);
 
-		// Check if this line has segments (for ruby text support)
-		if (has_lyrics && state->current_line->segments && state->current_line->segment_count > 0) {
-			// Render with segments for ruby text support
-			struct word_segment *segment = state->current_line->segments;
+        // Check if this line has segments (for ruby text support)
+        // Note: LRCX uses word_segment (with karaoke), LRC/SRT use ruby_segment (furigana only)
+        bool has_word_segments = (has_lyrics && state->current_line->segments && state->current_line->segment_count > 0);
+        bool has_ruby_segments = (has_lyrics && state->current_line->ruby_segments && state->current_line->segment_count > 0);
 
-			// Calculate maximum ruby height for baseline alignment
-			int max_ruby_height = 0;
-			struct word_segment *seg_iter = segment;
-			while (seg_iter) {
-				if (seg_iter->ruby) {
-					int ruby_w, ruby_h;
-					get_text_size(cairo, state->font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", seg_iter->ruby);
-					if (ruby_h > max_ruby_height) {
-						max_ruby_height = ruby_h;
-					}
-				}
-				seg_iter = seg_iter->next;
-			}
+        if (has_ruby_segments && !has_word_segments) {
+            // Render LRC/SRT with ruby_segment (furigana only, no karaoke)
+            struct ruby_segment *ruby_seg = state->current_line->ruby_segments;
 
-			// Get base text height for line spacing
-			int base_text_h;
-			get_text_size(cairo, state->font, NULL, &base_text_h, NULL, scale, "A");
+            // Calculate maximum ruby height for baseline alignment
+            int max_ruby_height = 0;
+            struct ruby_segment *seg_iter = ruby_seg;
+            while (seg_iter) {
+                if (seg_iter->ruby) {
+                    int ruby_w, ruby_h;
+                    get_text_size(cairo, state->font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", seg_iter->ruby);
+                    if (ruby_h > max_ruby_height) {
+                        max_ruby_height = ruby_h;
+                    }
+                }
+                seg_iter = seg_iter->next;
+            }
 
-			// Render all segments
-			int x_offset = 0;
-			int y_offset = 0;
-			int total_width = 0;
-			int line_width = 0;
-			int line_count = 1; // Track number of lines
+            // Get base text height for line spacing
+            int base_text_h;
+            get_text_size(cairo, state->font, NULL, &base_text_h, NULL, scale, "A");
 
-			while (segment) {
-				// Check if segment contains newline
-				if (segment->text && strchr(segment->text, '\n')) {
-					// Handle newline - move to next line
-					if (line_width > total_width) {
-						total_width = line_width;
-					}
-					y_offset += base_text_h + max_ruby_height;
-					x_offset = 0;
-					line_width = 0;
-					line_count++;
-					segment = segment->next;
-					continue;
-				}
+            // Render all segments
+            int x_offset = 0;
+            int y_offset = 0;
+            int total_width = 0;
+            int line_width = 0;
+            int line_count = 1;
 
-				int seg_w, seg_h;
-				if (segment->ruby) {
-					get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, segment->text, segment->ruby);
-					cairo_move_to(cairo, x_offset, y_offset);
-					pango_printf_ruby(cairo, state->font, scale, segment->text, segment->ruby);
-				} else {
-					get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", segment->text);
-					cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
-					pango_printf(cairo, state->font, scale, "%s", segment->text);
-				}
+            while (ruby_seg) {
+                // Check if segment contains newline
+                if (ruby_seg->text && strchr(ruby_seg->text, '\n')) {
+                    // Handle newline - move to next line
+                    if (line_width > total_width) {
+                        total_width = line_width;
+                    }
+                    y_offset += base_text_h + max_ruby_height;
+                    x_offset = 0;
+                    line_width = 0;
+                    line_count++;
+                    ruby_seg = ruby_seg->next;
+                    continue;
+                }
 
-				x_offset += seg_w;
-				line_width += seg_w;
+                int seg_w, seg_h;
+                if (ruby_seg->ruby) {
+                    get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, ruby_seg->text, ruby_seg->ruby);
+                    cairo_move_to(cairo, x_offset, y_offset);
+                    pango_printf_ruby(cairo, state->font, scale, ruby_seg->text, ruby_seg->ruby);
+                } else {
+                    get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", ruby_seg->text);
+                    cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
+                    pango_printf(cairo, state->font, scale, "%s", ruby_seg->text);
+                }
 
-				segment = segment->next;
-			}
+                x_offset += seg_w;
+                line_width += seg_w;
+                ruby_seg = ruby_seg->next;
+            }
 
-			// Final line width check
-			if (line_width > total_width) {
-				total_width = line_width;
-			}
+            // Final line width check
+            if (line_width > total_width) {
+                total_width = line_width;
+            }
 
-			// Calculate total height based on number of lines
-			int total_height = line_count * (base_text_h + max_ruby_height);
+            // Calculate total height based on number of lines
+            int total_height = line_count * (base_text_h + max_ruby_height);
 
-			*width = total_width;
-			*height = total_height;
-		} else {
-			// No segments - simple text rendering
-			int w, h;
-			get_text_size(cairo, state->font, &w, &h, NULL, scale, "%s", text_to_display);
+            *width = total_width;
+            *height = total_height;
+        } else if (has_lyrics && has_word_segments) {
+            // Render LRCX with word_segment (karaoke features)
+            struct word_segment *segment = state->current_line->segments;
 
-			cairo_move_to(cairo, 0, 0);
-			pango_printf(cairo, state->font, scale, "%s", text_to_display);
+            // Calculate maximum ruby height for baseline alignment
+            int max_ruby_height = 0;
+            struct word_segment *seg_iter = segment;
+            while (seg_iter) {
+                if (seg_iter->ruby) {
+                    int ruby_w, ruby_h;
+                    get_text_size(cairo, state->font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", seg_iter->ruby);
+                    if (ruby_h > max_ruby_height) {
+                        max_ruby_height = ruby_h;
+                    }
+                }
+                seg_iter = seg_iter->next;
+            }
 
-			*width = w;
-			*height = h;
-		}
-	}
+            // Get base text height for line spacing
+            int base_text_h;
+            get_text_size(cairo, state->font, NULL, &base_text_h, NULL, scale, "A");
+
+            // Render all segments
+            int x_offset = 0;
+            int y_offset = 0;
+            int total_width = 0;
+            int line_width = 0;
+            int line_count = 1; // Track number of lines
+
+            while (segment) {
+                // Check if segment contains newline
+                if (segment->text && strchr(segment->text, '\n')) {
+                    // Handle newline - move to next line
+                    if (line_width > total_width) {
+                        total_width = line_width;
+                    }
+                    y_offset += base_text_h + max_ruby_height;
+                    x_offset = 0;
+                    line_width = 0;
+                    line_count++;
+                    segment = segment->next;
+                    continue;
+                }
+
+                int seg_w, seg_h;
+                if (segment->ruby) {
+                    get_ruby_text_size(cairo, state->font, &seg_w, &seg_h, scale, segment->text, segment->ruby);
+                    cairo_move_to(cairo, x_offset, y_offset);
+                    pango_printf_ruby(cairo, state->font, scale, segment->text, segment->ruby);
+                } else {
+                    get_text_size(cairo, state->font, &seg_w, &seg_h, NULL, scale, "%s", segment->text);
+                    cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
+                    pango_printf(cairo, state->font, scale, "%s", segment->text);
+                }
+
+                x_offset += seg_w;
+                line_width += seg_w;
+
+                segment = segment->next;
+            }
+
+            // Final line width check
+            if (line_width > total_width) {
+                total_width = line_width;
+            }
+
+            // Calculate total height based on number of lines
+            int total_height = line_count * (base_text_h + max_ruby_height);
+
+            *width = total_width;
+            *height = total_height;
+        } else {
+            // No segments - simple text rendering
+            int w, h;
+            get_text_size(cairo, state->font, &w, &h, NULL, scale, "%s", text_to_display);
+
+            cairo_move_to(cairo, 0, 0);
+            pango_printf(cairo, state->font, scale, "%s", text_to_display);
+
+            *width = w;
+            *height = h;
+        }
+    }
 }
 
 static void render_transparent_frame(struct lyrics_state *state) {
-	const int scale = state->output ? state->output->scale : 1;
-	state->current_buffer = get_next_buffer(state->shm,
-			state->buffers, state->width * scale, state->height * scale);
-	if (state->current_buffer) {
-		cairo_t *shm = state->current_buffer->cairo;
-		cairo_save(shm);
-		cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
-		cairo_paint(shm);
-		cairo_restore(shm);
+    const int scale = state->output ? state->output->scale : 1;
+    state->current_buffer = get_next_buffer(state->shm,
+            state->buffers, state->width * scale, state->height * scale);
+    if (state->current_buffer) {
+        cairo_t *shm = state->current_buffer->cairo;
+        cairo_save(shm);
+        cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(shm);
+        cairo_restore(shm);
 
-		wl_surface_set_buffer_scale(state->surface, scale);
-		wl_surface_attach(state->surface, state->current_buffer->buffer, 0, 0);
-		wl_surface_damage_buffer(state->surface, 0, 0, state->width, state->height);
-		wl_surface_commit(state->surface);
-	}
+        wl_surface_set_buffer_scale(state->surface, scale);
+        wl_surface_attach(state->surface, state->current_buffer->buffer, 0, 0);
+        wl_surface_damage_buffer(state->surface, 0, 0, state->width, state->height);
+        wl_surface_commit(state->surface);
+    }
 }
 
 static void render_frame(struct lyrics_state *state) {
-	cairo_surface_t *recorder = cairo_recording_surface_create(
-			CAIRO_CONTENT_COLOR_ALPHA, NULL);
-	cairo_t *cairo = cairo_create(recorder);
-	cairo_set_antialias(cairo, CAIRO_ANTIALIAS_BEST);
-	cairo_font_options_t *fo = cairo_font_options_create();
-	cairo_font_options_set_hint_style(fo, CAIRO_HINT_STYLE_FULL);
-	cairo_font_options_set_antialias(fo, CAIRO_ANTIALIAS_SUBPIXEL);
-	if (state->output) {
-		cairo_font_options_set_subpixel_order(
-				fo, to_cairo_subpixel_order(state->output->subpixel));
-	}
-	cairo_set_font_options(cairo, fo);
-	cairo_font_options_destroy(fo);
-	cairo_save(cairo);
-	cairo_set_operator(cairo, CAIRO_OPERATOR_CLEAR);
-	cairo_paint(cairo);
-	cairo_restore(cairo);
+    cairo_surface_t *recorder = cairo_recording_surface_create(
+            CAIRO_CONTENT_COLOR_ALPHA, NULL);
+    cairo_t *cairo = cairo_create(recorder);
+    cairo_set_antialias(cairo, CAIRO_ANTIALIAS_BEST);
+    cairo_font_options_t *fo = cairo_font_options_create();
+    cairo_font_options_set_hint_style(fo, CAIRO_HINT_STYLE_FULL);
+    cairo_font_options_set_antialias(fo, CAIRO_ANTIALIAS_SUBPIXEL);
+    if (state->output) {
+        cairo_font_options_set_subpixel_order(
+                fo, to_cairo_subpixel_order(state->output->subpixel));
+    }
+    cairo_set_font_options(cairo, fo);
+    cairo_font_options_destroy(fo);
+    cairo_save(cairo);
+    cairo_set_operator(cairo, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cairo);
+    cairo_restore(cairo);
 
-	const int scale = state->output ? state->output->scale : 1;
-	uint32_t width = 0, height = 0;
-	render_to_cairo(cairo, state, scale, &width, &height);
+    const int scale = state->output ? state->output->scale : 1;
+    uint32_t width = 0, height = 0;
+    render_to_cairo(cairo, state, scale, &width, &height);
 
-	if (height / scale != state->height
-			|| width / scale != state->width
-			|| state->width == 0) {
-		// Size change detected - make overlay transparent during resize
-		render_transparent_frame(state);
+    if (height / scale != state->height
+            || width / scale != state->width
+            || state->width == 0) {
+        // Size change detected - make overlay transparent during resize
+        render_transparent_frame(state);
 
-		// Reconfigure surface size
-		if (width == 0 || height == 0) {
-			// Keep a minimal 1x1 surface instead of detaching
-			zwlr_layer_surface_v1_set_size(state->layer_surface, 1, 1);
-		} else {
-			zwlr_layer_surface_v1_set_size(
-					state->layer_surface, width / scale, height / scale);
-		}
+        // Reconfigure surface size
+        if (width == 0 || height == 0) {
+            // Keep a minimal 1x1 surface instead of detaching
+            zwlr_layer_surface_v1_set_size(state->layer_surface, 1, 1);
+        } else {
+            zwlr_layer_surface_v1_set_size(
+                    state->layer_surface, width / scale, height / scale);
+        }
 
-		wl_surface_commit(state->surface);
-	} else if (height > 0) {
-		// Replay recording into shm and send it off
-		state->current_buffer = get_next_buffer(state->shm,
-				state->buffers, state->width * scale, state->height * scale);
-		if (!state->current_buffer) {
-			cairo_surface_destroy(recorder);
-			cairo_destroy(cairo);
-			return;
-		}
-		cairo_t *shm = state->current_buffer->cairo;
+        wl_surface_commit(state->surface);
+    } else if (height > 0) {
+        // Replay recording into shm and send it off
+        state->current_buffer = get_next_buffer(state->shm,
+                state->buffers, state->width * scale, state->height * scale);
+        if (!state->current_buffer) {
+            cairo_surface_destroy(recorder);
+            cairo_destroy(cairo);
+            return;
+        }
+        cairo_t *shm = state->current_buffer->cairo;
 
-		cairo_save(shm);
-		cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
-		cairo_paint(shm);
-		cairo_restore(shm);
+        cairo_save(shm);
+        cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(shm);
+        cairo_restore(shm);
 
-		cairo_set_source_surface(shm, recorder, 0.0, 0.0);
-		cairo_paint(shm);
+        cairo_set_source_surface(shm, recorder, 0.0, 0.0);
+        cairo_paint(shm);
 
-		wl_surface_set_buffer_scale(state->surface, scale);
-		wl_surface_attach(state->surface,
-				state->current_buffer->buffer, 0, 0);
-		wl_surface_damage_buffer(state->surface, 0, 0,
-				state->width, state->height);
-		wl_surface_commit(state->surface);
-	}
+        wl_surface_set_buffer_scale(state->surface, scale);
+        wl_surface_attach(state->surface,
+                state->current_buffer->buffer, 0, 0);
+        wl_surface_damage_buffer(state->surface, 0, 0,
+                state->width, state->height);
+        wl_surface_commit(state->surface);
+    }
 
-	cairo_surface_destroy(recorder);
-	cairo_destroy(cairo);
+    cairo_surface_destroy(recorder);
+    cairo_destroy(cairo);
 }
 
 static void set_dirty(struct lyrics_state *state) {
-	if (state->frame_scheduled) {
-		state->dirty = true;
-	} else if (state->surface) {
-		render_frame(state);
-	}
+    if (state->frame_scheduled) {
+        state->dirty = true;
+    } else if (state->surface) {
+        render_frame(state);
+    }
 }
 
 static void layer_surface_configure(void *data,
-		struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1,
-		uint32_t serial, uint32_t width, uint32_t height) {
-	struct lyrics_state *state = data;
-	state->width = width;
-	state->height = height;
-	zwlr_layer_surface_v1_ack_configure(zwlr_layer_surface_v1, serial);
-	set_dirty(state);
+        struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1,
+        uint32_t serial, uint32_t width, uint32_t height) {
+    struct lyrics_state *state = data;
+    state->width = width;
+    state->height = height;
+    zwlr_layer_surface_v1_ack_configure(zwlr_layer_surface_v1, serial);
+    set_dirty(state);
 }
 
 static void layer_surface_closed(void *data,
-		struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1) {
-	struct lyrics_state *state = data;
-	state->run = false;
+        struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1) {
+    struct lyrics_state *state = data;
+    state->run = false;
 }
 
 static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
-	.configure = layer_surface_configure,
-	.closed = layer_surface_closed,
+    .configure = layer_surface_configure,
+    .closed = layer_surface_closed,
 };
 
 static void surface_enter(void *data,
-		struct wl_surface *wl_surface, struct wl_output *output) {
-	struct lyrics_state *state = data;
-	struct lyrics_output *lyrics_output = state->outputs;
-	while (lyrics_output && lyrics_output->output != output) {
-		lyrics_output = lyrics_output->next;
-	}
-	if (lyrics_output) {
-		state->output = lyrics_output;
-	}
+        struct wl_surface *wl_surface, struct wl_output *output) {
+    struct lyrics_state *state = data;
+    struct lyrics_output *lyrics_output = state->outputs;
+    while (lyrics_output && lyrics_output->output != output) {
+        lyrics_output = lyrics_output->next;
+    }
+    if (lyrics_output) {
+        state->output = lyrics_output;
+    }
 }
 
 static void surface_leave(void *data,
-		struct wl_surface *wl_surface, struct wl_output *output) {
-	// Not needed for this application
+        struct wl_surface *wl_surface, struct wl_output *output) {
+    // Not needed for this application
 }
 
 static const struct wl_surface_listener wl_surface_listener = {
-	.enter = surface_enter,
-	.leave = surface_leave,
+    .enter = surface_enter,
+    .leave = surface_leave,
 };
 
 static void output_geometry(void *data, struct wl_output *wl_output,
-		int32_t x, int32_t y, int32_t physical_width, int32_t physical_height,
-		int32_t subpixel, const char *make, const char *model,
-		int32_t transform) {
-	struct lyrics_output *output = data;
-	output->subpixel = subpixel;
+        int32_t x, int32_t y, int32_t physical_width, int32_t physical_height,
+        int32_t subpixel, const char *make, const char *model,
+        int32_t transform) {
+    struct lyrics_output *output = data;
+    output->subpixel = subpixel;
 }
 
 static void output_mode(void *data, struct wl_output *wl_output,
-		uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
-	struct lyrics_output *output = data;
-	output->width = width;
-	output->height = height;
-	printf("Screen resolution: %dx%d\n", width, height);
+        uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
+    struct lyrics_output *output = data;
+    output->width = width;
+    output->height = height;
+    printf("Screen resolution: %dx%d\n", width, height);
 }
 
 static void output_done(void *data, struct wl_output *wl_output) {
-	// Not needed
+    // Not needed
 }
 
 static void output_scale(void *data,
-		struct wl_output *wl_output, int32_t factor) {
-	struct lyrics_output *output = data;
-	output->scale = factor;
+        struct wl_output *wl_output, int32_t factor) {
+    struct lyrics_output *output = data;
+    output->scale = factor;
 }
 
 static const struct wl_output_listener wl_output_listener = {
-	.geometry = output_geometry,
-	.mode = output_mode,
-	.done = output_done,
-	.scale = output_scale,
+    .geometry = output_geometry,
+    .mode = output_mode,
+    .done = output_done,
+    .scale = output_scale,
 };
 
 static void registry_global(void *data, struct wl_registry *wl_registry,
-		uint32_t name, const char *interface, uint32_t version) {
-	struct lyrics_state *state = data;
-	if (strcmp(interface, wl_compositor_interface.name) == 0) {
-		state->compositor = wl_registry_bind(wl_registry,
-				name, &wl_compositor_interface, 4);
-	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
-		state->shm = wl_registry_bind(wl_registry, name, &wl_shm_interface, 1);
-	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
-		state->layer_shell = wl_registry_bind(wl_registry,
-				name, &zwlr_layer_shell_v1_interface, 1);
-	} else if (strcmp(interface, wl_output_interface.name) == 0) {
-		struct lyrics_output *output = calloc(1, sizeof(struct lyrics_output));
-		output->output = wl_registry_bind(wl_registry,
-				name, &wl_output_interface, 3);
-		output->scale = 1;
-		output->height = 0;
-		output->width = 0;
-		struct lyrics_output **link = &state->outputs;
-		while (*link) {
-			link = &(*link)->next;
-		}
-		*link = output;
-		wl_output_add_listener(output->output, &wl_output_listener, output);
+        uint32_t name, const char *interface, uint32_t version) {
+    struct lyrics_state *state = data;
+    if (strcmp(interface, wl_compositor_interface.name) == 0) {
+        state->compositor = wl_registry_bind(wl_registry,
+                name, &wl_compositor_interface, 4);
+    } else if (strcmp(interface, wl_shm_interface.name) == 0) {
+        state->shm = wl_registry_bind(wl_registry, name, &wl_shm_interface, 1);
+    } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
+        state->layer_shell = wl_registry_bind(wl_registry,
+                name, &zwlr_layer_shell_v1_interface, 1);
+    } else if (strcmp(interface, wl_output_interface.name) == 0) {
+        struct lyrics_output *output = calloc(1, sizeof(struct lyrics_output));
+        output->output = wl_registry_bind(wl_registry,
+                name, &wl_output_interface, 3);
+        output->scale = 1;
+        output->height = 0;
+        output->width = 0;
+        struct lyrics_output **link = &state->outputs;
+        while (*link) {
+            link = &(*link)->next;
+        }
+        *link = output;
+        wl_output_add_listener(output->output, &wl_output_listener, output);
 
-		// Set first output as default
-		if (!state->output) {
-			state->output = output;
-			printf("Set primary output\n");
-		}
-	}
+        // Set first output as default
+        if (!state->output) {
+            state->output = output;
+            printf("Set primary output\n");
+        }
+    }
 }
 
 static void registry_global_remove(void *data,
-		struct wl_registry *wl_registry, uint32_t name) {
-	/* This space deliberately left blank */
+        struct wl_registry *wl_registry, uint32_t name) {
+    /* This space deliberately left blank */
 }
 
 static const struct wl_registry_listener registry_listener = {
-	.global = registry_global,
-	.global_remove = registry_global_remove,
+    .global = registry_global,
+    .global_remove = registry_global_remove,
 };
 
 static uint32_t parse_color(const char *color) {
-	if (color[0] == '#') {
-		++color;
-	}
+    if (color[0] == '#') {
+        ++color;
+    }
 
-	const int len = strlen(color);
-	if (len != 6 && len != 8) {
-		fprintf(stderr, "Invalid color %s, defaulting to color "
-				"0xFFFFFFFF\n", color);
-		return 0xFFFFFFFF;
-	}
-	uint32_t res = (uint32_t)strtoul(color, NULL, 16);
-	if (len == 6) {
-		res = (res << 8) | 0xFF;
-	}
-	return res;
+    const int len = strlen(color);
+    if (len != 6 && len != 8) {
+        fprintf(stderr, "Invalid color %s, defaulting to color "
+                "0xFFFFFFFF\n", color);
+        return 0xFFFFFFFF;
+    }
+    uint32_t res = (uint32_t)strtoul(color, NULL, 16);
+    if (len == 6) {
+        res = (res << 8) | 0xFF;
+    }
+    return res;
 }
 
 static bool update_track_info(struct lyrics_state *state) {
 
-	struct track_metadata new_track = {0};
-	if (!mpris_get_metadata(&new_track)) {
-		return false;
-	}
+    struct track_metadata new_track = {0};
+    if (!mpris_get_metadata(&new_track)) {
+        return false;
+    }
 
-	// Check if track changed
-	bool changed = false;
-	if (!state->current_track.title ||
-	    strcmp(new_track.title, state->current_track.title) != 0) {
-		changed = true;
-	}
+    // Check if track changed
+    bool changed = false;
+    if (!state->current_track.title ||
+        strcmp(new_track.title, state->current_track.title) != 0) {
+        changed = true;
+    }
 
-	if (changed) {
-		printf("\n=== Track changed ===\n");
-		printf("Title: %s\n", new_track.title);
-		printf("Artist: %s\n", new_track.artist ? new_track.artist : "Unknown");
-		printf("Album: %s\n", new_track.album ? new_track.album : "Unknown");
-		printf("Art URL: %s\n", new_track.art_url ? new_track.art_url : "None");
+    if (changed) {
+        printf("\n=== Track changed ===\n");
+        printf("Title: %s\n", new_track.title);
+        printf("Artist: %s\n", new_track.artist ? new_track.artist : "Unknown");
+        printf("Album: %s\n", new_track.album ? new_track.album : "Unknown");
+        printf("Art URL: %s\n", new_track.art_url ? new_track.art_url : "None");
 
-		mpris_free_metadata(&state->current_track);
-		state->current_track = new_track;
-		state->track_changed = true;
+        mpris_free_metadata(&state->current_track);
+        state->current_track = new_track;
+        state->track_changed = true;
 
-		// Record when the track started
-		struct timespec now;
-		clock_gettime(CLOCK_MONOTONIC, &now);
-		state->track_start_time_us = (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
-		state->track_start_time_us -= state->current_track.position_us;
+        // Record when the track started
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        state->track_start_time_us = (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
+        state->track_start_time_us -= state->current_track.position_us;
 
-		// Reset tray icon to default before updating
-		system_tray_reset_icon();
+        // Reset tray icon to default before updating
+        system_tray_reset_icon();
 
-		// Update tooltip
-		char tooltip[TOOLTIP_BUFFER_SIZE];
-		char cleaned_title[TITLE_BUFFER_SIZE];
+        // Update tooltip
+        char tooltip[TOOLTIP_BUFFER_SIZE];
+        char cleaned_title[TITLE_BUFFER_SIZE];
 
-		// Clean up title: remove YouTube ID and file extension
-		if (new_track.title) {
-			strncpy(cleaned_title, new_track.title, sizeof(cleaned_title) - 1);
-			cleaned_title[sizeof(cleaned_title) - 1] = '\0';
+        // Clean up title: remove YouTube ID and file extension
+        if (new_track.title) {
+            strncpy(cleaned_title, new_track.title, sizeof(cleaned_title) - 1);
+            cleaned_title[sizeof(cleaned_title) - 1] = '\0';
 
-			// Remove file extension first
-			char *ext = strrchr(cleaned_title, '.');
-			if (ext) {
-				// Common video/audio extensions
-				if (strcmp(ext, ".mkv") == 0 || strcmp(ext, ".mp4") == 0 ||
-				    strcmp(ext, ".webm") == 0 || strcmp(ext, ".mp3") == 0 ||
-				    strcmp(ext, ".flac") == 0 || strcmp(ext, ".opus") == 0 ||
-				    strcmp(ext, ".ogg") == 0 || strcmp(ext, ".m4a") == 0) {
-					*ext = '\0';
-				}
-			}
+            // Remove file extension first
+            char *ext = strrchr(cleaned_title, '.');
+            if (ext) {
+                // Common video/audio extensions
+                if (strcmp(ext, ".mkv") == 0 || strcmp(ext, ".mp4") == 0 ||
+                    strcmp(ext, ".webm") == 0 || strcmp(ext, ".mp3") == 0 ||
+                    strcmp(ext, ".flac") == 0 || strcmp(ext, ".opus") == 0 ||
+                    strcmp(ext, ".ogg") == 0 || strcmp(ext, ".m4a") == 0) {
+                    *ext = '\0';
+                }
+            }
 
-			// Remove YouTube ID pattern [xxxxx]
-			char *youtube_id = strrchr(cleaned_title, '[');
-			if (youtube_id) {
-				char *bracket_end = strchr(youtube_id, ']');
-				if (bracket_end && bracket_end[1] == '\0') {
-					// Remove trailing space before bracket if exists
-					if (youtube_id > cleaned_title && youtube_id[-1] == ' ') {
-						youtube_id--;
-					}
-					*youtube_id = '\0';
-				}
-			}
-		} else {
-			cleaned_title[0] = '\0';
-		}
+            // Remove YouTube ID pattern [xxxxx]
+            char *youtube_id = strrchr(cleaned_title, '[');
+            if (youtube_id) {
+                char *bracket_end = strchr(youtube_id, ']');
+                if (bracket_end && bracket_end[1] == '\0') {
+                    // Remove trailing space before bracket if exists
+                    if (youtube_id > cleaned_title && youtube_id[-1] == ' ') {
+                        youtube_id--;
+                    }
+                    *youtube_id = '\0';
+                }
+            }
+        } else {
+            cleaned_title[0] = '\0';
+        }
 
-		if (new_track.artist && strlen(new_track.artist) > 0) {
-			snprintf(tooltip, sizeof(tooltip), "%s - %s", new_track.artist, cleaned_title);
-		} else {
-			snprintf(tooltip, sizeof(tooltip), "%s", cleaned_title);
-		}
-		system_tray_update_tooltip(tooltip);
+        if (new_track.artist && strlen(new_track.artist) > 0) {
+            snprintf(tooltip, sizeof(tooltip), "%s - %s", new_track.artist, cleaned_title);
+        } else {
+            snprintf(tooltip, sizeof(tooltip), "%s", cleaned_title);
+        }
+        system_tray_update_tooltip(tooltip);
 
-		// Update system tray icon with album art (after a short delay for visual feedback)
-		if (new_track.art_url) {
-			system_tray_update_icon(new_track.art_url);
-		}
-	} else {
-		mpris_free_metadata(&new_track);
-	}
+        // Update system tray icon with album art (after a short delay for visual feedback)
+        if (new_track.art_url) {
+            system_tray_update_icon(new_track.art_url);
+        }
+    } else {
+        mpris_free_metadata(&new_track);
+    }
 
-	return changed;
+    return changed;
 }
 
 static bool load_lyrics_for_track(struct lyrics_state *state) {
-	// Free previous lyrics
-	lrc_free_data(&state->lyrics);
-	state->current_line = NULL;
+    // Free previous lyrics
+    lrc_free_data(&state->lyrics);
+    state->current_line = NULL;
 
-	// Try to find lyrics
-	if (!lyrics_find_for_track(&state->current_track, &state->lyrics)) {
-		printf("No lyrics found for current track\n");
-		return false;
-	}
+    // Try to find lyrics
+    if (!lyrics_find_for_track(&state->current_track, &state->lyrics)) {
+        printf("No lyrics found for current track\n");
+        return false;
+    }
 
-	printf("Loaded %d lines of lyrics\n", state->lyrics.line_count);
+    printf("Loaded %d lines of lyrics\n", state->lyrics.line_count);
 
-	// Set initial line
-	state->current_line = state->lyrics.lines;
-	state->track_changed = false;
+    // Set initial line
+    state->current_line = state->lyrics.lines;
+    state->track_changed = false;
 
-	return true;
+    return true;
 }
 
 static void update_current_line(struct lyrics_state *state) {
-	if (!state->lyrics.lines) {
-		return;
-	}
+    if (!state->lyrics.lines) {
+        return;
+    }
 
-	// Get current playback position
-	int64_t position_us = mpris_get_position();
+    // Get current playback position
+    int64_t position_us = mpris_get_position();
 
-	// Find the appropriate line for current position
-	struct lyrics_line *new_line = lrc_find_line_at_time(&state->lyrics, position_us);
+    // Find the appropriate line for current position
+    struct lyrics_line *new_line = lrc_find_line_at_time(&state->lyrics, position_us);
 
-	// Check if we should clear the lyrics for SRT/WEBVTT formats
-	// SRT/WEBVTT have explicit end timestamps, unlike LRC/LRCX
-	if (new_line && new_line->end_timestamp_us > 0) {
-		if (is_lyrics_format(state, ".srt") || is_lyrics_format(state, ".vtt")) {
-			// SRT/WEBVTT: Clear line when end timestamp is reached
-			if (position_us > new_line->end_timestamp_us) {
-				new_line = NULL;
-			}
-		}
-	}
+    // Check if we should clear the lyrics for SRT/WEBVTT formats
+    // SRT/WEBVTT have explicit end timestamps, unlike LRC/LRCX
+    if (new_line && new_line->end_timestamp_us > 0) {
+        if (is_lyrics_format(state, ".srt") || is_lyrics_format(state, ".vtt")) {
+            // SRT/WEBVTT: Clear line when end timestamp is reached
+            if (position_us > new_line->end_timestamp_us) {
+                new_line = NULL;
+            }
+        }
+    }
 
-	// Check if line text is empty or whitespace-only (instrumental break in LRC/LRCX)
-	bool is_empty_text = false;
-	if (new_line && new_line->text) {
-		const char *p = new_line->text;
-		is_empty_text = true;
-		while (*p) {
-			if (!isspace(*p)) {
-				is_empty_text = false;
-				break;
-			}
-			p++;
-		}
-	}
+    // Check if line text is empty or whitespace-only (instrumental break in LRC/LRCX)
+    bool is_empty_text = false;
+    if (new_line && new_line->text) {
+        const char *p = new_line->text;
+        is_empty_text = true;
+        while (*p) {
+            if (!isspace(*p)) {
+                is_empty_text = false;
+                break;
+            }
+            p++;
+        }
+    }
 
-	// Treat empty/whitespace-only text lines as NULL (no lyrics to display)
-	struct lyrics_line *display_line = is_empty_text ? NULL : new_line;
+    // Treat empty/whitespace-only text lines as NULL (no lyrics to display)
+    struct lyrics_line *display_line = is_empty_text ? NULL : new_line;
 
-	bool line_changed = (display_line != state->current_line);
-	if (line_changed) {
-		state->current_line = display_line;
-		state->current_segment = NULL; // Reset word segment when line changes
+    bool line_changed = (display_line != state->current_line);
+    if (line_changed) {
+        state->current_line = display_line;
+        state->current_segment = NULL; // Reset word segment when line changes
 
-		if (display_line && display_line->text) {
-			int index = lrc_get_line_index(&state->lyrics, display_line);
-			printf("Line %d/%d: %s\n", index + 1, state->lyrics.line_count, display_line->text);
+        if (display_line && display_line->text) {
+            int index = lrc_get_line_index(&state->lyrics, display_line);
+            printf("Line %d/%d: %s\n", index + 1, state->lyrics.line_count, display_line->text);
 
-			// For karaoke (LRCX), set initial segment
-			if (is_lyrics_format(state, ".lrcx") && display_line->segments) {
-				state->current_segment = display_line->segments;
-			}
-		} else {
-			// Debug: why is this being printed?
-			printf("Instrumental break - clearing lyrics (new_line=%p, is_empty_text=%d, display_line=%p)\n",
-				(void*)new_line, is_empty_text, (void*)display_line);
-		}
+            // For karaoke (LRCX), set initial segment
+            if (is_lyrics_format(state, ".lrcx") && display_line->segments) {
+                state->current_segment = display_line->segments;
+            }
+        } else {
+            // Debug: why is this being printed?
+            printf("Instrumental break - clearing lyrics (new_line=%p, is_empty_text=%d, display_line=%p)\n",
+                (void*)new_line, is_empty_text, (void*)display_line);
+        }
 
-		set_dirty(state);
-	}
+        set_dirty(state);
+    }
 
-	// Update word segment for karaoke highlighting (LRCX only)
-	if (is_lyrics_format(state, ".lrcx") && new_line && new_line->segments) {
-		struct word_segment *new_segment = lrcx_find_segment_at_time(new_line, position_us, NULL);
-		if (new_segment != state->current_segment) {
-			state->current_segment = new_segment;
-			set_dirty(state);
-		}
-	}
+    // Update word segment for karaoke highlighting (LRCX only)
+    if (is_lyrics_format(state, ".lrcx") && new_line && new_line->segments) {
+        struct word_segment *new_segment = lrcx_find_segment_at_time(new_line, position_us, NULL);
+        if (new_segment != state->current_segment) {
+            state->current_segment = new_segment;
+            set_dirty(state);
+        }
+    }
 }
 
 int main(int argc, char *argv[]) {
-	int ret = 0;
+    int ret = 0;
 
-	// Extract program name for help messages
-	char *argv0_copy = strdup(argv[0]);
-	const char *program_name = basename(argv0_copy);
+    // Extract program name for help messages
+    char *argv0_copy = strdup(argv[0]);
+    const char *program_name = basename(argv0_copy);
 
-	// Quick check for --help before doing any initialization
-	// This prevents config loading messages from appearing with help text
-	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-			fprintf(stdout, "Usage: %s [OPTIONS]\n\n", program_name);
-			fprintf(stdout, "Wayland lyrics overlay with MPRIS integration\n\n");
-			fprintf(stdout, "Options:\n");
-			fprintf(stdout, "  -h, --help                   Show this help message\n");
-			fprintf(stdout, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
-			fprintf(stdout, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
-			fprintf(stdout, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
-			fprintf(stdout, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
-			fprintf(stdout, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
-			fprintf(stdout, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n\n");
-			fprintf(stdout, "Configuration Files (in priority order):\n");
-			fprintf(stdout, "  1. ~/.config/wshowlyrics/settings.ini (user config)\n");
-			fprintf(stdout, "  2. /etc/wshowlyrics/settings.ini (system-wide config)\n");
-			fprintf(stdout, "  See settings.ini.example for configuration options\n\n");
-			fprintf(stdout, "Lyrics Detection:\n");
-			fprintf(stdout, "  Automatically detects currently playing track via MPRIS and searches for lyrics in:\n");
-			fprintf(stdout, "    1. Same directory as the music file\n");
-			fprintf(stdout, "    2. Current directory (only for local builds, not /usr/bin)\n");
-			fprintf(stdout, "    3. $XDG_MUSIC_DIR\n");
-			fprintf(stdout, "    4. ~/.lyrics/\n");
-			fprintf(stdout, "    5. $HOME\n");
-			fprintf(stdout, "    6. Online from lrclib.net API (if local files not found)\n\n");
-			fprintf(stdout, "Supported Formats:\n");
-			fprintf(stdout, "  - .lrcx: Karaoke-style with word-level timing and progressive fill effect\n");
-			fprintf(stdout, "  - .lrc:  Standard LRC format with line-level timing\n");
-			fprintf(stdout, "  - .srt:  SubRip subtitle format\n\n");
-			fprintf(stdout, "Online Lyrics API:\n");
-			fprintf(stdout, "  Automatically fetches synchronized lyrics from https://lrclib.net\n");
-			fprintf(stdout, "  - Requires track title and artist metadata\n");
-			fprintf(stdout, "  - Only uses synchronized lyrics (LRC format with timestamps)\n");
-			fprintf(stdout, "  - Falls back gracefully if no internet connection\n");
-			fprintf(stdout, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
-			fprintf(stdout, "Examples:\n");
-			fprintf(stdout, "  %s                                    # Auto-detect with MPRIS\n", program_name);
-			fprintf(stdout, "  %s -F \"Sans Bold 24\"                  # Larger font\n", program_name);
-			fprintf(stdout, "  %s --font=\"Sans Bold 24\"              # Same as above (long option)\n", program_name);
-			fprintf(stdout, "  %s -a top -m 50                       # Top of screen, 50px margin\n", program_name);
-			fprintf(stdout, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
-			fprintf(stdout, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
-			fprintf(stdout, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
-			free(argv0_copy);
-			return 0;
-		}
-	}
+    // Quick check for --help before doing any initialization
+    // This prevents config loading messages from appearing with help text
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            fprintf(stdout, "Usage: %s [OPTIONS]\n\n", program_name);
+            fprintf(stdout, "Wayland lyrics overlay with MPRIS integration\n\n");
+            fprintf(stdout, "Options:\n");
+            fprintf(stdout, "  -h, --help                   Show this help message\n");
+            fprintf(stdout, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
+            fprintf(stdout, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
+            fprintf(stdout, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
+            fprintf(stdout, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
+            fprintf(stdout, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
+            fprintf(stdout, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n\n");
+            fprintf(stdout, "Configuration Files (in priority order):\n");
+            fprintf(stdout, "  1. ~/.config/wshowlyrics/settings.ini (user config)\n");
+            fprintf(stdout, "  2. /etc/wshowlyrics/settings.ini (system-wide config)\n");
+            fprintf(stdout, "  See settings.ini.example for configuration options\n\n");
+            fprintf(stdout, "Lyrics Detection:\n");
+            fprintf(stdout, "  Automatically detects currently playing track via MPRIS and searches for lyrics in:\n");
+            fprintf(stdout, "    1. Same directory as the music file\n");
+            fprintf(stdout, "    2. Current directory (only for local builds, not /usr/bin)\n");
+            fprintf(stdout, "    3. $XDG_MUSIC_DIR\n");
+            fprintf(stdout, "    4. ~/.lyrics/\n");
+            fprintf(stdout, "    5. $HOME\n");
+            fprintf(stdout, "    6. Online from lrclib.net API (if local files not found)\n\n");
+            fprintf(stdout, "Supported Formats:\n");
+            fprintf(stdout, "  - .lrcx: Karaoke-style with word-level timing and progressive fill effect\n");
+            fprintf(stdout, "  - .lrc:  Standard LRC format with line-level timing\n");
+            fprintf(stdout, "  - .srt:  SubRip subtitle format\n");
+            fprintf(stdout, "  - .vtt:  WebVTT subtitle format\n\n");
+            fprintf(stdout, "Online Lyrics API:\n");
+            fprintf(stdout, "  Automatically fetches synchronized lyrics from https://lrclib.net\n");
+            fprintf(stdout, "  - Requires track title and artist metadata\n");
+            fprintf(stdout, "  - Only uses synchronized lyrics (LRC format with timestamps)\n");
+            fprintf(stdout, "  - Falls back gracefully if no internet connection\n");
+            fprintf(stdout, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
+            fprintf(stdout, "Examples:\n");
+            fprintf(stdout, "  %s                                    # Auto-detect with MPRIS\n", program_name);
+            fprintf(stdout, "  %s -F \"Sans Bold 24\"                  # Larger font\n", program_name);
+            fprintf(stdout, "  %s --font=\"Sans Bold 24\"              # Same as above (long option)\n", program_name);
+            fprintf(stdout, "  %s -a top -m 50                       # Top of screen, 50px margin\n", program_name);
+            fprintf(stdout, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
+            fprintf(stdout, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
+            fprintf(stdout, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
+            free(argv0_copy);
+            return 0;
+        }
+    }
 
-	// Initialize configuration with defaults
-	config_init_defaults(&g_config);
+    // Initialize configuration with defaults
+    config_init_defaults(&g_config);
 
-	// Try to load configuration in priority order:
-	// 1. ~/.config/wshowlyrics/settings.ini (user config)
-	// 2. /etc/wshowlyrics/settings.ini (system-wide config)
+    // Try to load configuration in priority order:
+    // 1. ~/.config/wshowlyrics/settings.ini (user config)
+    // 2. /etc/wshowlyrics/settings.ini (system-wide config)
 
-	bool config_loaded = false;
+    bool config_loaded = false;
 
-	// Try user config first
-	char *user_config_path = config_get_path();
-	if (user_config_path) {
-		// Create config directory if it doesn't exist
-		char *dir_path = strdup(user_config_path);
-		char *last_slash = strrchr(dir_path, '/');
-		if (last_slash) {
-			*last_slash = '\0';
-			mkdir(dir_path, 0755);  // Create ~/.config/wshowlyrics/
-		}
-		free(dir_path);
+    // Try user config first
+    char *user_config_path = config_get_path();
+    if (user_config_path) {
+        // Create config directory if it doesn't exist
+        char *dir_path = strdup(user_config_path);
+        char *last_slash = strrchr(dir_path, '/');
+        if (last_slash) {
+            *last_slash = '\0';
+            mkdir(dir_path, 0755);  // Create ~/.config/wshowlyrics/
+        }
+        free(dir_path);
 
-		// Check if user config exists
-		struct stat st;
-		if (stat(user_config_path, &st) != 0) {
-			// User config doesn't exist - try to copy from system config
-			const char *system_config = "/etc/wshowlyrics/settings.ini";
-			if (stat(system_config, &st) == 0) {
-				// System config exists - copy it
-				FILE *src = fopen(system_config, "r");
-				if (src) {
-					FILE *dst = fopen(user_config_path, "w");
-					if (dst) {
-						char buf[CONTENT_BUFFER_SIZE];
-						size_t n;
-						while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
-							fwrite(buf, 1, n, dst);
-						}
-						fclose(dst);
-						printf("Copied system config to user config: %s\n", user_config_path);
-					}
-					fclose(src);
-				}
-			}
-		}
+        // Check if user config exists
+        struct stat st;
+        if (stat(user_config_path, &st) != 0) {
+            // User config doesn't exist - try to copy from system config
+            const char *system_config = "/etc/wshowlyrics/settings.ini";
+            if (stat(system_config, &st) == 0) {
+                // System config exists - copy it
+                FILE *src = fopen(system_config, "r");
+                if (src) {
+                    FILE *dst = fopen(user_config_path, "w");
+                    if (dst) {
+                        char buf[CONTENT_BUFFER_SIZE];
+                        size_t n;
+                        while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+                            fwrite(buf, 1, n, dst);
+                        }
+                        fclose(dst);
+                        printf("Copied system config to user config: %s\n", user_config_path);
+                    }
+                    fclose(src);
+                }
+            }
+        }
 
-		// Try to load user config
-		if (config_load(&g_config, user_config_path)) {
-			config_loaded = true;
-		}
-		free(user_config_path);
-	}
+        // Try to load user config
+        if (config_load(&g_config, user_config_path)) {
+            config_loaded = true;
+        }
+        free(user_config_path);
+    }
 
-	// If user config not found, try system-wide config
-	if (!config_loaded) {
-		config_load(&g_config, "/etc/wshowlyrics/settings.ini");
-		// Note: config_load returns false if file doesn't exist, which is fine
-		// We'll just use the defaults initialized above
-	}
+    // If user config not found, try system-wide config
+    if (!config_loaded) {
+        config_load(&g_config, "/etc/wshowlyrics/settings.ini");
+        // Note: config_load returns false if file doesn't exist, which is fine
+        // We'll just use the defaults initialized above
+    }
 
-	unsigned int anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
-	int margin = g_config.display.margin_bottom;
-	struct lyrics_state state = { 0 };
+    unsigned int anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+    int margin = g_config.display.margin_bottom;
+    struct lyrics_state state = { 0 };
 
-	// Convert hex colors to uint32 format
-	state.background =
-		((uint32_t)(g_config.display.color_background[0] * 255) << 24) |
-		((uint32_t)(g_config.display.color_background[1] * 255) << 16) |
-		((uint32_t)(g_config.display.color_background[2] * 255) << 8) |
-		((uint32_t)(g_config.display.color_background[3] * 255));
+    // Convert hex colors to uint32 format
+    state.background =
+        ((uint32_t)(g_config.display.color_background[0] * 255) << 24) |
+        ((uint32_t)(g_config.display.color_background[1] * 255) << 16) |
+        ((uint32_t)(g_config.display.color_background[2] * 255) << 8) |
+        ((uint32_t)(g_config.display.color_background[3] * 255));
 
-	state.foreground =
-		((uint32_t)(g_config.display.color_active[0] * 255) << 24) |
-		((uint32_t)(g_config.display.color_active[1] * 255) << 16) |
-		((uint32_t)(g_config.display.color_active[2] * 255) << 8) |
-		((uint32_t)(g_config.display.color_active[3] * 255));
+    state.foreground =
+        ((uint32_t)(g_config.display.color_active[0] * 255) << 24) |
+        ((uint32_t)(g_config.display.color_active[1] * 255) << 16) |
+        ((uint32_t)(g_config.display.color_active[2] * 255) << 8) |
+        ((uint32_t)(g_config.display.color_active[3] * 255));
 
-	// Build font string from config
-	char font_str[FONT_STRING_SIZE];
-	snprintf(font_str, sizeof(font_str), "%s %s %d",
-		g_config.display.font_family,
-		g_config.display.font_weight,
-		g_config.display.font_size);
-	state.font = strdup(font_str);
+    // Build font string from config
+    char font_str[FONT_STRING_SIZE];
+    snprintf(font_str, sizeof(font_str), "%s %s %d",
+        g_config.display.font_family,
+        g_config.display.font_weight,
+        g_config.display.font_size);
+    state.font = strdup(font_str);
 
-	static struct option long_options[] = {
-		{"help", no_argument, 0, 'h'},
-		{"background", required_argument, 0, 'b'},
-		{"foreground", required_argument, 0, 'f'},
-		{"font", required_argument, 0, 'F'},
-		{"anchor", required_argument, 0, 'a'},
-		{"margin", required_argument, 0, 'm'},
-		{0, 0, 0, 0}
-	};
+    static struct option long_options[] = {
+        {"help", no_argument, 0, 'h'},
+        {"background", required_argument, 0, 'b'},
+        {"foreground", required_argument, 0, 'f'},
+        {"font", required_argument, 0, 'F'},
+        {"anchor", required_argument, 0, 'a'},
+        {"margin", required_argument, 0, 'm'},
+        {0, 0, 0, 0}
+    };
 
-	int c;
-	int option_index = 0;
-	while ((c = getopt_long(argc, argv, "hb:f:F:a:m:", long_options, &option_index)) != -1) {
-		switch (c) {
-		case 'b':
-			state.background = parse_color(optarg);
-			break;
-		case 'f':
-			state.foreground = parse_color(optarg);
-			break;
-		case 'F':
-			state.font = optarg;
-			break;
-		case 'a':
-			anchor = 0;
-			if (strcmp(optarg, "top") == 0) {
-				anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
-			} else if (strcmp(optarg, "left") == 0) {
-				anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
-			} else if (strcmp(optarg, "right") == 0) {
-				anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-			} else if (strcmp(optarg, "bottom") == 0) {
-				anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
-			}
-			break;
-		case 'm':
-			margin = atoi(optarg);
-			break;
-		default:
-			// Error case - show brief error message
-			fprintf(stderr, "Error: Invalid option\n");
-			fprintf(stderr, "Usage: %s [OPTIONS]\n", program_name);
-			fprintf(stderr, "Try '%s --help' for more information.\n", program_name);
-			free(argv0_copy);
-			return 1;
-		}
-	}
+    int c;
+    int option_index = 0;
+    while ((c = getopt_long(argc, argv, "hb:f:F:a:m:", long_options, &option_index)) != -1) {
+        switch (c) {
+        case 'b':
+            state.background = parse_color(optarg);
+            break;
+        case 'f':
+            state.foreground = parse_color(optarg);
+            break;
+        case 'F':
+            state.font = optarg;
+            break;
+        case 'a':
+            anchor = 0;
+            if (strcmp(optarg, "top") == 0) {
+                anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
+            } else if (strcmp(optarg, "left") == 0) {
+                anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+            } else if (strcmp(optarg, "right") == 0) {
+                anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+            } else if (strcmp(optarg, "bottom") == 0) {
+                anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+            }
+            break;
+        case 'm':
+            margin = atoi(optarg);
+            break;
+        default:
+            // Error case - show brief error message
+            fprintf(stderr, "Error: Invalid option\n");
+            fprintf(stderr, "Usage: %s [OPTIONS]\n", program_name);
+            fprintf(stderr, "Try '%s --help' for more information.\n", program_name);
+            free(argv0_copy);
+            return 1;
+        }
+    }
 
-	// Fontconfig initializations
-	if(!FcInit()) {
-		fprintf(stderr, "Failed to initialize fontconfig\n");
-		return 1;
-	}
+    // Fontconfig initializations
+    if(!FcInit()) {
+        fprintf(stderr, "Failed to initialize fontconfig\n");
+        return 1;
+    }
 
-	printf("Compositor: %s\n", getenv("WAYLAND_DISPLAY") ?: "wayland-0");
-	printf("Using compositor interfaces...\n");
+    printf("Compositor: %s\n", getenv("WAYLAND_DISPLAY") ?: "wayland-0");
+    printf("Using compositor interfaces...\n");
 
-	// Initialize lyrics providers
-	lyrics_providers_init();
+    // Initialize lyrics providers
+    lyrics_providers_init();
 
-	// Initialize MPRIS for automatic lyrics detection
-	if (!mpris_init()) {
-		fprintf(stderr, "Failed to initialize MPRIS (playerctl not found?)\n");
-		ret = 1;
-		goto exit;
-	}
-	printf("MPRIS mode enabled - will track currently playing music\n");
+    // Initialize MPRIS for automatic lyrics detection
+    if (!mpris_init()) {
+        fprintf(stderr, "Failed to initialize MPRIS (playerctl not found?)\n");
+        ret = 1;
+        goto exit;
+    }
+    printf("MPRIS mode enabled - will track currently playing music\n");
 
-	// Initialize system tray
-	if (system_tray_init()) {
-		printf("System tray initialized (album art display)\n");
-	} else {
-		fprintf(stderr, "Warning: Failed to initialize system tray\n");
-	}
+    // Initialize system tray
+    if (system_tray_init()) {
+        printf("System tray initialized (album art display)\n");
+    } else {
+        fprintf(stderr, "Warning: Failed to initialize system tray\n");
+    }
 
-	state.display = wl_display_connect(NULL);
-	if (!state.display) {
-		fprintf(stderr, "wl_display_connect: %s\n", strerror(errno));
-		ret = 1;
-		goto exit;
-	}
+    state.display = wl_display_connect(NULL);
+    if (!state.display) {
+        fprintf(stderr, "wl_display_connect: %s\n", strerror(errno));
+        ret = 1;
+        goto exit;
+    }
 
-	state.registry = wl_display_get_registry(state.display);
-	assert(state.registry);
-	wl_registry_add_listener(state.registry, &registry_listener, &state);
-	wl_display_roundtrip(state.display);
+    state.registry = wl_display_get_registry(state.display);
+    assert(state.registry);
+    wl_registry_add_listener(state.registry, &registry_listener, &state);
+    wl_display_roundtrip(state.display);
 
-	const struct {
-		const char *name;
-		void *ptr;
-	} need_globals[] = {
-		{"wl_compositor", &state.compositor},
-		{"wl_shm", &state.shm},
-		{"wlr_layer_shell", &state.layer_shell},
-	};
-	for (size_t i = 0; i < sizeof(need_globals) / sizeof(need_globals[0]); ++i) {
-		if (!need_globals[i].ptr) {
-			fprintf(stderr, "Error: required Wayland interface '%s' "
-					"is not present\n", need_globals[i].name);
-			ret = 1;
-			goto exit;
-		}
-	}
+    const struct {
+        const char *name;
+        void *ptr;
+    } need_globals[] = {
+        {"wl_compositor", &state.compositor},
+        {"wl_shm", &state.shm},
+        {"wlr_layer_shell", &state.layer_shell},
+    };
+    for (size_t i = 0; i < sizeof(need_globals) / sizeof(need_globals[0]); ++i) {
+        if (!need_globals[i].ptr) {
+            fprintf(stderr, "Error: required Wayland interface '%s' "
+                    "is not present\n", need_globals[i].name);
+            ret = 1;
+            goto exit;
+        }
+    }
 
-	state.surface = wl_compositor_create_surface(state.compositor);
-	assert(state.surface);
+    state.surface = wl_compositor_create_surface(state.compositor);
+    assert(state.surface);
 
-	state.layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-			state.layer_shell, state.surface, NULL,
-			ZWLR_LAYER_SHELL_V1_LAYER_TOP, "lyrics");
-	assert(state.layer_surface);
+    state.layer_surface = zwlr_layer_shell_v1_get_layer_surface(
+            state.layer_shell, state.surface, NULL,
+            ZWLR_LAYER_SHELL_V1_LAYER_TOP, "lyrics");
+    assert(state.layer_surface);
 
-	wl_surface_add_listener(state.surface, &wl_surface_listener, &state);
-	zwlr_layer_surface_v1_add_listener(
-			state.layer_surface, &layer_surface_listener, &state);
-	zwlr_layer_surface_v1_set_size(state.layer_surface, 1, 1);
-	zwlr_layer_surface_v1_set_anchor(state.layer_surface, anchor);
-	zwlr_layer_surface_v1_set_margin(state.layer_surface,
-			margin, margin, margin, margin);
-	zwlr_layer_surface_v1_set_exclusive_zone(state.layer_surface, -1);
-	zwlr_layer_surface_v1_set_keyboard_interactivity(state.layer_surface, 0);
+    wl_surface_add_listener(state.surface, &wl_surface_listener, &state);
+    zwlr_layer_surface_v1_add_listener(
+            state.layer_surface, &layer_surface_listener, &state);
+    zwlr_layer_surface_v1_set_size(state.layer_surface, 1, 1);
+    zwlr_layer_surface_v1_set_anchor(state.layer_surface, anchor);
+    zwlr_layer_surface_v1_set_margin(state.layer_surface,
+            margin, margin, margin, margin);
+    zwlr_layer_surface_v1_set_exclusive_zone(state.layer_surface, -1);
+    zwlr_layer_surface_v1_set_keyboard_interactivity(state.layer_surface, 0);
 
-	// Set empty input region to allow clicks to pass through
-	struct wl_region *region = wl_compositor_create_region(state.compositor);
-	wl_surface_set_input_region(state.surface, region);
-	wl_region_destroy(region);
+    // Set empty input region to allow clicks to pass through
+    struct wl_region *region = wl_compositor_create_region(state.compositor);
+    wl_surface_set_input_region(state.surface, region);
+    wl_region_destroy(region);
 
-	wl_surface_commit(state.surface);
+    wl_surface_commit(state.surface);
 
-	// Wait for configure event
-	int retry_count = 0;
-	while ((state.width == 0 || state.height == 0) && retry_count < 10) {
-		wl_display_roundtrip(state.display);
-		retry_count++;
-	}
+    // Wait for configure event
+    int retry_count = 0;
+    while ((state.width == 0 || state.height == 0) && retry_count < 10) {
+        wl_display_roundtrip(state.display);
+        retry_count++;
+    }
 
-	retry_count = 0;
-	while ((state.width == 0 || state.height == 0) && retry_count < 10) {
-		wl_display_dispatch(state.display);
-		retry_count++;
-	}
+    retry_count = 0;
+    while ((state.width == 0 || state.height == 0) && retry_count < 10) {
+        wl_display_dispatch(state.display);
+        retry_count++;
+    }
 
-	if (state.width == 0 || state.height == 0) {
-		fprintf(stderr, "Layer surface configuration failed\n");
-		ret = 1;
-		goto exit;
-	}
+    if (state.width == 0 || state.height == 0) {
+        fprintf(stderr, "Layer surface configuration failed\n");
+        ret = 1;
+        goto exit;
+    }
 
-	struct pollfd pollfds[] = {
-		{ .fd = wl_display_get_fd(state.display), .events = POLLIN, },
-	};
+    struct pollfd pollfds[] = {
+        { .fd = wl_display_get_fd(state.display), .events = POLLIN, },
+    };
 
-	state.run = true;
-	int update_counter = 0;
+    state.run = true;
+    int update_counter = 0;
 
-	while (state.run) {
-		errno = 0;
-		do {
-			if (wl_display_flush(state.display) == -1 && errno != EAGAIN) {
-				fprintf(stderr, "wl_display_flush: %s\n", strerror(errno));
-				break;
-			}
-		} while (errno == EAGAIN);
+    while (state.run) {
+        errno = 0;
+        do {
+            if (wl_display_flush(state.display) == -1 && errno != EAGAIN) {
+                fprintf(stderr, "wl_display_flush: %s\n", strerror(errno));
+                break;
+            }
+        } while (errno == EAGAIN);
 
-		int timeout = 100; // 100ms update interval
+        int timeout = 100; // 100ms update interval
 
-		if (poll(pollfds, sizeof(pollfds) / sizeof(pollfds[0]), timeout) < 0) {
-			fprintf(stderr, "poll: %s\n", strerror(errno));
-			break;
-		}
+        if (poll(pollfds, sizeof(pollfds) / sizeof(pollfds[0]), timeout) < 0) {
+            fprintf(stderr, "poll: %s\n", strerror(errno));
+            break;
+        }
 
-		// Check for track changes every 2 seconds (20 * 100ms)
-		if (update_counter++ % 20 == 0) {
-			if (update_track_info(&state)) {
-				// Track changed, load new lyrics
-				load_lyrics_for_track(&state);
-				set_dirty(&state);
-			} else {
-				// Check if current lyrics file has changed (every 2 seconds)
-				if (state.lyrics.source_file_path && state.lyrics.md5_checksum[0] != '\0') {
-					char current_checksum[33];
-					if (calculate_file_md5(state.lyrics.source_file_path, current_checksum)) {
-						if (strcmp(current_checksum, state.lyrics.md5_checksum) != 0) {
-							printf("Lyrics file changed, reloading: %s\n", state.lyrics.source_file_path);
-							// Hide overlay during reload to prevent flickering
-							render_transparent_frame(&state);
-							load_lyrics_for_track(&state);
-							set_dirty(&state);
-						}
-					}
-				}
-			}
-		}
+        // Check for track changes every 2 seconds (20 * 100ms)
+        if (update_counter++ % 20 == 0) {
+            if (update_track_info(&state)) {
+                // Track changed, load new lyrics
+                load_lyrics_for_track(&state);
+                set_dirty(&state);
+            } else {
+                // Check if current lyrics file has changed (every 2 seconds)
+                if (state.lyrics.source_file_path && state.lyrics.md5_checksum[0] != '\0') {
+                    char current_checksum[33];
+                    if (calculate_file_md5(state.lyrics.source_file_path, current_checksum)) {
+                        if (strcmp(current_checksum, state.lyrics.md5_checksum) != 0) {
+                            printf("Lyrics file changed, reloading: %s\n", state.lyrics.source_file_path);
+                            // Hide overlay during reload to prevent flickering
+                            render_transparent_frame(&state);
+                            load_lyrics_for_track(&state);
+                            set_dirty(&state);
+                        }
+                    }
+                }
+            }
+        }
 
-		// Update current line based on playback position
-		if (mpris_is_playing()) {
-			update_current_line(&state);
-			// Continuously update for smooth karaoke highlighting (LRCX only)
-			if (is_lyrics_format(&state, ".lrcx")) {
-				set_dirty(&state);
-			}
-		} else {
-			// Clear lyrics when not playing (paused or stopped)
-			if (state.current_line != NULL) {
-				state.current_line = NULL;
-				set_dirty(&state);
-				printf("Playback stopped/paused - clearing lyrics\n");
-			}
-		}
+        // Update current line based on playback position
+        if (mpris_is_playing()) {
+            update_current_line(&state);
+            // Continuously update for smooth karaoke highlighting (LRCX only)
+            if (is_lyrics_format(&state, ".lrcx")) {
+                set_dirty(&state);
+            }
+        } else {
+            // Clear lyrics when not playing (paused or stopped)
+            if (state.current_line != NULL) {
+                state.current_line = NULL;
+                set_dirty(&state);
+                printf("Playback stopped/paused - clearing lyrics\n");
+            }
+        }
 
-		if ((pollfds[0].revents & POLLIN)
-				&& wl_display_dispatch(state.display) == -1) {
-			fprintf(stderr, "wl_display_dispatch: %s\n", strerror(errno));
-			break;
-		}
+        if ((pollfds[0].revents & POLLIN)
+                && wl_display_dispatch(state.display) == -1) {
+            fprintf(stderr, "wl_display_dispatch: %s\n", strerror(errno));
+            break;
+        }
 
-		// Update system tray (process GTK events)
-		system_tray_update();
-	}
+        // Update system tray (process GTK events)
+        system_tray_update();
+    }
 
 exit:
-	system_tray_cleanup();
-	lrc_free_data(&state.lyrics);
-	mpris_free_metadata(&state.current_track);
-	mpris_cleanup();
-	lyrics_providers_cleanup();
+    system_tray_cleanup();
+    lrc_free_data(&state.lyrics);
+    mpris_free_metadata(&state.current_track);
+    mpris_cleanup();
+    lyrics_providers_cleanup();
 
-	if (state.display) {
-		wl_display_disconnect(state.display);
-	}
-	FcFini();
-	free(argv0_copy);
-	return ret;
+    if (state.display) {
+        wl_display_disconnect(state.display);
+    }
+    FcFini();
+    free(argv0_copy);
+    return ret;
 }

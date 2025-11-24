@@ -5,8 +5,8 @@
 
 // Memory buffer for CURL responses
 struct curl_memory_buffer {
-	char *data;
-	size_t size;
+    char *data;
+    size_t size;
 };
 
 // Initialize memory buffer

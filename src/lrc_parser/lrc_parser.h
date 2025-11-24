@@ -1,42 +1,7 @@
 #ifndef _LYRICS_LRC_PARSER_H
 #define _LYRICS_LRC_PARSER_H
 
-#include <stdint.h>
-#include <stdbool.h>
-
-// Word segment with timestamp for karaoke highlighting (LRCX format)
-struct word_segment {
-	int64_t timestamp_us; // When this word should start highlighting
-	int64_t end_timestamp_us; // When this word should finish highlighting (0 if calculated from next segment)
-	char *text; // The word/text segment (main text, base text for ruby)
-	char *ruby; // Ruby text (furigana) to display above main text (NULL if none)
-	bool is_unfill; // True if this segment should unfill (reverse fill from 100% to 0%)
-	struct word_segment *next;
-};
-
-struct lyrics_line {
-	int64_t timestamp_us; // Timestamp in microseconds
-	int64_t end_timestamp_us; // End timestamp in microseconds (0 if not specified, e.g., LRC format)
-	char *text; // Full line text (for non-karaoke display)
-	struct word_segment *segments; // Word-level timing for karaoke (NULL if not LRCX)
-	int segment_count; // Number of word segments (0 if not LRCX)
-	struct lyrics_line *next;
-};
-
-struct lyrics_metadata {
-	char *title;
-	char *artist;
-	char *album;
-	int offset_ms; // Offset in milliseconds
-};
-
-struct lyrics_data {
-	struct lyrics_metadata metadata;
-	struct lyrics_line *lines;
-	int line_count;
-	char *source_file_path; // Path to the loaded lyrics file (for reload detection)
-	char md5_checksum[33]; // MD5 checksum of the file (32 hex chars + null terminator)
-};
+#include "../lyrics_types/lyrics_types.h"
 
 // Parse LRC file
 bool lrc_parse_file(const char *filename, struct lyrics_data *data);
