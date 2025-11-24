@@ -2,6 +2,16 @@
 #include "config/config.h"
 #include "constants.h"
 #include <ctype.h>
+#include <strings.h>
+
+// Helper function to check if current lyrics file is a specific format
+static bool is_lyrics_format(struct lyrics_state *state, const char *extension) {
+	if (!state->lyrics.source_file_path) {
+		return false;
+	}
+	const char *ext = strrchr(state->lyrics.source_file_path, '.');
+	return ext && strcasecmp(ext, extension) == 0;
+}
 
 static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
 	cairo_set_source_rgba(cairo,
@@ -44,30 +54,8 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 			text_to_display = " "; // Display single space to keep surface visible
 		} else {
 			text_to_display = text;
-			// Check if this line has word segments for karaoke
-			// Karaoke mode is enabled if:
-			// 1. Multiple segments with different timestamps, OR
-			// 2. Any segment has an end_timestamp (for progressive fill)
-			if (state->current_line->segments != NULL) {
-				// Check for end_timestamp in any segment
-				struct word_segment *seg = state->current_line->segments;
-				while (seg) {
-					if (seg->end_timestamp_us > 0) {
-						is_karaoke = true;
-						break;
-					}
-					seg = seg->next;
-				}
-
-				// Also check for multiple segments with different timestamps (original logic)
-				if (!is_karaoke && state->current_line->segment_count > 1) {
-					struct word_segment *first = state->current_line->segments;
-					struct word_segment *second = first->next;
-					if (second && second->timestamp_us != first->timestamp_us) {
-						is_karaoke = true;
-					}
-				}
-			}
+			// Karaoke mode is only enabled for LRCX format
+			is_karaoke = is_lyrics_format(state, ".lrcx");
 		}
 	}
 
@@ -755,23 +743,15 @@ static void update_current_line(struct lyrics_state *state) {
 	// Find the appropriate line for current position
 	struct lyrics_line *new_line = lrc_find_line_at_time(&state->lyrics, position_us);
 
-	// Check if we should clear the lyrics
-	if (new_line) {
-		if (new_line->end_timestamp_us > 0) {
-			// For LRCX (karaoke mode), end_timestamp_us marks the last segment timestamp
-			// but we should keep displaying the line (segments handle the progression)
-			// For SRT/WEBVTT, end_timestamp_us marks when to clear the subtitle
-			bool is_karaoke = (new_line->segments != NULL);
-
-			if (!is_karaoke) {
-				// SRT/WEBVTT format: clear if we've passed the explicit end timestamp
-				if (position_us > new_line->end_timestamp_us) {
-					new_line = NULL;
-				}
+	// Check if we should clear the lyrics for SRT/WEBVTT formats
+	// SRT/WEBVTT have explicit end timestamps, unlike LRC/LRCX
+	if (new_line && new_line->end_timestamp_us > 0) {
+		if (is_lyrics_format(state, ".srt") || is_lyrics_format(state, ".vtt")) {
+			// SRT/WEBVTT: Clear line when end timestamp is reached
+			if (position_us > new_line->end_timestamp_us) {
+				new_line = NULL;
 			}
 		}
-		// LRC/LRCX format: Keep displaying until next line starts (no automatic clearing)
-		// This prevents lyrics from disappearing too quickly during instrumental breaks
 	}
 
 	// Check if line text is empty or whitespace-only (instrumental break in LRC/LRCX)
@@ -801,7 +781,7 @@ static void update_current_line(struct lyrics_state *state) {
 			printf("Line %d/%d: %s\n", index + 1, state->lyrics.line_count, display_line->text);
 
 			// For karaoke (LRCX), set initial segment
-			if (display_line->segments) {
+			if (is_lyrics_format(state, ".lrcx") && display_line->segments) {
 				state->current_segment = display_line->segments;
 			}
 		} else {
@@ -813,8 +793,8 @@ static void update_current_line(struct lyrics_state *state) {
 		set_dirty(state);
 	}
 
-	// Update word segment for karaoke highlighting (LRCX)
-	if (new_line && new_line->segments) {
+	// Update word segment for karaoke highlighting (LRCX only)
+	if (is_lyrics_format(state, ".lrcx") && new_line && new_line->segments) {
 		struct word_segment *new_segment = lrcx_find_segment_at_time(new_line, position_us, NULL);
 		if (new_segment != state->current_segment) {
 			state->current_segment = new_segment;
@@ -1159,7 +1139,7 @@ int main(int argc, char *argv[]) {
 		if (mpris_is_playing()) {
 			update_current_line(&state);
 			// Continuously update for smooth karaoke highlighting (LRCX only)
-			if (state.current_line && state.current_line->segments && state.current_line->segment_count > 1) {
+			if (is_lyrics_format(&state, ".lrcx")) {
 				set_dirty(&state);
 			}
 		} else {
