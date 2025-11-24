@@ -146,6 +146,7 @@ void lrc_free_data(struct lyrics_data *data) {
 	free(data->metadata.title);
 	free(data->metadata.artist);
 	free(data->metadata.album);
+	free(data->source_file_path);
 
 	struct lyrics_line *line = data->lines;
 	while (line) {

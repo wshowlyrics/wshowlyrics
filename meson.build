@@ -42,6 +42,7 @@ wayland_protos = dependency('wayland-protocols')
 libcurl        = dependency('libcurl')
 appindicator   = dependency('appindicator3-0.1')
 gdkpixbuf      = dependency('gdk-pixbuf-2.0')
+openssl        = dependency('openssl')
 
 rt = cc.find_library('rt')
 
@@ -63,6 +64,7 @@ executable(
 		'src/config/config.c',
 		'src/parser_utils/parser_utils.c',
 		'src/curl_utils/curl_utils.c',
+		'src/file_utils/file_utils.c',
 	),
 	include_directories: include_directories('src'),
 	dependencies: [
@@ -72,6 +74,7 @@ executable(
 		fontconfig,
 		gdkpixbuf,
 		libcurl,
+		openssl,
 		pango,
 		pangocairo,
 		rt,

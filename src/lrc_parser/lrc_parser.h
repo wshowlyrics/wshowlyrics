@@ -32,6 +32,8 @@ struct lyrics_data {
 	struct lyrics_metadata metadata;
 	struct lyrics_line *lines;
 	int line_count;
+	char *source_file_path; // Path to the loaded lyrics file (for reload detection)
+	char md5_checksum[33]; // MD5 checksum of the file (32 hex chars + null terminator)
 };
 
 // Parse LRC file

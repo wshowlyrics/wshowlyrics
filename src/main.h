@@ -34,6 +34,7 @@
 #include "lrcx_parser/lrcx_parser.h"
 #include "lyrics_provider/lyrics_provider.h"
 #include "system_tray/system_tray.h"
+#include "file_utils/file_utils.h"
 
 /* Forward declarations */
 struct lyrics_output;

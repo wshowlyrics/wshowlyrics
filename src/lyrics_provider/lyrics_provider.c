@@ -5,6 +5,7 @@
 #include "../lrcx_parser/lrcx_parser.h"
 #include "../config/config.h"
 #include "../constants.h"
+#include "../file_utils/file_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -77,11 +78,13 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
 		return false;
 	}
 
+	bool success = false;
+
 	// Try LRCX only for .lrcx files
 	if (strcasecmp(ext, ".lrcx") == 0) {
 		if (lrcx_parse_file(path, data)) {
 			printf("Loaded LRCX file: %s\n", path);
-			return true;
+			success = true;
 		}
 	}
 
@@ -89,7 +92,7 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
 	if (strcasecmp(ext, ".lrc") == 0) {
 		if (lrc_parse_file(path, data)) {
 			printf("Loaded LRC file: %s\n", path);
-			return true;
+			success = true;
 		}
 	}
 
@@ -97,11 +100,20 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
 	if (strcasecmp(ext, ".srt") == 0) {
 		if (srt_parse_file(path, data)) {
 			printf("Loaded SRT file: %s\n", path);
-			return true;
+			success = true;
 		}
 	}
 
-	return false;
+	if (success) {
+		// Store the file path and calculate checksum
+		data->source_file_path = strdup(path);
+		if (!calculate_file_md5(path, data->md5_checksum)) {
+			fprintf(stderr, "Warning: Failed to calculate MD5 checksum for %s\n", path);
+			data->md5_checksum[0] = '\0';
+		}
+	}
+
+	return success;
 }
 
 // URL decode a string (handles %XX encoding)
