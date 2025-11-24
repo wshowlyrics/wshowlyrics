@@ -65,6 +65,7 @@ executable(
 		'src/parser_utils/parser_utils.c',
 		'src/curl_utils/curl_utils.c',
 		'src/file_utils/file_utils.c',
+		'src/render_helpers/render_helpers.c',
 	),
 	include_directories: include_directories('src'),
 	dependencies: [

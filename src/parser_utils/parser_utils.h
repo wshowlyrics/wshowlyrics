@@ -41,4 +41,27 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments);
 // Returns number of segments created, or 0 on error
 int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_segment **segments);
 
+// ============================================================================
+// Common parser utilities
+// ============================================================================
+
+// Initialize parsing - validates inputs and prepares lyrics_data structure
+// Returns duplicated content string in content_copy_out (caller must free)
+// Returns false if validation fails
+bool parse_init(const char *content, struct lyrics_data *data, char **content_copy_out);
+
+// Free all ruby segments in a linked list
+void free_ruby_segments(struct ruby_segment *segments);
+
+// Free all word segments in a linked list
+void free_word_segments(struct word_segment *segments);
+
+// Check if text contains only whitespace characters
+bool is_text_only_whitespace(const char *text);
+
+// Apply offset to timestamp (inline for performance)
+static inline int64_t apply_timestamp_offset(int64_t timestamp_us, int offset_ms) {
+    return timestamp_us + (int64_t)offset_ms * 1000;
+}
+
 #endif // PARSER_UTILS_H

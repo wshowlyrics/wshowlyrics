@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 bool parse_lrc_timestamp_ex(const char *str, int64_t *timestamp_us, const char **end_ptr, bool *is_unfill) {
     int minutes = 0, seconds = 0, centiseconds = 0;
@@ -551,4 +552,59 @@ ruby_error:
         head = next;
     }
     return 0;
+}
+
+// ============================================================================
+// Common parser utilities
+// ============================================================================
+
+bool parse_init(const char *content, struct lyrics_data *data, char **content_copy_out) {
+    if (!content || !data) {
+        return false;
+    }
+
+    memset(data, 0, sizeof(struct lyrics_data));
+
+    char *content_copy = strdup(content);
+    if (!content_copy) {
+        return false;
+    }
+
+    *content_copy_out = content_copy;
+    return true;
+}
+
+void free_ruby_segments(struct ruby_segment *segments) {
+    while (segments) {
+        struct ruby_segment *next = segments->next;
+        free(segments->text);
+        free(segments->ruby);
+        free(segments);
+        segments = next;
+    }
+}
+
+void free_word_segments(struct word_segment *segments) {
+    while (segments) {
+        struct word_segment *next = segments->next;
+        free(segments->text);
+        free(segments->ruby);
+        free(segments);
+        segments = next;
+    }
+}
+
+bool is_text_only_whitespace(const char *text) {
+    if (!text) {
+        return true;
+    }
+
+    while (*text) {
+        if (!isspace(*text)) {
+            return false;
+        }
+        text++;
+    }
+
+    return true;
 }

@@ -26,7 +26,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
     }
 
     // Apply offset to line timestamp
-    new_line->timestamp_us = line_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+    new_line->timestamp_us = apply_timestamp_offset(line_timestamp_us, data->metadata.offset_ms);
 
     // Build full text and parse word segments
     struct word_segment **next_segment = &new_line->segments;
@@ -59,7 +59,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
             char *raw_text = strndup(first_text_start, first_text_end - first_text_start);
 
             struct word_segment *segments = NULL;
-            int64_t timestamp_us = line_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+            int64_t timestamp_us = apply_timestamp_offset(line_timestamp_us, data->metadata.offset_ms);
             int seg_count = parse_karaoke_segments(raw_text, timestamp_us, &segments);
             free(raw_text);
 
@@ -150,7 +150,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
                     return false;
                 }
 
-                segment->timestamp_us = segment_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+                segment->timestamp_us = apply_timestamp_offset(segment_timestamp_us, data->metadata.offset_ms);
                 segment->is_unfill = is_unfill; // Set unfill flag
                 last_timestamp_us = segment_timestamp_us; // Update last seen timestamp
 
@@ -160,7 +160,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 
                     // Parse ruby text into segments
                     struct word_segment *word_segments = NULL;
-                    int word_seg_count = parse_karaoke_segments(raw_text, segment_timestamp_us + (int64_t)data->metadata.offset_ms * 1000, &word_segments);
+                    int word_seg_count = parse_karaoke_segments(raw_text, apply_timestamp_offset(segment_timestamp_us, data->metadata.offset_ms), &word_segments);
 
                     if (word_seg_count > 0 && word_segments) {
                         // Free raw_text and temporary segment
@@ -258,7 +258,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 
     // Set line end timestamp if we saw more than the initial timestamp
     if (last_timestamp_us > line_timestamp_us) {
-        new_line->end_timestamp_us = last_timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+        new_line->end_timestamp_us = apply_timestamp_offset(last_timestamp_us, data->metadata.offset_ms);
     }
 
     // Calculate end_timestamp_us for each segment
@@ -279,14 +279,8 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 }
 
 bool lrcx_parse_string(const char *content, struct lyrics_data *data) {
-    if (!content || !data) {
-        return false;
-    }
-
-    memset(data, 0, sizeof(struct lyrics_data));
-
-    char *content_copy = strdup(content);
-    if (!content_copy) {
+    char *content_copy = NULL;
+    if (!parse_init(content, data, &content_copy)) {
         return false;
     }
 

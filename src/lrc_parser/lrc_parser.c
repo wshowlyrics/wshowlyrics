@@ -6,14 +6,8 @@
 #include <ctype.h>
 
 bool lrc_parse_string(const char *content, struct lyrics_data *data) {
-    if (!content || !data) {
-        return false;
-    }
-
-    memset(data, 0, sizeof(struct lyrics_data));
-
-    char *content_copy = strdup(content);
-    if (!content_copy) {
+    char *content_copy = NULL;
+    if (!parse_init(content, data, &content_copy)) {
         return false;
     }
 
@@ -61,26 +55,15 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
                 }
 
                 // Apply offset
-                new_line->timestamp_us = timestamp_us + (int64_t)data->metadata.offset_ms * 1000;
+                new_line->timestamp_us = apply_timestamp_offset(timestamp_us, data->metadata.offset_ms);
 
                 // If text is empty or only whitespace, use empty string
                 if (text_start && *text_start) {
-                    // Check if text is only whitespace
-                    const char *check = text_start;
-                    bool only_whitespace = true;
-                    while (*check) {
-                        if (!isspace(*check)) {
-                            only_whitespace = false;
-                            break;
-                        }
-                        check++;
-                    }
-
                     // Check if text contains URL pattern (://)
                     // This filters out Spotify URIs and other URLs from being displayed
                     bool has_url = strstr(text_start, "://") != NULL;
 
-                    if (only_whitespace || has_url) {
+                    if (is_text_only_whitespace(text_start) || has_url) {
                         new_line->text = strdup("");
                     } else {
                         // Parse ruby text (furigana) from the line into segments
@@ -153,24 +136,10 @@ void lrc_free_data(struct lyrics_data *data) {
         free(line->text);
 
         // Free ruby segments if present (LRC format)
-        struct ruby_segment *ruby_seg = line->ruby_segments;
-        while (ruby_seg) {
-            struct ruby_segment *next_seg = ruby_seg->next;
-            free(ruby_seg->text);
-            free(ruby_seg->ruby);
-            free(ruby_seg);
-            ruby_seg = next_seg;
-        }
+        free_ruby_segments(line->ruby_segments);
 
         // Free word segments if present (LRCX format)
-        struct word_segment *word_seg = line->segments;
-        while (word_seg) {
-            struct word_segment *next_seg = word_seg->next;
-            free(word_seg->text);
-            free(word_seg->ruby);
-            free(word_seg);
-            word_seg = next_seg;
-        }
+        free_word_segments(line->segments);
 
         free(line);
         line = next;

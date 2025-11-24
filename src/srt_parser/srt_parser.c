@@ -83,14 +83,8 @@ static bool parse_srt_timestamp(const char *str, int64_t *start_us, int64_t *end
 }
 
 bool srt_parse_string(const char *content, struct lyrics_data *data) {
-    if (!content || !data) {
-        return false;
-    }
-
-    memset(data, 0, sizeof(struct lyrics_data));
-
-    char *content_copy = strdup(content);
-    if (!content_copy) {
+    char *content_copy = NULL;
+    if (!parse_init(content, data, &content_copy)) {
         return false;
     }
 
