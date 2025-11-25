@@ -1,4 +1,5 @@
 # Lyrics Overlay for Wayland
+<img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/e33bb35e-24f3-4632-811c-b7e55a0660a1" />
 
 Wayland 기반 가사 오버레이 프로그램입니다. [wshowkeys 프로젝트를 기반](https://github.com/unstable-code/wshowkeys)으로 제작되었으며, [LyricsX](https://github.com/ddddxxx/LyricsX)에서 영감을 받았습니다.
 
@@ -99,6 +100,7 @@ mpv --force-window=yes song.mp3
 ## 가사 파일 형식
 
 ### LRCX 형식 (카라오케)
+<img width="332" height="90" alt="1f8b963" src="https://github.com/user-attachments/assets/32b4861a-7bec-43a8-bce7-67b0aaba4f6e" />
 
 단어별 타이밍이 있는 카라오케 스타일 가사:
 
@@ -147,6 +149,7 @@ mpv --force-window=yes song.mp3
 - 루비 텍스트는 본문 텍스트 위에 절반 크기로 중앙 정렬되어 표시됩니다
 
 ### LRC 형식 (표준)
+<img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/b4e38b6d-f207-48e7-9d0b-36fb3d806869" />
 
 동기화된 가사 파일 형식입니다:
 
@@ -161,6 +164,7 @@ mpv --force-window=yes song.mp3
 ```
 
 ### SRT 형식
+<img width="361" height="131" alt="4cfd477" src="https://github.com/user-attachments/assets/09e7b68d-16ab-441b-b1a9-87bedda7547a" />
 
 자막 형식도 지원합니다:
 
