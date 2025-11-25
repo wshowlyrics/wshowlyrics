@@ -116,6 +116,11 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 }
 
 static void render_transparent_frame(struct lyrics_state *state) {
+    // Skip rendering if Wayland connection is not available
+    if (!state->wl_conn || !state->wl_conn->connected) {
+        return;
+    }
+
     const int scale = state->output ? state->output->scale : 1;
     state->current_buffer = get_next_buffer(state->shm,
             state->buffers, state->width * scale, state->height * scale);
@@ -134,6 +139,11 @@ static void render_transparent_frame(struct lyrics_state *state) {
 }
 
 static void render_frame(struct lyrics_state *state) {
+    // Skip rendering if Wayland connection is not available
+    if (!state->wl_conn || !state->wl_conn->connected) {
+        return;
+    }
+
     cairo_surface_t *recorder = cairo_recording_surface_create(
             CAIRO_CONTENT_COLOR_ALPHA, NULL);
     cairo_t *cairo = cairo_create(recorder);
@@ -204,6 +214,11 @@ static void render_frame(struct lyrics_state *state) {
 }
 
 static void set_dirty(struct lyrics_state *state) {
+    // Skip if Wayland connection is not available
+    if (!state->wl_conn || !state->wl_conn->connected) {
+        return;
+    }
+
     if (state->frame_scheduled) {
         state->dirty = true;
     } else if (state->surface) {
@@ -836,6 +851,9 @@ int main(int argc, char *argv[]) {
         .configured = false,
         .connected = true
     };
+
+    // Link Wayland connection manager to state
+    state.wl_conn = &wl_conn;
 
     while (state.run) {
         // Flush Wayland display

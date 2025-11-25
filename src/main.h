@@ -39,6 +39,7 @@
 /* Forward declarations */
 struct lyrics_output;
 struct lyrics_state;
+struct wayland_connection;
 
 struct lyrics_output {
     struct wl_output *output;
@@ -73,6 +74,7 @@ struct lyrics_state {
     bool track_changed;
 
     bool run;
+    struct wayland_connection *wl_conn; // Wayland connection manager
 };
 
 /* Function prototypes */
