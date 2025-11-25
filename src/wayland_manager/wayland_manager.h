@@ -45,4 +45,36 @@ bool wayland_manager_dispatch(struct wayland_connection *conn);
 // Returns true on success, false on error (connection lost)
 bool wayland_manager_flush(struct wayland_connection *conn);
 
+// Initialize Wayland globals (compositor, shm, layer_shell) from registry
+// Creates registry, binds required globals
+// Returns true on success, false if required globals are missing
+bool wayland_manager_init_globals(struct wayland_connection *conn);
+
+// Initialize Wayland surface and layer surface
+// Must be called after wayland_manager_init_globals()
+// Parameters:
+//   - conn: Wayland connection with valid compositor and layer_shell
+//   - layer: Layer shell layer (e.g., ZWLR_LAYER_SHELL_V1_LAYER_TOP)
+//   - namespace: Layer surface namespace string
+//   - anchor: Anchor flags for positioning
+//   - margin: Margin for all sides
+// Returns true on success, false on failure
+bool wayland_manager_init_surface(struct wayland_connection *conn,
+        uint32_t layer, const char *namespace,
+        uint32_t anchor, int32_t margin);
+
+// Full reconnection and reinitialization after connection loss
+// Combines reconnect + init_globals + init_surface
+// Waits 5 seconds before attempting reconnection
+// Parameters:
+//   - conn: Wayland connection to reconnect
+//   - layer: Layer shell layer (e.g., ZWLR_LAYER_SHELL_V1_LAYER_TOP)
+//   - namespace: Layer surface namespace string
+//   - anchor: Anchor flags for positioning
+//   - margin: Margin for all sides
+// Returns true on success, false on failure
+bool wayland_manager_reconnect_full(struct wayland_connection *conn,
+        uint32_t layer, const char *namespace,
+        uint32_t anchor, int32_t margin);
+
 #endif // WAYLAND_MANAGER_H

@@ -238,9 +238,18 @@ static void layer_surface_configure(void *data,
 
 static void layer_surface_closed(void *data,
         struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1) {
-    (void)data; // Unused - we don't exit on layer surface close anymore
+    (void)zwlr_layer_surface_v1;
+    struct lyrics_state *state = data;
+
+    // Ignore close events during reconnection (expected behavior)
+    if (state->reconnecting) {
+        return;
+    }
+
     fprintf(stderr, "\033[1;33mWARNING:\033[0m Layer surface closed by compositor\n");
-    // Don't exit - the reconnection logic will handle this
+    // Signal that we need to reconnect
+    state->needs_reconnect = true;
+    state->wl_conn->connected = false;
 }
 
 static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
@@ -345,6 +354,73 @@ static const struct wl_registry_listener registry_listener = {
     .global = registry_global,
     .global_remove = registry_global_remove,
 };
+
+// Helper function to handle full Wayland reconnection
+// Returns true if reconnection successful and state updated, false otherwise
+static bool handle_wayland_reconnection(struct lyrics_state *state,
+        struct wayland_connection *wl_conn, struct pollfd *pollfd) {
+    // Mark that we're reconnecting (to ignore layer_surface_closed events)
+    state->reconnecting = true;
+
+    // Clean up old buffers before reconnecting
+    // (they were created with the old wl_shm)
+    for (int i = 0; i < 2; i++) {
+        if (state->buffers[i].buffer) {
+            destroy_buffer(&state->buffers[i]);
+        }
+    }
+    state->current_buffer = NULL;
+
+    if (!wayland_manager_reconnect_full(wl_conn, ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+            "lyrics", state->anchor, state->margin)) {
+        fprintf(stderr, "Full reconnection failed, will retry...\n");
+        state->reconnecting = false;
+        return false;
+    }
+
+    // Update state pointers
+    state->display = wl_conn->display;
+    state->registry = wl_conn->registry;
+    state->compositor = wl_conn->compositor;
+    state->shm = wl_conn->shm;
+    state->layer_shell = wl_conn->layer_shell;
+    state->surface = wl_conn->surface;
+    state->layer_surface = wl_conn->layer_surface;
+
+    // Add listeners to new surfaces
+    wl_surface_add_listener(state->surface, &wl_surface_listener, state);
+    zwlr_layer_surface_v1_add_listener(state->layer_surface,
+            &layer_surface_listener, state);
+
+    // Commit the surface
+    wl_surface_commit(state->surface);
+
+    // Wait for configure event
+    int retry = 0;
+    state->width = state->height = 0;
+    while ((state->width == 0 || state->height == 0) && retry < 10) {
+        if (wl_display_roundtrip(state->display) == -1) {
+            fprintf(stderr, "\033[1;33mWARNING:\033[0m Roundtrip failed, compositor may not be available yet\n");
+            state->reconnecting = false;
+            return false;
+        }
+        retry++;
+    }
+
+    if (state->width == 0 || state->height == 0) {
+        fprintf(stderr, "\033[1;33mWARNING:\033[0m Layer surface configuration failed after reconnection (compositor not ready)\n");
+        state->reconnecting = false;
+        return false;
+    }
+
+    // Update pollfd with new display fd
+    pollfd->fd = wl_display_get_fd(wl_conn->display);
+
+    state->reconnecting = false;
+    printf("\033[1;32mSuccessfully reconnected - overlay should be visible again\033[0m\n");
+    set_dirty(state);
+    return true;
+}
 
 static uint32_t parse_color(const char *color) {
     if (color[0] == '#') {
@@ -837,6 +913,10 @@ int main(int argc, char *argv[]) {
         { .fd = wl_display_get_fd(state.display), .events = POLLIN, },
     };
 
+    // Store surface configuration for reinitialization
+    state.anchor = anchor;
+    state.margin = margin;
+
     state.run = true;
     int update_counter = 0;
 
@@ -857,20 +937,20 @@ int main(int argc, char *argv[]) {
     state.wl_conn = &wl_conn;
 
     while (state.run) {
+        // Check if reconnection is needed (e.g., layer surface was closed)
+        if (state.needs_reconnect) {
+            fprintf(stderr, "Reconnection needed, attempting full reconnection...\n");
+            if (handle_wayland_reconnection(&state, &wl_conn, pollfds)) {
+                state.needs_reconnect = false;
+            }
+            continue;
+        }
+
         // Flush Wayland display
         if (!wayland_manager_flush(&wl_conn)) {
-            // Connection lost, attempt reconnection
-            if (wayland_manager_reconnect(&wl_conn)) {
-                // Successfully reconnected, update state pointers
-                state.display = wl_conn.display;
-                printf("Wayland reconnection successful, reinitializing compositor interfaces...\n");
-                // The reconnection only reconnects to display, full reinitialization
-                // would require complex refactoring. For now, just keep trying.
-                continue;
-            } else {
-                // Reconnection failed, wait before trying again
-                continue;
-            }
+            // Connection lost, attempt full reconnection
+            handle_wayland_reconnection(&state, &wl_conn, pollfds);
+            continue;
         }
 
         int timeout = 100; // 100ms update interval
@@ -891,19 +971,9 @@ int main(int argc, char *argv[]) {
             if (pollfds[0].revents & POLLHUP) {
                 fprintf(stderr, "\033[1;33mWARNING:\033[0m Wayland compositor disconnected (possibly due to screen lock or tty switch)\n");
             }
-            // Attempt reconnection instead of exiting
-            if (wayland_manager_reconnect(&wl_conn)) {
-                state.display = wl_conn.display;
-                fprintf(stderr, "\033[1;32mINFO:\033[0m Wayland reconnection successful after POLLHUP\n");
-                // Update pollfd with new display fd
-                pollfds[0].fd = wl_display_get_fd(wl_conn.display);
-                continue;
-            } else {
-                fprintf(stderr, "\033[1;31mERROR:\033[0m Failed to reconnect after POLLHUP, will retry...\n");
-                // Keep trying instead of exiting
-                sleep(1);
-                continue;
-            }
+            // Attempt full reconnection
+            handle_wayland_reconnection(&state, &wl_conn, pollfds);
+            continue;
         }
 
         // Check for track changes every 2 seconds (20 * 100ms)
@@ -947,15 +1017,9 @@ int main(int argc, char *argv[]) {
 
         if (pollfds[0].revents & POLLIN) {
             if (!wayland_manager_dispatch(&wl_conn)) {
-                // Connection lost, attempt reconnection
-                if (wayland_manager_reconnect(&wl_conn)) {
-                    state.display = wl_conn.display;
-                    printf("Wayland reconnection successful after dispatch error\n");
-                    continue;
-                } else {
-                    // Reconnection failed, wait before trying again
-                    continue;
-                }
+                // Connection lost, attempt full reconnection
+                handle_wayland_reconnection(&state, &wl_conn, pollfds);
+                continue;
             }
         }
 

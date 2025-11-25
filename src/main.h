@@ -74,7 +74,13 @@ struct lyrics_state {
     bool track_changed;
 
     bool run;
+    bool needs_reconnect; // Set when layer surface is closed
+    bool reconnecting; // Set during reconnection to ignore layer_surface_closed
     struct wayland_connection *wl_conn; // Wayland connection manager
+
+    // Surface configuration for reinitialization
+    uint32_t anchor;
+    int32_t margin;
 };
 
 /* Function prototypes */
