@@ -886,11 +886,23 @@ int main(int argc, char *argv[]) {
 
         // Check for errors or hangup on the Wayland fd
         if (pollfds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            fprintf(stderr, "\033[1;31mERROR:\033[0m Wayland connection error detected (revents=0x%x)\n", pollfds[0].revents);
+            fprintf(stderr, "\033[1;33mWARNING:\033[0m Wayland connection error detected (revents=0x%x)\n", pollfds[0].revents);
             if (pollfds[0].revents & POLLHUP) {
-                fprintf(stderr, "\033[1;31mERROR:\033[0m Wayland compositor disconnected (possibly due to screen lock)\n");
+                fprintf(stderr, "\033[1;33mWARNING:\033[0m Wayland compositor disconnected (possibly due to screen lock or tty switch)\n");
             }
-            break;
+            // Attempt reconnection instead of exiting
+            if (wayland_manager_reconnect(&wl_conn)) {
+                state.display = wl_conn.display;
+                fprintf(stderr, "\033[1;32mINFO:\033[0m Wayland reconnection successful after POLLHUP\n");
+                // Update pollfd with new display fd
+                pollfds[0].fd = wl_display_get_fd(wl_conn.display);
+                continue;
+            } else {
+                fprintf(stderr, "\033[1;31mERROR:\033[0m Failed to reconnect after POLLHUP, will retry...\n");
+                // Keep trying instead of exiting
+                sleep(1);
+                continue;
+            }
         }
 
         // Check for track changes every 2 seconds (20 * 100ms)
