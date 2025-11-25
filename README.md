@@ -1,4 +1,5 @@
 # Lyrics Overlay for Wayland
+<img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/1909f0c1-445b-4526-b30f-6a5df93e624d" />
 
 A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https://github.com/unstable-code/wshowkeys) and inspired by [LyricsX](https://github.com/ddddxxx/LyricsX).
 
@@ -101,6 +102,8 @@ mpv --force-window=yes song.mp3
 ## Lyrics File Formats
 
 ### LRCX Format (Karaoke)
+<img width="332" height="90" alt="1f8b963" src="https://github.com/user-attachments/assets/43dae72e-e38d-4b26-bb62-f76b96d8b65a" />
+
 
 Karaoke-style lyrics with word-level timing:
 
@@ -149,6 +152,7 @@ All lyrics file formats (LRCX, LRC, SRT) support ruby text annotations:
 - Ruby text is rendered at half size, centered above the base text
 
 ### LRC Format (Standard)
+<img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/1909f0c1-445b-4526-b30f-6a5df93e624d" />
 
 Synchronized lyrics file format:
 
@@ -163,6 +167,8 @@ Synchronized lyrics file format:
 ```
 
 ### SRT Format
+<img width="361" height="131" alt="4cfd477" src="https://github.com/user-attachments/assets/664a2f52-c186-42dc-8f1b-c5e98c186b38" />
+
 
 Subtitle format is also supported:
 
