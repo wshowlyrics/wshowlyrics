@@ -72,6 +72,8 @@ struct lyrics_state {
     struct word_segment *current_segment; // For karaoke highlighting (LRCX)
     int64_t track_start_time_us; // When the track started (monotonic clock)
     bool track_changed;
+    bool in_instrumental_break; // True when in instrumental break (no lyrics)
+    bool need_lyrics_search; // True when lyrics file was missing and needs re-search
 
     bool run;
     bool needs_reconnect; // Set when layer surface is closed

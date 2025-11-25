@@ -551,6 +551,8 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
 
 static void update_current_line(struct lyrics_state *state) {
     if (!state->lyrics.lines) {
+        // No lyrics loaded - clear instrumental break flag
+        state->in_instrumental_break = false;
         return;
     }
 
@@ -605,9 +607,19 @@ static void update_current_line(struct lyrics_state *state) {
             // Debug: why is this being printed?
             printf("Instrumental break - clearing lyrics (new_line=%p, is_empty_text=%d, display_line=%p)\n",
                 (void*)new_line, is_empty_text, (void*)display_line);
+
+            // Mark that we're in instrumental break (for file check during idle time)
+            if (!state->in_instrumental_break) {
+                state->in_instrumental_break = true;
+            }
         }
 
         set_dirty(state);
+    }
+
+    // Clear instrumental break flag when lyrics are showing
+    if (state->current_line) {
+        state->in_instrumental_break = false;
     }
 
     // Update word segment for karaoke highlighting (LRCX only)
@@ -1020,6 +1032,42 @@ int main(int argc, char *argv[]) {
                 // Connection lost, attempt full reconnection
                 handle_wayland_reconnection(&state, &wl_conn, pollfds);
                 continue;
+            }
+        }
+
+        // During instrumental break (idle time), handle lyrics file status
+        // Only do one action per instrumental break to avoid doing both in same session
+        if (state.in_instrumental_break && state.lyrics.source_file_path) {
+            struct stat st;
+            bool file_exists = (stat(state.lyrics.source_file_path, &st) == 0);
+
+            if (!state.need_lyrics_search && !file_exists) {
+                // First detection: file was deleted or moved
+                printf("Lyrics file was deleted or moved: %s\n", state.lyrics.source_file_path);
+                printf("Will search for lyrics during next instrumental break\n");
+                state.need_lyrics_search = true;
+                state.in_instrumental_break = false; // Reset to trigger search on next break
+            } else if (state.need_lyrics_search) {
+                if (file_exists) {
+                    // File is back! No need to search
+                    printf("Lyrics file is back at original location: %s\n", state.lyrics.source_file_path);
+                } else {
+                    // File still missing - search for lyrics again
+                    printf("Searching for lyrics again...\n");
+                    struct lyrics_data new_lyrics = {0};
+                    if (lyrics_find_for_track(&state.current_track, &new_lyrics)) {
+                        printf("Found new lyrics, replacing old ones\n");
+                        lrc_free_data(&state.lyrics);
+                        state.lyrics = new_lyrics;
+                        state.current_line = NULL;
+                        set_dirty(&state);
+                    } else {
+                        printf("No lyrics found, keeping existing lyrics displayed\n");
+                    }
+                }
+                // Clear flags after handling
+                state.need_lyrics_search = false;
+                state.in_instrumental_break = false;
             }
         }
 
