@@ -57,6 +57,8 @@ int render_segment_with_ruby(cairo_t *cairo, const char *font, int scale,
                              const char *text, const char *ruby) {
     int seg_w, seg_h;
     get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, text, ruby);
+
+    // Bottom-align: position at y_offset so base text aligns with plain text
     cairo_move_to(cairo, x_offset, y_offset);
     pango_printf_ruby(cairo, font, scale, text, ruby);
     return seg_w;
@@ -67,7 +69,8 @@ int render_segment_plain(cairo_t *cairo, const char *font, int scale,
                         const char *text) {
     int seg_w, seg_h;
     get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", text);
-    cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
+    // Bottom-align: position at same y as ruby text's base text would be
+    cairo_move_to(cairo, x_offset, y_offset);
     pango_printf(cairo, font, scale, "%s", text);
     return seg_w;
 }
@@ -118,13 +121,12 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
             int seg_w, seg_h;
             if (seg_iter->ruby) {
                 get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg_iter->text, seg_iter->ruby);
-                cairo_move_to(cairo, x_iter, 0);
-                pango_printf_ruby(cairo, font, scale, seg_iter->text, seg_iter->ruby);
             } else {
                 get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", seg_iter->text);
-                cairo_move_to(cairo, x_iter, max_ruby_height);
-                pango_printf(cairo, font, scale, "%s", seg_iter->text);
             }
+            // All text at same baseline (max_ruby_height gives space for ruby above)
+            cairo_move_to(cairo, x_iter, max_ruby_height);
+            pango_printf_ruby(cairo, font, scale, seg_iter->text, seg_iter->ruby);
 
             x_iter += seg_w;
             if (seg_iter->next) {
@@ -227,13 +229,9 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
             cairo_clip(cairo);
 
             cairo_set_source_u32(cairo, foreground);
-            if (display_ruby) {
-                cairo_move_to(cairo, x_offset, 0);
-                pango_printf_ruby(cairo, font, scale, display_text, display_ruby);
-            } else {
-                cairo_move_to(cairo, x_offset, max_ruby_height);
-                pango_printf(cairo, font, scale, "%s", display_text);
-            }
+            // Use pango_printf_ruby for both - ensures consistent baseline
+            cairo_move_to(cairo, x_offset, max_ruby_height);
+            pango_printf_ruby(cairo, font, scale, display_text, display_ruby);
 
             cairo_restore(cairo);
         }
@@ -324,13 +322,12 @@ void render_ruby_segments(cairo_t *cairo, const char *font, int scale,
         int seg_w, seg_h;
         if (ruby_seg->ruby) {
             get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, ruby_seg->text, ruby_seg->ruby);
-            cairo_move_to(cairo, x_offset, y_offset);
-            pango_printf_ruby(cairo, font, scale, ruby_seg->text, ruby_seg->ruby);
         } else {
             get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", ruby_seg->text);
-            cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
-            pango_printf(cairo, font, scale, "%s", ruby_seg->text);
         }
+        // Use pango_printf_ruby for all text - ensures consistent baseline
+        cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
+        pango_printf_ruby(cairo, font, scale, ruby_seg->text, ruby_seg->ruby);
 
         x_offset += seg_w;
         line_width += seg_w;
@@ -389,13 +386,12 @@ void render_word_segments_static(cairo_t *cairo, const char *font, int scale,
         int seg_w, seg_h;
         if (segment->ruby) {
             get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, segment->text, segment->ruby);
-            cairo_move_to(cairo, x_offset, y_offset);
-            pango_printf_ruby(cairo, font, scale, segment->text, segment->ruby);
         } else {
             get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", segment->text);
-            cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
-            pango_printf(cairo, font, scale, "%s", segment->text);
         }
+        // Use pango_printf_ruby for all text - ensures consistent baseline
+        cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
+        pango_printf_ruby(cairo, font, scale, segment->text, segment->ruby);
 
         x_offset += seg_w;
         line_width += seg_w;

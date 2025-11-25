@@ -608,3 +608,60 @@ bool is_text_only_whitespace(const char *text) {
 
     return true;
 }
+
+void normalize_fullwidth_punctuation(char *text) {
+    if (!text) return;
+
+    char *read = text;
+    char *write = text;
+
+    while (*read) {
+        // Check for fullwidth punctuation (U+FF00 - U+FF5E)
+        if ((unsigned char)read[0] == 0xEF && (unsigned char)read[1] == 0xBC) {
+            unsigned char third = (unsigned char)read[2];
+            // U+FF01-FF5E maps to 0x21-0x7E
+            if (third >= 0x81 && third <= 0xBF) {
+                // Convert to halfwidth: U+FF01 (ef bc 81) -> ! (0x21)
+                *write++ = third - 0x60;
+                read += 3;
+                continue;
+            }
+        } else if ((unsigned char)read[0] == 0xEF && (unsigned char)read[1] == 0xBD) {
+            unsigned char third = (unsigned char)read[2];
+            // U+FF61-FF9F (halfwidth katakana range, but check for punct)
+            if (third >= 0x80 && third <= 0x9F) {
+                *write++ = third - 0x20;
+                read += 3;
+                continue;
+            }
+        }
+
+        // Copy as-is
+        *write++ = *read++;
+    }
+    *write = '\0';
+}
+
+void normalize_ruby_segments(struct ruby_segment *segments) {
+    while (segments) {
+        if (segments->text) {
+            normalize_fullwidth_punctuation(segments->text);
+        }
+        if (segments->ruby) {
+            normalize_fullwidth_punctuation(segments->ruby);
+        }
+        segments = segments->next;
+    }
+}
+
+void normalize_word_segments(struct word_segment *segments) {
+    while (segments) {
+        if (segments->text) {
+            normalize_fullwidth_punctuation(segments->text);
+        }
+        if (segments->ruby) {
+            normalize_fullwidth_punctuation(segments->ruby);
+        }
+        segments = segments->next;
+    }
+}

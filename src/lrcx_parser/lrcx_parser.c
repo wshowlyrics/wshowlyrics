@@ -235,12 +235,16 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
         }
     }
 
-    // Set the full line text
+    // Normalize all word segments first
+    normalize_word_segments(new_line->segments);
+
+    // Set the full line text (built from already-normalized segments)
     if (full_text) {
         new_line->text = full_text;
     } else {
         new_line->text = strdup("");
     }
+    // Note: No need to normalize text since it's built from normalized segments
 
     // If no segments were parsed, create empty segment
     if (new_line->segment_count == 0) {

@@ -46,6 +46,11 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
                     text_start++;
                 }
 
+                // Skip leading whitespace after timestamp tags
+                while (text_start && *text_start && isspace((unsigned char)*text_start)) {
+                    text_start++;
+                }
+
                 // Create new line even if text is empty or whitespace-only
                 // This allows instrumental breaks to be represented
                 struct lyrics_line *new_line = calloc(1, sizeof(struct lyrics_line));
@@ -87,6 +92,9 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
                             new_line->ruby_segments = segments;
                             new_line->segment_count = seg_count;
 
+                            // Normalize punctuation in all ruby segments
+                            normalize_ruby_segments(segments);
+
                             // Build full text without ruby notation for display
                             size_t text_len = 0;
                             struct ruby_segment *seg = segments;
@@ -108,12 +116,33 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
                                 new_line->text = strdup("");
                             }
                         } else {
-                            // No segments created (error case) - use original text
-                            new_line->text = strdup(text_start);
+                            // No segments created (error case) - use original text, trimmed
+                            // Trim trailing whitespace
+                            const char *end = text_start + strlen(text_start) - 1;
+                            while (end > text_start && isspace((unsigned char)*end)) {
+                                end--;
+                            }
+                            size_t len = end - text_start + 1;
+                            char *trimmed = malloc(len + 1);
+                            if (trimmed) {
+                                memcpy(trimmed, text_start, len);
+                                trimmed[len] = '\0';
+                                new_line->text = trimmed;
+                            } else {
+                                new_line->text = strdup("");
+                            }
                         }
                     }
                 } else {
                     new_line->text = strdup("");
+                }
+
+                // Note: No need to normalize new_line->text here since it's built
+                // from already-normalized segments, or for non-segment text,
+                // we normalize it directly below
+                if (new_line->text && !new_line->ruby_segments) {
+                    // Only normalize if we didn't parse segments (fallback case)
+                    normalize_fullwidth_punctuation(new_line->text);
                 }
 
                 *next_line = new_line;

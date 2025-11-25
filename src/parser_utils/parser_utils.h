@@ -50,6 +50,12 @@ int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_s
 // Returns false if validation fails
 bool parse_init(const char *content, struct lyrics_data *data, char **content_copy_out);
 
+// Normalize fullwidth punctuation in all ruby segments (in-place)
+void normalize_ruby_segments(struct ruby_segment *segments);
+
+// Normalize fullwidth punctuation in all word segments (in-place)
+void normalize_word_segments(struct word_segment *segments);
+
 // Free all ruby segments in a linked list
 void free_ruby_segments(struct ruby_segment *segments);
 
@@ -58,6 +64,11 @@ void free_word_segments(struct word_segment *segments);
 
 // Check if text contains only whitespace characters
 bool is_text_only_whitespace(const char *text);
+
+// Normalize fullwidth punctuation to halfwidth (in-place)
+// Converts fullwidth ASCII variants (U+FF01-FF5E) to halfwidth (0x21-0x7E)
+// Example: ！ → !, （ → (, ） → )
+void normalize_fullwidth_punctuation(char *text);
 
 // Apply offset to timestamp (inline for performance)
 static inline int64_t apply_timestamp_offset(int64_t timestamp_us, int offset_ms) {

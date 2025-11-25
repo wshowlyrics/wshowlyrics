@@ -24,6 +24,9 @@ static struct lyrics_line* create_srt_line(int64_t start_us, int64_t end_us, con
         new_line->ruby_segments = segments;
         new_line->segment_count = seg_count;
 
+        // Normalize punctuation in all ruby segments
+        normalize_ruby_segments(segments);
+
         // Build full text without ruby notation
         size_t full_len = 0;
         struct ruby_segment *seg = segments;
@@ -46,7 +49,12 @@ static struct lyrics_line* create_srt_line(int64_t start_us, int64_t end_us, con
         }
     } else {
         new_line->text = strdup(text_buffer);
+        // Normalize if no segments were created
+        if (new_line->text) {
+            normalize_fullwidth_punctuation(new_line->text);
+        }
     }
+    // Note: If segments exist, text is built from already-normalized segments
 
     return new_line;
 }

@@ -15,7 +15,13 @@ PangoLayout *get_pango_layout(cairo_t *cairo, const char *font,
     PangoFontDescription *desc = pango_font_description_from_string(font);
     pango_layout_set_font_description(layout, desc);
     pango_layout_set_single_paragraph_mode(layout, 0); // Enable multi-line support
-    pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER); // Center align text
+    pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT); // Left align for proper width calculation
+
+    // Force baseline consistency for all text
+    PangoContext *context = pango_layout_get_context(layout);
+    pango_context_set_base_gravity(context, PANGO_GRAVITY_SOUTH);
+    pango_context_set_gravity_hint(context, PANGO_GRAVITY_HINT_STRONG);
+
     pango_layout_set_attributes(layout, attrs);
     pango_attr_list_unref(attrs);
     pango_font_description_free(desc);
@@ -40,7 +46,19 @@ void get_text_size(cairo_t *cairo, const char *font, int *width, int *height,
 
     PangoLayout *layout = get_pango_layout(cairo, font, buf, scale);
     pango_cairo_update_layout(cairo, layout);
-    pango_layout_get_pixel_size(layout, width, height);
+
+    // Get both ink and logical extents
+    PangoRectangle ink_rect, logical_rect;
+    pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
+
+    // Use logical width
+    if (width) {
+        *width = logical_rect.width;
+    }
+    if (height) {
+        // Use logical height with minimal bottom padding
+        *height = logical_rect.height + 3;  // Add 3px bottom padding only
+    }
     if (baseline) {
         *baseline = pango_layout_get_baseline(layout) / PANGO_SCALE;
     }
@@ -96,8 +114,9 @@ void get_ruby_text_size(cairo_t *cairo, const char *font, int *width, int *heigh
     // Width is base text width (ruby is centered over base)
     *width = base_w;
 
-    // Height is base + ruby (if present)
-    *height = base_h + ruby_h;
+    // Height is base + ruby (if present), with tighter spacing
+    int spacing = ruby_h > 0 ? -4 : 0;  // Reduce gap by 4px when ruby exists
+    *height = base_h + ruby_h + spacing;
 }
 
 int pango_printf_ruby(cairo_t *cairo, const char *font, double scale,
@@ -118,18 +137,23 @@ int pango_printf_ruby(cairo_t *cairo, const char *font, double scale,
     double x, y;
     cairo_get_current_point(cairo, &x, &y);
 
+    // Calculate spacing
+    int spacing = (ruby_text && ruby_text[0] != '\0') ? -4 : 0;
+
     // Draw ruby text above, centered over base text
+    // Position ruby so that base text will be at the SAME y position regardless of ruby
     if (ruby_text && ruby_text[0] != '\0') {
         cairo_save(cairo);
         // Center ruby over base text (not over total width)
         double ruby_offset_x = (base_w - ruby_w) / 2.0;
-        cairo_move_to(cairo, x + ruby_offset_x, y);
+        // Move ruby UP so base text stays at y
+        cairo_move_to(cairo, x + ruby_offset_x, y - ruby_h - spacing);
         pango_printf(cairo, font, scale * 0.5, "%s", ruby_text);
         cairo_restore(cairo);
     }
 
-    // Draw base text below
-    cairo_move_to(cairo, x, y + ruby_h);
+    // Draw base text at the original y position (consistent for all text)
+    cairo_move_to(cairo, x, y);
     pango_printf(cairo, font, scale, "%s", base_text);
 
     // Don't move cairo current point - let caller manage position
