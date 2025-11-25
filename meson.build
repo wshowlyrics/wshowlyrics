@@ -66,6 +66,7 @@ executable(
 		'src/curl_utils/curl_utils.c',
 		'src/file_utils/file_utils.c',
 		'src/render_helpers/render_helpers.c',
+		'src/wayland_manager/wayland_manager.c',
 	),
 	include_directories: include_directories('src'),
 	dependencies: [

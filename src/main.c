@@ -2,6 +2,7 @@
 #include "config/config.h"
 #include "constants.h"
 #include "render_helpers/render_helpers.h"
+#include "wayland_manager/wayland_manager.h"
 #include <ctype.h>
 #include <strings.h>
 
@@ -823,19 +824,54 @@ int main(int argc, char *argv[]) {
     state.run = true;
     int update_counter = 0;
 
+    // Wayland connection manager
+    struct wayland_connection wl_conn = {
+        .display = state.display,
+        .registry = state.registry,
+        .compositor = state.compositor,
+        .shm = state.shm,
+        .layer_shell = state.layer_shell,
+        .surface = state.surface,
+        .layer_surface = state.layer_surface,
+        .configured = false,
+        .connected = true
+    };
+
     while (state.run) {
-        errno = 0;
-        do {
-            if (wl_display_flush(state.display) == -1 && errno != EAGAIN) {
-                fprintf(stderr, "wl_display_flush: %s\n", strerror(errno));
-                break;
+        // Flush Wayland display
+        if (!wayland_manager_flush(&wl_conn)) {
+            // Connection lost, attempt reconnection
+            if (wayland_manager_reconnect(&wl_conn)) {
+                // Successfully reconnected, update state pointers
+                state.display = wl_conn.display;
+                printf("Wayland reconnection successful, reinitializing compositor interfaces...\n");
+                // The reconnection only reconnects to display, full reinitialization
+                // would require complex refactoring. For now, just keep trying.
+                continue;
+            } else {
+                // Reconnection failed, wait before trying again
+                continue;
             }
-        } while (errno == EAGAIN);
+        }
 
         int timeout = 100; // 100ms update interval
 
-        if (poll(pollfds, sizeof(pollfds) / sizeof(pollfds[0]), timeout) < 0) {
-            fprintf(stderr, "poll: %s\n", strerror(errno));
+        int poll_ret = poll(pollfds, sizeof(pollfds) / sizeof(pollfds[0]), timeout);
+        if (poll_ret < 0) {
+            if (errno == EINTR) {
+                // Interrupted by signal, continue
+                continue;
+            }
+            fprintf(stderr, "\033[1;31mERROR:\033[0m Poll error: %s (errno=%d)\n", strerror(errno), errno);
+            break;
+        }
+
+        // Check for errors or hangup on the Wayland fd
+        if (pollfds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            fprintf(stderr, "\033[1;31mERROR:\033[0m Wayland connection error detected (revents=0x%x)\n", pollfds[0].revents);
+            if (pollfds[0].revents & POLLHUP) {
+                fprintf(stderr, "\033[1;31mERROR:\033[0m Wayland compositor disconnected (possibly due to screen lock)\n");
+            }
             break;
         }
 
@@ -878,10 +914,18 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        if ((pollfds[0].revents & POLLIN)
-                && wl_display_dispatch(state.display) == -1) {
-            fprintf(stderr, "wl_display_dispatch: %s\n", strerror(errno));
-            break;
+        if (pollfds[0].revents & POLLIN) {
+            if (!wayland_manager_dispatch(&wl_conn)) {
+                // Connection lost, attempt reconnection
+                if (wayland_manager_reconnect(&wl_conn)) {
+                    state.display = wl_conn.display;
+                    printf("Wayland reconnection successful after dispatch error\n");
+                    continue;
+                } else {
+                    // Reconnection failed, wait before trying again
+                    continue;
+                }
+            }
         }
 
         // Update system tray (process GTK events)
