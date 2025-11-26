@@ -192,14 +192,25 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
                 }
                 state = STATE_INDEX;
             } else {
-                // Append text
-                if (text_len > 0) {
+                // Append text with proper bounds checking
+                size_t remaining = sizeof(text_buffer) - text_len - 1;
+                if (text_len > 0 && remaining > 0) {
                     // Add newline between lines
-                    strncat(text_buffer, "\n", sizeof(text_buffer) - text_len - 1);
-                    text_len++;
+                    text_buffer[text_len++] = '\n';
+                    text_buffer[text_len] = '\0';
+                    remaining--;
                 }
-                strncat(text_buffer, line, sizeof(text_buffer) - text_len - 1);
-                text_len = strlen(text_buffer);
+
+                // Append line text if there's space
+                size_t line_len = strlen(line);
+                if (line_len > remaining) {
+                    line_len = remaining;  // Truncate if needed
+                }
+                if (line_len > 0) {
+                    memcpy(text_buffer + text_len, line, line_len);
+                    text_len += line_len;
+                    text_buffer[text_len] = '\0';
+                }
             }
             break;
         }

@@ -376,7 +376,12 @@ static bool local_search(const char *title, const char *artist, const char *albu
                 snprintf(path, sizeof(path), "%s/%s.%s", search_dirs[i], filename_from_url, ext);
                 printf("Trying: %s\n", path);
                 if (try_load_lyrics_file(path, data)) {
-                    goto success;
+                    free_extension_priority(extensions);
+                    free(title_safe);
+                    free(artist_safe);
+                    free(current_dir);
+                    free(filename_from_url);
+                    return true;
                 }
             }
         }
@@ -389,7 +394,12 @@ static bool local_search(const char *title, const char *artist, const char *albu
             snprintf(path, sizeof(path), "%s/%s.%s", search_dirs[i], title_safe, ext);
             printf("Trying: %s\n", path);
             if (try_load_lyrics_file(path, data)) {
-                goto success;
+                free_extension_priority(extensions);
+                free(title_safe);
+                free(artist_safe);
+                free(current_dir);
+                free(filename_from_url);
+                return true;
             }
 
             if (artist_safe) {
@@ -397,33 +407,36 @@ static bool local_search(const char *title, const char *artist, const char *albu
                 snprintf(path, sizeof(path), "%s/%s - %s.%s",
                          search_dirs[i], artist_safe, title_safe, ext);
                 if (try_load_lyrics_file(path, data)) {
-                    goto success;
+                    free_extension_priority(extensions);
+                    free(title_safe);
+                    free(artist_safe);
+                    free(current_dir);
+                    free(filename_from_url);
+                    return true;
                 }
 
                 // Try: Artist/Title.ext
                 snprintf(path, sizeof(path), "%s/%s/%s.%s",
                          search_dirs[i], artist_safe, title_safe, ext);
                 if (try_load_lyrics_file(path, data)) {
-                    goto success;
+                    free_extension_priority(extensions);
+                    free(title_safe);
+                    free(artist_safe);
+                    free(current_dir);
+                    free(filename_from_url);
+                    return true;
                 }
             }
         }
     }
 
-    // No lyrics found
-    bool found = false;
-    goto cleanup;
-
-success:
-    found = true;
-
-cleanup:
+    // No lyrics found - cleanup and return false
     free_extension_priority(extensions);
     free(title_safe);
     free(artist_safe);
     free(current_dir);
     free(filename_from_url);
-    return found;
+    return false;
 }
 
 static bool local_init(void) {
