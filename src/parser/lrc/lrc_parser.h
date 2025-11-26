@@ -1,7 +1,7 @@
 #ifndef _LYRICS_LRC_PARSER_H
 #define _LYRICS_LRC_PARSER_H
 
-#include "../../lyrics_types/lyrics_types.h"
+#include "../../lyrics_types.h"
 
 // Parse LRC file
 bool lrc_parse_file(const char *filename, struct lyrics_data *data);

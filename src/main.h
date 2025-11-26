@@ -27,8 +27,8 @@
 
 /* Project headers */
 #include "utils/pango/pango_utils.h"
-#include "shm/shm.h"
-#include "mpris/mpris.h"
+#include "utils/shm/shm.h"
+#include "utils/mpris/mpris.h"
 #include "parser/lrc/lrc_parser.h"
 #include "parser/srt/srt_parser.h"
 #include "parser/lrcx/lrcx_parser.h"

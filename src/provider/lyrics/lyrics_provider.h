@@ -2,7 +2,7 @@
 #define _LYRICS_PROVIDER_H
 
 #include "../../parser/lrc/lrc_parser.h"
-#include "../../mpris/mpris.h"
+#include "../../utils/mpris/mpris.h"
 #include <stdbool.h>
 
 // Abstract interface for lyrics providers

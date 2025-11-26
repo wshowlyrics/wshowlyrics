@@ -53,8 +53,8 @@ executable(
 	files(
 		'src/main.c',
 		'src/utils/pango/pango_utils.c',
-		'src/shm/shm.c',
-		'src/mpris/mpris.c',
+		'src/utils/shm/shm.c',
+		'src/utils/mpris/mpris.c',
 		'src/parser/lrc/lrc_parser.c',
 		'src/parser/srt/srt_parser.c',
 		'src/parser/lrcx/lrcx_parser.c',
@@ -66,7 +66,7 @@ executable(
 		'src/utils/curl/curl_utils.c',
 		'src/utils/file/file_utils.c',
 		'src/utils/render/render_helpers.c',
-		'src/wayland_manager/wayland_manager.c',
+		'src/utils/wayland/wayland_manager.c',
 	),
 	include_directories: include_directories('src'),
 	dependencies: [

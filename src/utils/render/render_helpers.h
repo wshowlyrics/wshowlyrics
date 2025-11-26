@@ -4,7 +4,7 @@
 #include <cairo.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "../../lyrics_types/lyrics_types.h"
+#include "../../lyrics_types.h"
 #include "../pango/pango_utils.h"
 
 // Calculate maximum ruby text height from segments

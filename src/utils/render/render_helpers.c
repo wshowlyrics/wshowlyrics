@@ -1,5 +1,5 @@
 #include "render_helpers.h"
-#include "../../mpris/mpris.h"
+#include "../mpris/mpris.h"
 #include <string.h>
 #include <ctype.h>
 
