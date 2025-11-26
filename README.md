@@ -29,11 +29,58 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
 - Adjustable screen position (top/bottom/left/right)
 - Customizable colors and fonts
 
-## Build
+## Installation
+
+### Arch Linux (AUR)
+
+Install using an AUR helper like `yay`:
+
+```bash
+yay -S wshowlyrics-git
+```
+
+Or manually:
+
+```bash
+git clone https://aur.archlinux.org/wshowlyrics-git.git
+cd wshowlyrics-git
+makepkg -si
+```
+
+### Manual Installation (Arch Linux)
+
+Install dependencies:
+
+```bash
+sudo pacman -S cairo curl fontconfig pango wayland wayland-protocols meson ninja playerctl \
+               libappindicator-gtk3 gdk-pixbuf2
+```
+
+Build and install:
 
 ```bash
 meson setup build
 meson compile -C build
+sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
+```
+
+### Manual Installation (Ubuntu/Debian)
+
+Install dependencies:
+
+```bash
+sudo apt install libcairo2-dev libcurl4-openssl-dev libfontconfig1-dev libpango1.0-dev \
+                 libwayland-dev wayland-protocols \
+                 libappindicator3-dev libgdk-pixbuf2.0-dev \
+                 meson ninja-build playerctl
+```
+
+Build and install:
+
+```bash
+meson setup build
+meson compile -C build
+sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
 ```
 
 ## Usage
@@ -42,7 +89,7 @@ Automatically displays lyrics for the currently playing music via MPRIS:
 
 ```bash
 # Basic execution - automatically finds and displays lyrics for the current song
-./build/lyrics
+wshowlyrics
 
 # Play music with mpv
 mpv --force-window=yes song.mp3
@@ -76,27 +123,27 @@ mpv --force-window=yes song.mp3
 
 ```bash
 # Show help
-./build/lyrics -h
-./build/lyrics --help
+wshowlyrics -h
+wshowlyrics --help
 
 # Run in MPRIS mode (default)
-./build/lyrics
+wshowlyrics
 
 # Run with Korean font
-./build/lyrics -F "Noto Sans CJK KR 20"
-./build/lyrics --font="Noto Sans CJK KR 20"
+wshowlyrics -F "Noto Sans CJK KR 20"
+wshowlyrics --font="Noto Sans CJK KR 20"
 
 # Display at top of screen
-./build/lyrics -a top -m 50
-./build/lyrics --anchor=top --margin=50
+wshowlyrics -a top -m 50
+wshowlyrics --anchor=top --margin=50
 
 # Transparent background with yellow text
-./build/lyrics -b 00000066 -f FFFF00FF
-./build/lyrics --background=00000066 --foreground=FFFF00FF
+wshowlyrics -b 00000066 -f FFFF00FF
+wshowlyrics --background=00000066 --foreground=FFFF00FF
 
 # Large bold font at bottom of screen
-./build/lyrics -F "Sans Bold 28" -a bottom -m 40
-./build/lyrics --font="Sans Bold 28" --anchor=bottom --margin=40
+wshowlyrics -F "Sans Bold 28" -a bottom -m 40
+wshowlyrics --font="Sans Bold 28" --anchor=bottom --margin=40
 ```
 
 ## Lyrics File Formats
@@ -254,58 +301,33 @@ If no local lyrics file is found, the program automatically fetches synchronized
     ```
 - **Waybar users**: System tray is supported by default, no additional configuration needed
 
-## Installation
+## Build (for Development)
 
-### Arch Linux (AUR)
-
-Install using an AUR helper like `yay`:
-
-```bash
-yay -S wshowlyrics-git
-```
-
-Or manually:
-
-```bash
-git clone https://aur.archlinux.org/wshowlyrics-git.git
-cd wshowlyrics-git
-makepkg -si
-```
-
-### Manual Installation (Arch Linux)
-
-Install dependencies:
-
-```bash
-sudo pacman -S cairo curl fontconfig pango wayland wayland-protocols meson ninja playerctl \
-               libappindicator-gtk3 gdk-pixbuf2
-```
-
-Build and install:
+If you want to contribute to the project or test the latest changes:
 
 ```bash
 meson setup build
 meson compile -C build
-sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
 ```
 
-### Manual Installation (Ubuntu/Debian)
+### Development Usage
 
-Install dependencies:
-
-```bash
-sudo apt install libcairo2-dev libcurl4-openssl-dev libfontconfig1-dev libpango1.0-dev \
-                 libwayland-dev wayland-protocols \
-                 libappindicator3-dev libgdk-pixbuf2.0-dev \
-                 meson ninja-build playerctl
-```
-
-Build and install:
+Run the compiled binary directly without installation:
 
 ```bash
-meson setup build
-meson compile -C build
-sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
+# Basic execution - automatically finds and displays lyrics for the current song
+./build/lyrics
+
+# Play music with mpv
+mpv --force-window=yes song.mp3
+
+# Run with Korean font
+./build/lyrics -F "Noto Sans CJK KR 20"
+
+# Display at top of screen
+./build/lyrics -a top -m 50
+
+# All options from the Usage section above work with ./build/lyrics
 ```
 
 ## License
