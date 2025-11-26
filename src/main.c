@@ -444,6 +444,24 @@ static bool update_track_info(struct lyrics_state *state) {
 
     struct track_metadata new_track = {0};
     if (!mpris_get_metadata(&new_track)) {
+        // No player found - clear everything if we had a track before
+        if (state->current_track.title) {
+            printf("\n=== No player found, clearing lyrics ===\n");
+
+            // Free track metadata
+            mpris_free_metadata(&state->current_track);
+
+            // Free lyrics
+            lrc_free_data(&state->lyrics);
+            state->current_line = NULL;
+
+            // Reset tray icon to default
+            system_tray_reset_icon();
+            system_tray_update_tooltip("wshowlyrics");
+
+            // Clear the display
+            set_dirty(state);
+        }
         return false;
     }
 

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 // Simple implementation using playerctl command
 // For a full implementation, we would use D-Bus directly
@@ -14,9 +15,10 @@ bool mpris_init(void) {
     return ret == 0;
 }
 
-static char* execute_command(const char *cmd) {
+static char* execute_command(const char *cmd, int *exit_code) {
     FILE *fp = popen(cmd, "r");
     if (!fp) {
+        if (exit_code) *exit_code = -1;
         return NULL;
     }
 
@@ -36,6 +38,7 @@ static char* execute_command(const char *cmd) {
         if (!new_result) {
             free(result);
             pclose(fp);
+            if (exit_code) *exit_code = -1;
             return NULL;
         }
         result = new_result;
@@ -47,7 +50,10 @@ static char* execute_command(const char *cmd) {
         total_size += len;
     }
 
-    pclose(fp);
+    int status = pclose(fp);
+    if (exit_code) {
+        *exit_code = WEXITSTATUS(status);
+    }
     return result;
 }
 
@@ -60,12 +66,16 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 
     // Get all metadata in a single command to ensure consistency
     // Format: title|artist|album|url|artUrl|length
+    int exit_code = 0;
     char *result = execute_command(
         "playerctl --player=%any metadata --format "
-        "'{{title}}|||{{artist}}|||{{album}}|||{{xesam:url}}|||{{mpris:artUrl}}|||{{mpris:length}}' 2>/dev/null"
+        "'{{title}}|||{{artist}}|||{{album}}|||{{xesam:url}}|||{{mpris:artUrl}}|||{{mpris:length}}' 2>/dev/null",
+        &exit_code
     );
 
-    if (!result) {
+    // If playerctl exits with code 1, it means no players found
+    if (!result || exit_code != 0) {
+        free(result);
         return false;
     }
 
@@ -132,7 +142,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     }
 
     // Get position separately (not available in metadata format)
-    char *position_str = execute_command("playerctl --player=%any position 2>/dev/null");
+    char *position_str = execute_command("playerctl --player=%any position 2>/dev/null", NULL);
     if (position_str) {
         double position_sec = atof(position_str);
         metadata->position_us = (int64_t)(position_sec * 1000000);
@@ -145,7 +155,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 
 int64_t mpris_get_position(void) {
     // Use metadata format to get position in microseconds
-    char *position_str = execute_command("playerctl --player=%any metadata -f '{{position}}' 2>/dev/null");
+    char *position_str = execute_command("playerctl --player=%any metadata -f '{{position}}' 2>/dev/null", NULL);
     if (!position_str) {
         return 0;
     }
@@ -157,8 +167,10 @@ int64_t mpris_get_position(void) {
 }
 
 bool mpris_is_playing(void) {
-    char *status = execute_command("playerctl --player=%any status 2>/dev/null");
-    if (!status) {
+    int exit_code = 0;
+    char *status = execute_command("playerctl --player=%any status 2>/dev/null", &exit_code);
+    if (!status || exit_code != 0) {
+        free(status);
         return false;
     }
 
