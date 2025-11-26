@@ -33,7 +33,7 @@
 #include "parser/srt/srt_parser.h"
 #include "parser/lrcx/lrcx_parser.h"
 #include "provider/lyrics/lyrics_provider.h"
-#include "system_tray/system_tray.h"
+#include "user_experience/system_tray/system_tray.h"
 #include "utils/file/file_utils.h"
 
 /* Forward declarations */

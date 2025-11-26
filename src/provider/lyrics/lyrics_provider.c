@@ -3,7 +3,7 @@
 #include "../../parser/lrc/lrc_parser.h"
 #include "../../parser/srt/srt_parser.h"
 #include "../../parser/lrcx/lrcx_parser.h"
-#include "../../config/config.h"
+#include "../../user_experience/config/config.h"
 #include "../../constants.h"
 #include "../../utils/file/file_utils.h"
 #include <stdio.h>
