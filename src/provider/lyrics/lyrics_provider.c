@@ -152,12 +152,30 @@ static char** get_extension_priority(void) {
         // Default: all extensions in default order
         char **exts = malloc(5 * sizeof(char*));
         if (!exts) return NULL;
+
+        // Initialize all pointers to NULL for safe cleanup
+        for (int i = 0; i < 5; i++) {
+            exts[i] = NULL;
+        }
+
+        // Allocate strings with NULL checks
         exts[0] = strdup("lrcx");
+        if (!exts[0]) goto cleanup_default;
         exts[1] = strdup("lrc");
+        if (!exts[1]) goto cleanup_default;
         exts[2] = strdup("srt");
+        if (!exts[2]) goto cleanup_default;
         exts[3] = strdup("vtt");
+        if (!exts[3]) goto cleanup_default;
         exts[4] = NULL;
         return exts;
+
+cleanup_default:
+        for (int i = 0; i < 5; i++) {
+            free(exts[i]);
+        }
+        free(exts);
+        return NULL;
     }
 
     // Parse comma-separated list
@@ -176,12 +194,27 @@ static char** get_extension_priority(void) {
         return NULL;
     }
 
+    // Initialize all pointers to NULL for safe cleanup
+    for (int i = 0; i <= count; i++) {
+        result[i] = NULL;
+    }
+
     // Split and trim
     int idx = 0;
     char *token = strtok(exts_copy, ",");
     while (token && idx < count) {
         char *trimmed = config_trim_whitespace(token);
-        result[idx++] = strdup(trimmed);
+        result[idx] = strdup(trimmed);
+        if (!result[idx]) {
+            // Cleanup on allocation failure
+            for (int i = 0; i < idx; i++) {
+                free(result[i]);
+            }
+            free(result);
+            free(exts_copy);
+            return NULL;
+        }
+        idx++;
         token = strtok(NULL, ",");
     }
     result[idx] = NULL;

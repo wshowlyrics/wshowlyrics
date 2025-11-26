@@ -637,6 +637,10 @@ int main(int argc, char *argv[]) {
 
     // Extract program name for help messages
     char *argv0_copy = strdup(argv[0]);
+    if (!argv0_copy) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return 1;
+    }
     const char *program_name = basename(argv0_copy);
 
     // Quick check for --help before doing any initialization
@@ -771,7 +775,8 @@ int main(int argc, char *argv[]) {
         g_config.display.font_family,
         g_config.display.font_weight,
         g_config.display.font_size);
-    state.font = strdup(font_str);
+    char *font_from_config_alloc = strdup(font_str);
+    state.font = font_from_config_alloc;  // Track allocated font to free later
 
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
@@ -794,6 +799,11 @@ int main(int argc, char *argv[]) {
             state.foreground = parse_color(optarg);
             break;
         case 'F':
+            // Free config font if overridden by command line
+            if (font_from_config_alloc) {
+                free(font_from_config_alloc);
+                font_from_config_alloc = NULL;
+            }
             state.font = optarg;
             break;
         case 'a':
@@ -1086,6 +1096,12 @@ exit:
         wl_display_disconnect(state.display);
     }
     FcFini();
+
+    // Free allocated font string if it was from config
+    if (font_from_config_alloc) {
+        free(font_from_config_alloc);
+    }
+
     free(argv0_copy);
     return ret;
 }
