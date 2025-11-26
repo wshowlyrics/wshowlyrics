@@ -313,29 +313,13 @@ bool lrcx_parse_string(const char *content, struct lyrics_data *data) {
         struct lyrics_line *new_line = NULL;
         if (parse_lrcx_line(line, data, &new_line)) {
             // Validate line timestamp order (warn if going backwards)
-            if (last_line_timestamp_us >= 0 && new_line->timestamp_us < last_line_timestamp_us) {
-                fprintf(stderr, "\033[1;33mWARN:\033[0m LRCX line timestamp goes backwards: [%02ld:%02ld.%02ld] -> [%02ld:%02ld.%02ld]\n",
-                        last_line_timestamp_us / 60000000,
-                        (last_line_timestamp_us / 1000000) % 60,
-                        (last_line_timestamp_us / 10000) % 100,
-                        new_line->timestamp_us / 60000000,
-                        (new_line->timestamp_us / 1000000) % 60,
-                        (new_line->timestamp_us / 10000) % 100);
-            }
+            validate_timestamp_order(new_line->timestamp_us, &last_line_timestamp_us, "LRCX line");
 
             // Validate word segment timestamps within the line
             int64_t last_word_timestamp_us = new_line->timestamp_us;
             struct word_segment *seg = new_line->segments;
             while (seg) {
-                if (seg->timestamp_us < last_word_timestamp_us) {
-                    fprintf(stderr, "\033[1;33mWARN:\033[0m LRCX word timestamp goes backwards within line: [%02ld:%02ld.%02ld] -> [%02ld:%02ld.%02ld]\n",
-                            last_word_timestamp_us / 60000000,
-                            (last_word_timestamp_us / 1000000) % 60,
-                            (last_word_timestamp_us / 10000) % 100,
-                            seg->timestamp_us / 60000000,
-                            (seg->timestamp_us / 1000000) % 60,
-                            (seg->timestamp_us / 10000) % 100);
-                }
+                validate_timestamp_order(seg->timestamp_us, &last_word_timestamp_us, "LRCX word");
                 last_word_timestamp_us = seg->timestamp_us;
                 seg = seg->next;
             }

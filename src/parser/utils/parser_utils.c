@@ -665,3 +665,27 @@ void normalize_word_segments(struct word_segment *segments) {
         segments = segments->next;
     }
 }
+
+
+bool validate_timestamp_order(int64_t current_us, int64_t *last_us, const char *format_name) {
+    if (!last_us || *last_us < 0) {
+        return true;  // No previous timestamp to compare
+    }
+
+    if (current_us < *last_us) {
+        // Warn about backwards timestamp
+        fprintf(stderr, "\033[1;33mWARN:\033[0m %s timestamp goes backwards: %02ld:%02ld:%02ld,%03ld -> %02ld:%02ld:%02ld,%03ld\n",
+                format_name,
+                *last_us / 3600000000,
+                (*last_us / 60000000) % 60,
+                (*last_us / 1000000) % 60,
+                (*last_us / 1000) % 1000,
+                current_us / 3600000000,
+                (current_us / 60000000) % 60,
+                (current_us / 1000000) % 60,
+                (current_us / 1000) % 1000);
+        return false;
+    }
+
+    return true;
+}

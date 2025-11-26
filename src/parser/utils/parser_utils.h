@@ -56,6 +56,10 @@ void normalize_ruby_segments(struct ruby_segment *segments);
 // Normalize fullwidth punctuation in all word segments (in-place)
 void normalize_word_segments(struct word_segment *segments);
 
+// Validate timestamp order and warn if going backwards
+// Returns true if timestamps are in order, false if they go backwards
+bool validate_timestamp_order(int64_t current_us, int64_t *last_us, const char *format_name);
+
 // Free all ruby segments in a linked list
 void free_ruby_segments(struct ruby_segment *segments);
 

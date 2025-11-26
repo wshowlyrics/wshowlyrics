@@ -170,17 +170,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
                 // End of subtitle, create line
                 if (text_len > 0) {
                     // Validate timestamp order (warn if going backwards)
-                    if (last_timestamp_us >= 0 && current_start_us < last_timestamp_us) {
-                        fprintf(stderr, "\033[1;33mWARN:\033[0m SRT timestamp goes backwards: %02ld:%02ld:%02ld,%03ld -> %02ld:%02ld:%02ld,%03ld\n",
-                                last_timestamp_us / 3600000000,
-                                (last_timestamp_us / 60000000) % 60,
-                                (last_timestamp_us / 1000000) % 60,
-                                (last_timestamp_us / 1000) % 1000,
-                                current_start_us / 3600000000,
-                                (current_start_us / 60000000) % 60,
-                                (current_start_us / 1000000) % 60,
-                                (current_start_us / 1000) % 1000);
-                    }
+                    validate_timestamp_order(current_start_us, &last_timestamp_us, "SRT");
                     last_timestamp_us = current_start_us;
 
                     struct lyrics_line *new_line = create_srt_line(current_start_us, current_end_us, text_buffer);
@@ -221,17 +211,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
     // Handle last subtitle if file doesn't end with empty line
     if (state == STATE_TEXT && text_len > 0) {
         // Validate timestamp order (warn if going backwards)
-        if (last_timestamp_us >= 0 && current_start_us < last_timestamp_us) {
-            fprintf(stderr, "\033[1;33mWARN:\033[0m SRT timestamp goes backwards: %02ld:%02ld:%02ld,%03ld -> %02ld:%02ld:%02ld,%03ld\n",
-                    last_timestamp_us / 3600000000,
-                    (last_timestamp_us / 60000000) % 60,
-                    (last_timestamp_us / 1000000) % 60,
-                    (last_timestamp_us / 1000) % 1000,
-                    current_start_us / 3600000000,
-                    (current_start_us / 60000000) % 60,
-                    (current_start_us / 1000000) % 60,
-                    (current_start_us / 1000) % 1000);
-        }
+        validate_timestamp_order(current_start_us, &last_timestamp_us, "SRT");
 
         struct lyrics_line *new_line = create_srt_line(current_start_us, current_end_us, text_buffer);
         if (new_line) {

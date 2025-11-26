@@ -64,15 +64,7 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
                 new_line->timestamp_us = apply_timestamp_offset(timestamp_us, data->metadata.offset_ms);
 
                 // Validate timestamp order (warn if going backwards)
-                if (last_timestamp_us >= 0 && new_line->timestamp_us < last_timestamp_us) {
-                    fprintf(stderr, "\033[1;33mWARN:\033[0m LRC timestamp goes backwards: [%02ld:%02ld.%02ld] -> [%02ld:%02ld.%02ld]\n",
-                            last_timestamp_us / 60000000,
-                            (last_timestamp_us / 1000000) % 60,
-                            (last_timestamp_us / 10000) % 100,
-                            new_line->timestamp_us / 60000000,
-                            (new_line->timestamp_us / 1000000) % 60,
-                            (new_line->timestamp_us / 10000) % 100);
-                }
+                validate_timestamp_order(new_line->timestamp_us, &last_timestamp_us, "LRC");
                 last_timestamp_us = new_line->timestamp_us;
 
                 // If text is empty or only whitespace, use empty string
