@@ -1,7 +1,7 @@
 #ifndef _LYRICS_PROVIDER_H
 #define _LYRICS_PROVIDER_H
 
-#include "../lrc_parser/lrc_parser.h"
+#include "../parser/lrc/lrc_parser.h"
 #include "../mpris/mpris.h"
 #include <stdbool.h>
 

@@ -1,5 +1,5 @@
 #include "lrc_parser.h"
-#include "../parser_utils/parser_utils.h"
+#include "../utils/parser_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

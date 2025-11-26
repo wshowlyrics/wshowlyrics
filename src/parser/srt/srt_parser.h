@@ -1,7 +1,7 @@
 #ifndef _LYRICS_SRT_PARSER_H
 #define _LYRICS_SRT_PARSER_H
 
-#include "../lrc_parser/lrc_parser.h"
+#include "../lrc/lrc_parser.h"
 
 // Parse SRT file (reuses lyrics_data structure from LRC parser)
 bool srt_parse_file(const char *filename, struct lyrics_data *data);
