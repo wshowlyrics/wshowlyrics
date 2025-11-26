@@ -26,7 +26,7 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
 /* Project headers */
-#include "pango/pango_utils.h"
+#include "utils/pango/pango_utils.h"
 #include "shm/shm.h"
 #include "mpris/mpris.h"
 #include "parser/lrc/lrc_parser.h"
@@ -34,7 +34,7 @@
 #include "parser/lrcx/lrcx_parser.h"
 #include "lyrics_provider/lyrics_provider.h"
 #include "system_tray/system_tray.h"
-#include "file_utils/file_utils.h"
+#include "utils/file/file_utils.h"
 
 /* Forward declarations */
 struct lyrics_output;

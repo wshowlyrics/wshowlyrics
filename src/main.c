@@ -1,7 +1,7 @@
 #include "main.h"
 #include "config/config.h"
 #include "constants.h"
-#include "render_helpers/render_helpers.h"
+#include "utils/render/render_helpers.h"
 #include "wayland_manager/wayland_manager.h"
 #include <ctype.h>
 #include <strings.h>

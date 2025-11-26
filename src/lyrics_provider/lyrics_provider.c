@@ -5,7 +5,7 @@
 #include "../parser/lrcx/lrcx_parser.h"
 #include "../config/config.h"
 #include "../constants.h"
-#include "../file_utils/file_utils.h"
+#include "../utils/file/file_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
