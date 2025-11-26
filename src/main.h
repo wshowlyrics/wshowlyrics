@@ -32,7 +32,7 @@
 #include "parser/lrc/lrc_parser.h"
 #include "parser/srt/srt_parser.h"
 #include "parser/lrcx/lrcx_parser.h"
-#include "lyrics_provider/lyrics_provider.h"
+#include "provider/lyrics/lyrics_provider.h"
 #include "system_tray/system_tray.h"
 #include "utils/file/file_utils.h"
 
