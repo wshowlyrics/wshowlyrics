@@ -56,4 +56,25 @@
 
 #define HTTP_OK 200
 
+// ============================================================================
+// Event Loop and Timing
+// ============================================================================
+
+// Poll timeout for main event loop (milliseconds)
+#define POLL_TIMEOUT_MS 100
+
+// How often to check for track updates (in poll intervals)
+// 20 polls × 100ms = 2 seconds
+#define TRACK_UPDATE_CHECK_INTERVAL 20
+
+// Maximum retry attempts for operations
+#define RETRY_MAX_COUNT 10
+
+// ============================================================================
+// Memory Allocation
+// ============================================================================
+
+// Default allocation size for single structure
+#define ALLOC_SINGLE 1
+
 #endif // CONSTANTS_H

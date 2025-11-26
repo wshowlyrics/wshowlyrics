@@ -975,7 +975,7 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        int timeout = 100; // 100ms update interval
+        int timeout = POLL_TIMEOUT_MS;
 
         int poll_ret = poll(pollfds, sizeof(pollfds) / sizeof(pollfds[0]), timeout);
         if (poll_ret < 0) {
@@ -998,8 +998,8 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        // Check for track changes every 2 seconds (20 * 100ms)
-        if (update_counter++ % 20 == 0) {
+        // Check for track changes periodically
+        if (update_counter++ % TRACK_UPDATE_CHECK_INTERVAL == 0) {
             if (update_track_info(&state)) {
                 // Track changed, load new lyrics
                 load_lyrics_for_track(&state);
