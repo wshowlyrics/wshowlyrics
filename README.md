@@ -3,7 +3,7 @@
 
 A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https://github.com/unstable-code/wshowkeys) and inspired by [LyricsX](https://github.com/ddddxxx/LyricsX).
 
-[한국어 README](README.ko.md)
+[한국어 README](docs/README.ko.md)
 
 ## Features
 
