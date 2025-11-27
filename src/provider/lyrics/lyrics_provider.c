@@ -144,6 +144,15 @@ static char* url_decode_string(const char *str) {
     return decoded;
 }
 
+// Cleanup partially allocated extension array (helper for error paths)
+static void cleanup_partial_extensions(char **exts, int count) {
+    if (!exts) return;
+    for (int i = 0; i < count; i++) {
+        free(exts[i]);
+    }
+    free(exts);
+}
+
 // Get ordered list of extensions from config
 // Returns NULL-terminated array of extension strings
 // Caller must free the array and all strings
@@ -171,10 +180,7 @@ static char** get_extension_priority(void) {
         return exts;
 
 cleanup_default:
-        for (int i = 0; i < 5; i++) {
-            free(exts[i]);
-        }
-        free(exts);
+        cleanup_partial_extensions(exts, 5);
         return NULL;
     }
 
@@ -207,10 +213,7 @@ cleanup_default:
         result[idx] = strdup(trimmed);
         if (!result[idx]) {
             // Cleanup on allocation failure
-            for (int i = 0; i < idx; i++) {
-                free(result[i]);
-            }
-            free(result);
+            cleanup_partial_extensions(result, idx);
             free(exts_copy);
             return NULL;
         }

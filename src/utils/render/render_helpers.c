@@ -13,6 +13,42 @@ static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
         (double)(color & 0xFF) / 255.0);
 }
 
+// Find active unfill segment at current playback position
+// Returns the unfill segment if active, NULL otherwise
+static struct word_segment* find_active_unfill_segment(struct word_segment *start, int64_t position_us) {
+    struct word_segment *look = start;
+    while (look) {
+        // Check if this is an empty unfill segment
+        bool is_unfill = look->is_unfill && (!look->text || look->text[0] == '\0');
+        if (is_unfill && position_us >= look->timestamp_us &&
+            (look->end_timestamp_us == 0 || position_us < look->end_timestamp_us)) {
+            return look;
+        }
+        // Stop at first non-empty segment
+        if (look->text && look->text[0] != '\0') {
+            break;
+        }
+        look = look->next;
+    }
+    return NULL;
+}
+
+// Calculate unfill ratio (opacity reduction) based on elapsed time
+// Returns value between 0.0 and 0.5 for oscillating effect
+static double calculate_unfill_ratio(struct word_segment *unfill_seg, int64_t position_us) {
+    int64_t unfill_end = unfill_seg->end_timestamp_us ? unfill_seg->end_timestamp_us :
+                         (unfill_seg->next ? unfill_seg->next->timestamp_us : 0);
+    if (unfill_end > 0) {
+        int64_t duration = unfill_end - unfill_seg->timestamp_us;
+        if (duration > 0) {
+            int64_t elapsed = position_us - unfill_seg->timestamp_us;
+            double ratio = (double)elapsed / (double)duration;
+            return (1.0 - ratio) * 0.5;
+        }
+    }
+    return 0.0;
+}
+
 int calculate_max_ruby_height_word(cairo_t *cairo, const char *font,
                                     struct word_segment *segments, int scale) {
     int max_ruby_height = 0;
@@ -143,30 +179,15 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
 
     while (segment) {
         // Check for active unfill
+        // Check for active unfill effect in upcoming segments
         bool has_active_unfill = false;
         double unfill_override_ratio = 0.0;
 
         if (segment->text && segment->text[0] != '\0') {
-            struct word_segment *look = segment->next;
-            while (look) {
-                bool is_unfill = look->is_unfill && (!look->text || look->text[0] == '\0');
-                if (is_unfill && position_us >= look->timestamp_us &&
-                    (look->end_timestamp_us == 0 || position_us < look->end_timestamp_us)) {
-                    has_active_unfill = true;
-                    int64_t unfill_end = look->end_timestamp_us ? look->end_timestamp_us :
-                        (look->next ? look->next->timestamp_us : 0);
-                    if (unfill_end > 0) {
-                        int64_t duration = unfill_end - look->timestamp_us;
-                        if (duration > 0) {
-                            int64_t elapsed = position_us - look->timestamp_us;
-                            double ratio = (double)elapsed / (double)duration;
-                            unfill_override_ratio = (1.0 - ratio) * 0.5;
-                        }
-                    }
-                    break;
-                }
-                if (look->text && look->text[0] != '\0') break;
-                look = look->next;
+            struct word_segment *unfill_seg = find_active_unfill_segment(segment->next, position_us);
+            if (unfill_seg) {
+                has_active_unfill = true;
+                unfill_override_ratio = calculate_unfill_ratio(unfill_seg, position_us);
             }
         }
 
