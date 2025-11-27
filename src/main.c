@@ -593,9 +593,7 @@ static bool update_track_info(struct lyrics_state *state) {
 
         system_tray_update_tooltip(tooltip);
 
-        // Update system tray icon with album art
-        // Try MPRIS art_url first, fallback to iTunes Search API if unavailable
-        system_tray_update_icon_with_fallback(new_track.art_url, new_track.artist, new_track.title);
+        // Album art will be updated after lyrics are loaded (to use lyrics metadata if available)
     } else {
         mpris_free_metadata(&new_track);
     }
@@ -611,6 +609,16 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
     // Try to find lyrics
     if (!lyrics_find_for_track(&state->current_track, &state->lyrics)) {
         log_info("No lyrics found for current track");
+
+        // Even without lyrics, try to update album art with MPRIS metadata
+        if (g_config.lyrics.enable_itunes) {
+            system_tray_update_icon_with_fallback(
+                state->current_track.art_url,
+                state->current_track.artist,
+                state->current_track.title
+            );
+        }
+
         return false;
     }
 
@@ -620,25 +628,23 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
     state->current_line = state->lyrics.lines;
     state->track_changed = false;
 
-    // If MPRIS didn't provide album art and iTunes is enabled, try iTunes API with metadata from lyrics
-    // (lrclib may have populated artist/album information)
-    if (g_config.lyrics.enable_itunes && (!state->current_track.art_url || strlen(state->current_track.art_url) == 0)) {
-        const char *artist = state->lyrics.metadata.artist;
-        const char *title = state->lyrics.metadata.title;
+    // Update album art with best available metadata
+    // Prefer lyrics metadata (more accurate) over MPRIS metadata
+    const char *artist = state->lyrics.metadata.artist;
+    const char *title = state->lyrics.metadata.title;
 
-        // Use lyrics metadata if available, otherwise fall back to MPRIS metadata
-        if (!artist || strlen(artist) == 0) {
-            artist = state->current_track.artist;
-        }
-        if (!title || strlen(title) == 0) {
-            title = state->current_track.title;
-        }
-
-        if (artist && title && strlen(artist) > 0 && strlen(title) > 0) {
-            log_info("Trying iTunes API with lyrics metadata (artist: %s, title: %s)", artist, title);
-            system_tray_update_icon_with_fallback(NULL, artist, title);
-        }
+    // Fall back to MPRIS metadata if lyrics metadata is not available
+    if (!artist || strlen(artist) == 0) {
+        artist = state->current_track.artist;
     }
+    if (!title || strlen(title) == 0) {
+        title = state->current_track.title;
+    }
+
+    // Update album art (try MPRIS URL first, then iTunes API)
+    log_info("Updating album art with metadata (artist: %s, title: %s)",
+             artist ? artist : "Unknown", title ? title : "Unknown");
+    system_tray_update_icon_with_fallback(state->current_track.art_url, artist, title);
 
     return true;
 }

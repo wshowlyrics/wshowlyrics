@@ -528,6 +528,13 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
     // Convert duration from microseconds to milliseconds
     int64_t duration_ms = track->length_us / 1000;
 
+    // Calculate metadata hash for caching
+    char metadata_hash[MD5_DIGEST_STRING_LENGTH];
+    bool has_hash = calculate_metadata_md5(track->artist, track->title, track->album, metadata_hash);
+
+    // Ensure cache directories exist
+    ensure_cache_directories();
+
     // Try each provider in order
     for (int i = 0; providers[i]; i++) {
         // Skip lrclib if disabled in config
@@ -540,7 +547,52 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
         if (providers[i]->search(track->title, track->artist, track->album,
                                  track->url, duration_ms, data)) {
             log_success("Found lyrics via %s provider", providers[i]->name);
+
+            // If lyrics came from lrclib, cache them
+            if (strcmp(providers[i]->name, "lrclib") == 0 && has_hash) {
+                char cache_path[512];
+                if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
+                    FILE *f = fopen(cache_path, "w");
+                    if (f) {
+                        struct lyrics_line *line = data->lines;
+                        while (line) {
+                            fprintf(f, "[%02ld:%02ld.%02ld]%s\n",
+                                   (line->timestamp_us / 1000000) / 60,
+                                   (line->timestamp_us / 1000000) % 60,
+                                   (line->timestamp_us / 10000) % 100,
+                                   line->text);
+                            line = line->next;
+                        }
+                        fclose(f);
+                        log_info("Cached lyrics: %s", cache_path);
+                    } else {
+                        log_warn("Failed to cache lyrics");
+                    }
+                }
+            }
+
             return true;
+        }
+
+        // If local provider failed and we're about to try lrclib, check cache first
+        if (strcmp(providers[i]->name, "local") == 0 && has_hash) {
+            char cache_path[512];
+            if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
+                struct stat st;
+                if (stat(cache_path, &st) == 0) {
+                    log_info("Found cached lyrics: %s", cache_path);
+
+                    // Load from cache
+                    if (lrc_parse_file(cache_path, data)) {
+                        log_success("Found lyrics via cache");
+                        return true;
+                    } else {
+                        log_warn("Failed to parse cached lyrics, will continue to online provider");
+                        // Delete corrupted cache file
+                        unlink(cache_path);
+                    }
+                }
+            }
         }
     }
 
