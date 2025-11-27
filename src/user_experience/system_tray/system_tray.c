@@ -8,10 +8,12 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <math.h>
 #include <libappindicator/app-indicator.h>
 #include <gtk/gtk.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <curl/curl.h>
+#include <cairo/cairo.h>
 
 // State
 static AppIndicator *indicator = NULL;
@@ -168,6 +170,43 @@ static GdkPixbuf* load_image_from_url(const char *url) {
     return pixbuf;
 }
 
+// Apply circular mask to a pixbuf (CD-like appearance)
+static GdkPixbuf* apply_circular_mask(GdkPixbuf *pixbuf) {
+    if (!pixbuf) {
+        return NULL;
+    }
+
+    int width = gdk_pixbuf_get_width(pixbuf);
+    int height = gdk_pixbuf_get_height(pixbuf);
+
+    // Create Cairo surface from pixbuf
+    cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+    cairo_t *cr = cairo_create(surface);
+
+    // Create circular clipping path
+    double center_x = width / 2.0;
+    double center_y = height / 2.0;
+    double radius = (width < height ? width : height) / 2.0;
+
+    cairo_arc(cr, center_x, center_y, radius, 0, 2 * M_PI);
+    cairo_clip(cr);
+
+    // Draw the original pixbuf
+    gdk_cairo_set_source_pixbuf(cr, pixbuf, 0, 0);
+    cairo_paint(cr);
+
+    // Convert Cairo surface back to GdkPixbuf
+    cairo_surface_flush(surface);
+
+    GdkPixbuf *rounded = gdk_pixbuf_get_from_surface(surface, 0, 0, width, height);
+
+    // Cleanup
+    cairo_destroy(cr);
+    cairo_surface_destroy(surface);
+
+    return rounded;
+}
+
 // Create a minimal dummy menu (required by AppIndicator)
 static GtkWidget* create_menu(void) {
     GtkWidget *menu = gtk_menu_new();
@@ -261,16 +300,25 @@ bool system_tray_update_icon(const char *art_url) {
     GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf, 48, 48, GDK_INTERP_BILINEAR);
     g_object_unref(pixbuf);
 
-    // Save as PNG (overwrites previous)
-    GError *error = NULL;
-    if (!gdk_pixbuf_save(scaled, ICON_PATH, "png", &error, NULL)) {
-        log_error("Failed to save icon: %s", error->message);
-        g_error_free(error);
-        g_object_unref(scaled);
+    // Apply circular mask (CD-like appearance)
+    GdkPixbuf *rounded = apply_circular_mask(scaled);
+    g_object_unref(scaled);
+
+    if (!rounded) {
+        log_error("Failed to apply circular mask");
         return false;
     }
 
-    g_object_unref(scaled);
+    // Save as PNG (overwrites previous)
+    GError *error = NULL;
+    if (!gdk_pixbuf_save(rounded, ICON_PATH, "png", &error, NULL)) {
+        log_error("Failed to save icon: %s", error->message);
+        g_error_free(error);
+        g_object_unref(rounded);
+        return false;
+    }
+
+    g_object_unref(rounded);
 
     log_info("Album art saved to: %s", ICON_PATH);
 

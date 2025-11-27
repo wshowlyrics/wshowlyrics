@@ -120,4 +120,12 @@ static inline void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
 // Default allocation size for single structure
 #define ALLOC_SINGLE 1
 
+// ============================================================================
+// Mathematical Constants
+// ============================================================================
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #endif // CONSTANTS_H
