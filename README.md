@@ -10,7 +10,8 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
 - **MPRIS Integration**: Automatically detects currently playing songs via playerctl (supports all MPRIS-compatible players: mpv, Spotify, VLC, etc.)
 - **System Tray Integration**: Displays album art in system tray (Swaybar/Waybar)
   - Automatically loads album art from MPRIS metadata
-  - Shows default music icon when album art is unavailable
+  - **iTunes API Fallback**: Automatically fetches album artwork from iTunes Search API when MPRIS doesn't provide it
+  - Shows default music icon when album art is unavailable from all sources
   - Tooltip displays current track info (Artist - Title)
 - **Smart Lyrics Search**:
   - **Local file search**: Prioritizes searching in the same directory as the currently playing file
@@ -266,6 +267,16 @@ If no local lyrics file is found, the program automatically fetches synchronized
   - This ensures lyrics stay perfectly synchronized with the music
 - **No internet connection?** The program will simply skip online search and continue
 - **Privacy**: Only sends song metadata (title, artist, album) to lrclib.net API
+
+### Album Artwork
+
+The program automatically displays album artwork in the system tray using a fallback chain:
+
+1. **MPRIS Metadata** (Priority): Loads album art from MPRIS metadata if the music player provides it
+2. **iTunes Search API Fallback**: If MPRIS doesn't provide album art, automatically fetches artwork from Apple's iTunes Search API
+3. **Default Icon**: Shows a default music icon from your system theme if no artwork is available
+
+The iTunes API feature can be disabled in `settings.ini` by setting `enable_itunes = false`.
 
 ## Dependencies
 
