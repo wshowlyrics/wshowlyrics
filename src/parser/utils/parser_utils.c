@@ -44,17 +44,7 @@ bool parse_lrc_timestamp_ex(const char *str, int64_t *timestamp_us, const char *
                 }
             }
 
-            if (len == 2) {
-                // Centiseconds
-                *timestamp_us = (int64_t)minutes * 60 * 1000000 +
-                                (int64_t)seconds * 1000000 +
-                                (int64_t)centiseconds * 10000;
-            } else {
-                // Milliseconds
-                *timestamp_us = (int64_t)minutes * 60 * 1000000 +
-                                (int64_t)seconds * 1000000 +
-                                (int64_t)centiseconds * 1000;
-            }
+            *timestamp_us = timestamp_to_microseconds(minutes, seconds, centiseconds, len == 2);
 
             if (is_unfill) {
                 *is_unfill = unfill;
@@ -78,17 +68,7 @@ bool parse_lrc_timestamp_ex(const char *str, int64_t *timestamp_us, const char *
                 }
             }
 
-            if (len == 2) {
-                // Centiseconds
-                *timestamp_us = (int64_t)minutes * 60 * 1000000 +
-                                (int64_t)seconds * 1000000 +
-                                (int64_t)centiseconds * 10000;
-            } else {
-                // Milliseconds
-                *timestamp_us = (int64_t)minutes * 60 * 1000000 +
-                                (int64_t)seconds * 1000000 +
-                                (int64_t)centiseconds * 1000;
-            }
+            *timestamp_us = timestamp_to_microseconds(minutes, seconds, centiseconds, len == 2);
 
             if (is_unfill) {
                 *is_unfill = unfill;

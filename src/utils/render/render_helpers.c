@@ -1,9 +1,8 @@
 #include "render_helpers.h"
 #include "../mpris/mpris.h"
+#include "../../constants.h"
 #include <string.h>
 #include <ctype.h>
-
-#define COLOR_EXTRACT_A(c) ((c) & 0xFF)
 
 // Helper to set cairo source color from uint32_t
 static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
@@ -280,132 +279,81 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
     *height = total_h;
 }
 
+// Generic segment rendering macro to avoid code duplication
+// Both ruby_segment and word_segment have identical structure for rendering purposes
+#define RENDER_SEGMENTS_IMPL(segment_type, calc_ruby_height_func) \
+    do { \
+        if (!segments) { \
+            *width = 0; \
+            *height = 0; \
+            return; \
+        } \
+        \
+        cairo_set_source_u32(cairo, foreground); \
+        \
+        /* Calculate maximum ruby height */ \
+        int max_ruby_height = calc_ruby_height_func(cairo, font, segments, scale); \
+        \
+        /* Get base text height */ \
+        int base_text_h; \
+        get_text_size(cairo, font, NULL, &base_text_h, NULL, scale, "A"); \
+        \
+        /* Render all segments */ \
+        int x_offset = 0; \
+        int y_offset = 0; \
+        int total_width = 0; \
+        int line_width = 0; \
+        int line_count = 1; \
+        \
+        segment_type *seg = segments; \
+        while (seg) { \
+            if (seg->text && strchr(seg->text, '\n')) { \
+                if (line_width > total_width) { \
+                    total_width = line_width; \
+                } \
+                y_offset += base_text_h + max_ruby_height; \
+                x_offset = 0; \
+                line_width = 0; \
+                line_count++; \
+                seg = seg->next; \
+                continue; \
+            } \
+            \
+            int seg_w, seg_h; \
+            if (seg->ruby) { \
+                get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg->text, seg->ruby); \
+            } else { \
+                get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", seg->text); \
+            } \
+            /* Use pango_printf_ruby for all text - ensures consistent baseline */ \
+            cairo_move_to(cairo, x_offset, y_offset + max_ruby_height); \
+            pango_printf_ruby(cairo, font, scale, seg->text, seg->ruby); \
+            \
+            x_offset += seg_w; \
+            line_width += seg_w; \
+            seg = seg->next; \
+        } \
+        \
+        if (line_width > total_width) { \
+            total_width = line_width; \
+        } \
+        \
+        int total_height = line_count * (base_text_h + max_ruby_height); \
+        \
+        *width = total_width; \
+        *height = total_height; \
+    } while (0)
+
 void render_ruby_segments(cairo_t *cairo, const char *font, int scale,
                          struct ruby_segment *segments, uint32_t foreground,
                          int *width, int *height) {
-    if (!segments) {
-        *width = 0;
-        *height = 0;
-        return;
-    }
-
-    cairo_set_source_u32(cairo, foreground);
-
-    // Calculate maximum ruby height
-    int max_ruby_height = calculate_max_ruby_height_ruby(cairo, font, segments, scale);
-
-    // Get base text height
-    int base_text_h;
-    get_text_size(cairo, font, NULL, &base_text_h, NULL, scale, "A");
-
-    // Render all segments
-    int x_offset = 0;
-    int y_offset = 0;
-    int total_width = 0;
-    int line_width = 0;
-    int line_count = 1;
-
-    struct ruby_segment *ruby_seg = segments;
-    while (ruby_seg) {
-        if (ruby_seg->text && strchr(ruby_seg->text, '\n')) {
-            if (line_width > total_width) {
-                total_width = line_width;
-            }
-            y_offset += base_text_h + max_ruby_height;
-            x_offset = 0;
-            line_width = 0;
-            line_count++;
-            ruby_seg = ruby_seg->next;
-            continue;
-        }
-
-        int seg_w, seg_h;
-        if (ruby_seg->ruby) {
-            get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, ruby_seg->text, ruby_seg->ruby);
-        } else {
-            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", ruby_seg->text);
-        }
-        // Use pango_printf_ruby for all text - ensures consistent baseline
-        cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
-        pango_printf_ruby(cairo, font, scale, ruby_seg->text, ruby_seg->ruby);
-
-        x_offset += seg_w;
-        line_width += seg_w;
-        ruby_seg = ruby_seg->next;
-    }
-
-    if (line_width > total_width) {
-        total_width = line_width;
-    }
-
-    int total_height = line_count * (base_text_h + max_ruby_height);
-
-    *width = total_width;
-    *height = total_height;
+    RENDER_SEGMENTS_IMPL(struct ruby_segment, calculate_max_ruby_height_ruby);
 }
 
 void render_word_segments_static(cairo_t *cairo, const char *font, int scale,
                                  struct word_segment *segments, uint32_t foreground,
                                  int *width, int *height) {
-    if (!segments) {
-        *width = 0;
-        *height = 0;
-        return;
-    }
-
-    cairo_set_source_u32(cairo, foreground);
-
-    // Calculate maximum ruby height
-    int max_ruby_height = calculate_max_ruby_height_word(cairo, font, segments, scale);
-
-    // Get base text height
-    int base_text_h;
-    get_text_size(cairo, font, NULL, &base_text_h, NULL, scale, "A");
-
-    // Render all segments
-    int x_offset = 0;
-    int y_offset = 0;
-    int total_width = 0;
-    int line_width = 0;
-    int line_count = 1;
-
-    struct word_segment *segment = segments;
-    while (segment) {
-        if (segment->text && strchr(segment->text, '\n')) {
-            if (line_width > total_width) {
-                total_width = line_width;
-            }
-            y_offset += base_text_h + max_ruby_height;
-            x_offset = 0;
-            line_width = 0;
-            line_count++;
-            segment = segment->next;
-            continue;
-        }
-
-        int seg_w, seg_h;
-        if (segment->ruby) {
-            get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, segment->text, segment->ruby);
-        } else {
-            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", segment->text);
-        }
-        // Use pango_printf_ruby for all text - ensures consistent baseline
-        cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
-        pango_printf_ruby(cairo, font, scale, segment->text, segment->ruby);
-
-        x_offset += seg_w;
-        line_width += seg_w;
-        segment = segment->next;
-    }
-
-    if (line_width > total_width) {
-        total_width = line_width;
-    }
-
-    int total_height = line_count * (base_text_h + max_ruby_height);
-
-    *width = total_width;
-    *height = total_height;
+    RENDER_SEGMENTS_IMPL(struct word_segment, calculate_max_ruby_height_word);
 }
 
 void render_plain_text(cairo_t *cairo, const char *font, int scale,

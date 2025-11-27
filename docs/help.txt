@@ -1,0 +1,48 @@
+Usage: %s [OPTIONS]
+
+Wayland lyrics overlay with MPRIS integration
+
+Options:
+  -h, --help                   Show this help message
+  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)
+  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)
+  -F, --font=FONT              Font specification (default: "Sans 20")
+                               Examples: "Sans Bold 24", "Noto Sans CJK KR 18"
+  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)
+  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)
+
+Configuration Files (in priority order):
+  1. ~/.config/wshowlyrics/settings.ini (user config)
+  2. /etc/wshowlyrics/settings.ini (system-wide config)
+  See settings.ini.example for configuration options
+
+Lyrics Detection:
+  Automatically detects currently playing track via MPRIS and searches for lyrics in:
+    1. Same directory as the music file
+    2. Current directory (only for local builds, not /usr/bin)
+    3. $XDG_MUSIC_DIR
+    4. ~/.lyrics/
+    5. $HOME
+    6. Online from lrclib.net API (if local files not found)
+
+Supported Formats:
+  - .lrcx: Karaoke-style with word-level timing and progressive fill effect
+  - .lrc:  Standard LRC format with line-level timing
+  - .srt:  SubRip subtitle format
+  - .vtt:  WebVTT subtitle format
+
+Online Lyrics API:
+  Automatically fetches synchronized lyrics from https://lrclib.net
+  - Requires track title and artist metadata
+  - Only uses synchronized lyrics (LRC format with timestamps)
+  - Falls back gracefully if no internet connection
+  - Privacy: Only sends song metadata (title, artist, album) to API
+
+Examples:
+  %s                                    # Auto-detect with MPRIS
+  %s -F "Sans Bold 24"                  # Larger font
+  %s --font="Sans Bold 24"              # Same as above (long option)
+  %s -a top -m 50                       # Top of screen, 50px margin
+  %s --anchor=top --margin=50           # Same as above (long options)
+  %s -b 000000AA -f FFFF00FF            # Custom colors
+  %s --background=000000AA              # Custom background (long option)

@@ -43,11 +43,10 @@ static char* execute_command(const char *cmd, int *exit_code) {
         }
         result = new_result;
 
-        if (total_size == 0) {
-            result[0] = '\0';
-        }
-        strcat(result, buffer);
+        // Use memcpy instead of strcat for O(n) performance
+        memcpy(result + total_size, buffer, len);
         total_size += len;
+        result[total_size] = '\0';
     }
 
     int status = pclose(fp);

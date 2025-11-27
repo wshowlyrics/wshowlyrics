@@ -79,4 +79,25 @@ static inline int64_t apply_timestamp_offset(int64_t timestamp_us, int offset_ms
     return timestamp_us + (int64_t)offset_ms * 1000;
 }
 
+// Convert time components to microseconds (inline for performance)
+// Handles both centiseconds (2 digits) and milliseconds (3 digits) precision
+static inline int64_t timestamp_to_microseconds(int minutes, int seconds, int subseconds, bool is_centiseconds) {
+    int64_t us = (int64_t)minutes * 60 * 1000000 + (int64_t)seconds * 1000000;
+    if (is_centiseconds) {
+        us += (int64_t)subseconds * 10000;  // centiseconds to microseconds
+    } else {
+        us += (int64_t)subseconds * 1000;    // milliseconds to microseconds
+    }
+    return us;
+}
+
+// Convert time components with hours to microseconds (inline for performance)
+// Used by SRT/VTT parsers that support HH:MM:SS.mmm format
+static inline int64_t timestamp_to_microseconds_hms(int hours, int minutes, int seconds, int milliseconds) {
+    return (int64_t)hours * 3600 * 1000000 +
+           (int64_t)minutes * 60 * 1000000 +
+           (int64_t)seconds * 1000000 +
+           (int64_t)milliseconds * 1000;
+}
+
 #endif // PARSER_UTILS_H

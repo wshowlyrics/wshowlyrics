@@ -78,6 +78,9 @@
 // Poll timeout for main event loop (milliseconds)
 #define POLL_TIMEOUT_MS 100
 
+// Maximum retry attempts for Wayland surface configuration
+#define WAYLAND_CONFIGURE_RETRY_LIMIT 10
+
 // How often to check for track updates (in poll intervals)
 // 20 polls × 100ms = 2 seconds
 #define TRACK_UPDATE_CHECK_INTERVAL 20

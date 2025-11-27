@@ -74,16 +74,8 @@ static bool parse_srt_timestamp(const char *str, int64_t *start_us, int64_t *end
     }
 
     if (matched == 8) {
-        *start_us = (int64_t)h1 * 3600 * 1000000 +
-                    (int64_t)m1 * 60 * 1000000 +
-                    (int64_t)s1 * 1000000 +
-                    (int64_t)ms1 * 1000;
-
-        *end_us = (int64_t)h2 * 3600 * 1000000 +
-                  (int64_t)m2 * 60 * 1000000 +
-                  (int64_t)s2 * 1000000 +
-                  (int64_t)ms2 * 1000;
-
+        *start_us = timestamp_to_microseconds_hms(h1, m1, s1, ms1);
+        *end_us = timestamp_to_microseconds_hms(h2, m2, s2, ms2);
         return true;
     }
 
@@ -194,6 +186,8 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
                 // Append line text if there's space
                 size_t line_len = strlen(line);
                 if (line_len > remaining) {
+                    fprintf(stderr, LOG_WARN " SRT subtitle line truncated (exceeds %zu bytes buffer limit)\n",
+                            sizeof(text_buffer));
                     line_len = remaining;  // Truncate if needed
                 }
                 if (line_len > 0) {

@@ -3,8 +3,10 @@
 #include "constants.h"
 #include "utils/render/render_helpers.h"
 #include "utils/wayland/wayland_manager.h"
+#include "utils/curl/curl_utils.h"
 #include <ctype.h>
 #include <strings.h>
+#include <curl/curl.h>
 
 // Helper function to check if current lyrics file is a specific format
 static bool is_lyrics_format(struct lyrics_state *state, const char *extension) {
@@ -684,47 +686,63 @@ int main(int argc, char *argv[]) {
     // This prevents config loading messages from appearing with help text
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            // Try to fetch detailed help from GitHub
+            CURL *curl = curl_easy_init();
+            if (curl) {
+                struct curl_memory_buffer buffer;
+                curl_memory_buffer_init(&buffer);
+
+                const char *help_url = "https://raw.githubusercontent.com/unstable-code/lyrics/refs/heads/master/docs/help.txt";
+                curl_easy_setopt(curl, CURLOPT_URL, help_url);
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
+                curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buffer);
+                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);  // 5 second timeout
+                curl_easy_setopt(curl, CURLOPT_USERAGENT, "wshowlyrics/1.0");
+
+                CURLcode res = curl_easy_perform(curl);
+
+                // Check HTTP response code
+                long http_code = 0;
+                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+                curl_easy_cleanup(curl);
+
+                // Only use fetched content if successful (2xx status code)
+                if (res == CURLE_OK && http_code >= 200 && http_code < 300 && buffer.size > 0) {
+                    // Replace %s with program name
+                    char *pos = buffer.data;
+                    char *end = buffer.data + buffer.size;
+                    while (pos < end) {
+                        char *placeholder = strstr(pos, "%s");
+                        if (placeholder && placeholder < end) {
+                            fwrite(pos, 1, placeholder - pos, stdout);
+                            fprintf(stdout, "%s", program_name);
+                            pos = placeholder + 2;
+                        } else {
+                            fwrite(pos, 1, end - pos, stdout);
+                            break;
+                        }
+                    }
+                    curl_memory_buffer_free(&buffer);
+                    free(argv0_copy);
+                    return 0;
+                }
+                curl_memory_buffer_free(&buffer);
+            }
+
+            // Fallback to basic help if fetch failed
             fprintf(stdout, "Usage: %s [OPTIONS]\n\n", program_name);
             fprintf(stdout, "Wayland lyrics overlay with MPRIS integration\n\n");
             fprintf(stdout, "Options:\n");
             fprintf(stdout, "  -h, --help                   Show this help message\n");
-            fprintf(stdout, "  -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)\n");
-            fprintf(stdout, "  -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)\n");
+            fprintf(stdout, "  -b, --background=COLOR       Background color (default: #00000080)\n");
+            fprintf(stdout, "  -f, --foreground=COLOR       Text color (default: #FFFFFFFF)\n");
             fprintf(stdout, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
-            fprintf(stdout, "                               Examples: \"Sans Bold 24\", \"Noto Sans CJK KR 18\"\n");
-            fprintf(stdout, "  -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)\n");
-            fprintf(stdout, "  -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)\n\n");
-            fprintf(stdout, "Configuration Files (in priority order):\n");
-            fprintf(stdout, "  1. ~/.config/wshowlyrics/settings.ini (user config)\n");
-            fprintf(stdout, "  2. /etc/wshowlyrics/settings.ini (system-wide config)\n");
-            fprintf(stdout, "  See settings.ini.example for configuration options\n\n");
-            fprintf(stdout, "Lyrics Detection:\n");
-            fprintf(stdout, "  Automatically detects currently playing track via MPRIS and searches for lyrics in:\n");
-            fprintf(stdout, "    1. Same directory as the music file\n");
-            fprintf(stdout, "    2. Current directory (only for local builds, not /usr/bin)\n");
-            fprintf(stdout, "    3. $XDG_MUSIC_DIR\n");
-            fprintf(stdout, "    4. ~/.lyrics/\n");
-            fprintf(stdout, "    5. $HOME\n");
-            fprintf(stdout, "    6. Online from lrclib.net API (if local files not found)\n\n");
-            fprintf(stdout, "Supported Formats:\n");
-            fprintf(stdout, "  - .lrcx: Karaoke-style with word-level timing and progressive fill effect\n");
-            fprintf(stdout, "  - .lrc:  Standard LRC format with line-level timing\n");
-            fprintf(stdout, "  - .srt:  SubRip subtitle format\n");
-            fprintf(stdout, "  - .vtt:  WebVTT subtitle format\n\n");
-            fprintf(stdout, "Online Lyrics API:\n");
-            fprintf(stdout, "  Automatically fetches synchronized lyrics from https://lrclib.net\n");
-            fprintf(stdout, "  - Requires track title and artist metadata\n");
-            fprintf(stdout, "  - Only uses synchronized lyrics (LRC format with timestamps)\n");
-            fprintf(stdout, "  - Falls back gracefully if no internet connection\n");
-            fprintf(stdout, "  - Privacy: Only sends song metadata (title, artist, album) to API\n\n");
-            fprintf(stdout, "Examples:\n");
-            fprintf(stdout, "  %s                                    # Auto-detect with MPRIS\n", program_name);
-            fprintf(stdout, "  %s -F \"Sans Bold 24\"                  # Larger font\n", program_name);
-            fprintf(stdout, "  %s --font=\"Sans Bold 24\"              # Same as above (long option)\n", program_name);
-            fprintf(stdout, "  %s -a top -m 50                       # Top of screen, 50px margin\n", program_name);
-            fprintf(stdout, "  %s --anchor=top --margin=50           # Same as above (long options)\n", program_name);
-            fprintf(stdout, "  %s -b 000000AA -f FFFF00FF            # Custom colors\n", program_name);
-            fprintf(stdout, "  %s --background=000000AA              # Custom background (long option)\n", program_name);
+            fprintf(stdout, "  -a, --anchor=POSITION        Anchor: top, bottom, left, right (default: bottom)\n");
+            fprintf(stdout, "  -m, --margin=PIXELS          Margin from edge (default: 32)\n\n");
+            fprintf(stdout, "For full documentation, see:\n");
+            fprintf(stdout, "  https://github.com/Scruel/lyrics/blob/master/README.md\n");
+
             free(argv0_copy);
             return 0;
         }
@@ -951,13 +969,13 @@ int main(int argc, char *argv[]) {
 
     // Wait for configure event
     int retry_count = 0;
-    while ((state.width == 0 || state.height == 0) && retry_count < 10) {
+    while ((state.width == 0 || state.height == 0) && retry_count < WAYLAND_CONFIGURE_RETRY_LIMIT) {
         wl_display_roundtrip(state.display);
         retry_count++;
     }
 
     retry_count = 0;
-    while ((state.width == 0 || state.height == 0) && retry_count < 10) {
+    while ((state.width == 0 || state.height == 0) && retry_count < WAYLAND_CONFIGURE_RETRY_LIMIT) {
         wl_display_dispatch(state.display);
         retry_count++;
     }

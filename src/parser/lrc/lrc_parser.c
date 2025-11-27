@@ -98,12 +98,16 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 
                             char *full_text = malloc(text_len + 1);
                             if (full_text) {
-                                full_text[0] = '\0';
+                                // Use pointer-based concatenation instead of strcat for O(n) performance
+                                char *ptr = full_text;
                                 seg = segments;
                                 while (seg) {
-                                    strcat(full_text, seg->text);
+                                    size_t len = strlen(seg->text);
+                                    memcpy(ptr, seg->text, len);
+                                    ptr += len;
                                     seg = seg->next;
                                 }
+                                *ptr = '\0';
                                 new_line->text = full_text;
                             } else {
                                 new_line->text = strdup("");
