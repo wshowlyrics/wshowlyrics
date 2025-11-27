@@ -6,36 +6,13 @@
 #include <string.h>
 #include <ctype.h>
 
-// Parse a line with word-level timestamps
-// Example: [00:05.00][00:05.20]첫 [00:05.50]번 [00:05.80]째 [00:06.00]줄
-static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct lyrics_line **line_ptr) {
-    if (line[0] != '[') {
-        return false;
-    }
-
-    // Parse the first timestamp (line timestamp)
-    int64_t line_timestamp_us;
-    const char *pos = line;
-    if (!parse_lrc_timestamp(pos, &line_timestamp_us, &pos)) {
-        return false;
-    }
-
-    // Create new lyrics line
-    struct lyrics_line *new_line = calloc(1, sizeof(struct lyrics_line));
-    if (!new_line) {
-        return false;
-    }
-
-    // Apply offset to line timestamp
-    new_line->timestamp_us = apply_timestamp_offset(line_timestamp_us, data->metadata.offset_ms);
-
-    // Build full text and parse word segments
-    struct word_segment **next_segment = &new_line->segments;
-    char *full_text = NULL;
-    size_t full_text_len = 0;
-    size_t full_text_capacity = 0;
-    int64_t last_timestamp_us = line_timestamp_us; // Track last timestamp for end_timestamp_us
-
+// Parse first text segment (text immediately after line timestamp, before first word timestamp)
+// Returns updated position and whether full_text was allocated
+static const char* parse_first_text_segment(const char *pos, int64_t line_timestamp_us,
+                                             struct lyrics_data *data, struct lyrics_line *new_line,
+                                             struct word_segment ***next_segment_ptr,
+                                             char **full_text, size_t *full_text_len,
+                                             size_t *full_text_capacity) {
     // Check if there's text immediately after first timestamp (before next '[')
     // This handles: [00:01.00]今は[00:02.00]... where 今は should be first segment
     const char *first_text_start = pos;
@@ -68,8 +45,8 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
                 // Add all segments to the line
                 struct word_segment *seg = segments;
                 while (seg) {
-                    *next_segment = seg;
-                    next_segment = &seg->next;
+                    **next_segment_ptr = seg;
+                    *next_segment_ptr = &seg->next;
                     new_line->segment_count++;
                     seg = seg->next;
                 }
@@ -84,27 +61,68 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
                     seg = seg->next;
                 }
 
-                full_text_capacity = estimated_len + 1;
-                full_text = malloc(full_text_capacity);
-                if (!full_text) {
-                    free(new_line);
-                    return false;
+                *full_text_capacity = estimated_len + 1;
+                *full_text = malloc(*full_text_capacity);
+                if (!*full_text) {
+                    return NULL;  // Signal error
                 }
 
                 seg = segments;
                 while (seg) {
                     if (seg->text && seg->text[0] != '\n') {
                         size_t seg_len = strlen(seg->text);
-                        memcpy(full_text + full_text_len, seg->text, seg_len);
-                        full_text_len += seg_len;
+                        memcpy(*full_text + *full_text_len, seg->text, seg_len);
+                        *full_text_len += seg_len;
                     }
                     seg = seg->next;
                 }
-                full_text[full_text_len] = '\0';
+                (*full_text)[*full_text_len] = '\0';
             }
 
-            pos = first_text_end;
+            return first_text_end;
         }
+    }
+
+    return pos;
+}
+
+// Parse a line with word-level timestamps
+// Example: [00:05.00][00:05.20]첫 [00:05.50]번 [00:05.80]째 [00:06.00]줄
+static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct lyrics_line **line_ptr) {
+    if (line[0] != '[') {
+        return false;
+    }
+
+    // Parse the first timestamp (line timestamp)
+    int64_t line_timestamp_us;
+    const char *pos = line;
+    if (!parse_lrc_timestamp(pos, &line_timestamp_us, &pos)) {
+        return false;
+    }
+
+    // Create new lyrics line
+    struct lyrics_line *new_line = calloc(1, sizeof(struct lyrics_line));
+    if (!new_line) {
+        return false;
+    }
+
+    // Apply offset to line timestamp
+    new_line->timestamp_us = apply_timestamp_offset(line_timestamp_us, data->metadata.offset_ms);
+
+    // Build full text and parse word segments
+    struct word_segment **next_segment = &new_line->segments;
+    char *full_text = NULL;
+    size_t full_text_len = 0;
+    size_t full_text_capacity = 0;
+    int64_t last_timestamp_us = line_timestamp_us; // Track last timestamp for end_timestamp_us
+
+    // Parse first text segment (text immediately after line timestamp)
+    pos = parse_first_text_segment(pos, line_timestamp_us, data, new_line,
+                                     &next_segment, &full_text, &full_text_len, &full_text_capacity);
+    if (!pos) {
+        // Error during first segment parsing
+        free(new_line);
+        return false;
     }
 
     while (*pos) {
