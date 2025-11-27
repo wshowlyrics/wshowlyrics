@@ -421,7 +421,7 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
                 }
             }
 
-            strncpy(last_metadata_hash, metadata_hash, MD5_DIGEST_STRING_LENGTH - 1);
+            snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
         }
 
         return success;
@@ -451,7 +451,7 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
                     app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
 
                     // Update state
-                    strncpy(last_metadata_hash, metadata_hash, MD5_DIGEST_STRING_LENGTH - 1);
+                    snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
                     log_info("Loaded album art from cache");
                     return true;
                 } else {
@@ -488,7 +488,7 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
                     g_error_free(error);
                 }
 
-                strncpy(last_metadata_hash, metadata_hash, MD5_DIGEST_STRING_LENGTH - 1);
+                snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
             }
 
             return success;
