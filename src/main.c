@@ -523,11 +523,19 @@ static bool update_track_info(struct lyrics_state *state) {
             cleaned_title[0] = '\0';
         }
 
+        int tooltip_len;
         if (new_track.artist && strlen(new_track.artist) > 0) {
-            snprintf(tooltip, sizeof(tooltip), "%s - %s", new_track.artist, cleaned_title);
+            tooltip_len = snprintf(tooltip, sizeof(tooltip), "%s - %s", new_track.artist, cleaned_title);
         } else {
-            snprintf(tooltip, sizeof(tooltip), "%s", cleaned_title);
+            tooltip_len = snprintf(tooltip, sizeof(tooltip), "%s", cleaned_title);
         }
+
+        // Check for truncation
+        if (tooltip_len < 0 || tooltip_len >= (int)sizeof(tooltip)) {
+            log_warn("Tooltip truncated (needed %d bytes, have %zu)",
+                     tooltip_len, sizeof(tooltip));
+        }
+
         system_tray_update_tooltip(tooltip);
 
         // Update system tray icon with album art
@@ -818,10 +826,17 @@ int main(int argc, char *argv[]) {
 
     // Build font string from config
     char font_str[FONT_STRING_SIZE];
-    snprintf(font_str, sizeof(font_str), "%s %s %d",
+    int written = snprintf(font_str, sizeof(font_str), "%s %s %d",
         g_config.display.font_family,
         g_config.display.font_weight,
         g_config.display.font_size);
+
+    // Check for truncation (snprintf returns number of chars that would be written)
+    if (written < 0 || written >= (int)sizeof(font_str)) {
+        log_warn("Font string truncated (needed %d bytes, have %zu)",
+                 written, sizeof(font_str));
+    }
+
     char *font_from_config_alloc = strdup(font_str);
     state.font = font_from_config_alloc;  // Track allocated font to free later
 
