@@ -1,5 +1,7 @@
 #include "system_tray.h"
 #include "../../utils/curl/curl_utils.h"
+#include "../../provider/itunes/itunes_artwork.h"
+#include "../config/config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -316,6 +318,35 @@ void system_tray_update_tooltip(const char *text) {
     }
 }
 
+
+bool system_tray_update_icon_with_fallback(const char *art_url, const char *artist, const char *track) {
+    // Try MPRIS art URL first
+    if (art_url && strlen(art_url) > 0) {
+        printf("Using MPRIS album art: %s\n", art_url);
+        return system_tray_update_icon(art_url);
+    }
+
+    // Fallback to iTunes Search API (if enabled in config)
+    if (g_config.lyrics.enable_itunes && track && strlen(track) > 0) {
+        printf("MPRIS art unavailable, trying iTunes Search API...\n");
+        char *itunes_url = itunes_search_artwork(artist, track);
+
+        if (itunes_url) {
+            bool result = system_tray_update_icon(itunes_url);
+            free(itunes_url);
+            return result;
+        }
+
+        printf("iTunes Search API did not return artwork\n");
+    } else if (!g_config.lyrics.enable_itunes) {
+        printf("iTunes API disabled in config\n");
+    }
+
+    // No artwork available - reset to default icon
+    printf("No artwork available from any source, using default icon\n");
+    system_tray_reset_icon();
+    return false;
+}
 
 void system_tray_update(void) {
     // Process pending GTK events

@@ -63,6 +63,12 @@ extensions = lrcx,lrc,srt,vtt
 # Only used when local files are not found
 enable_lrclib = true
 
+# Album artwork provider (iTunes Search API)
+# Set to false to disable iTunes API artwork fetching
+# Only used when MPRIS doesn't provide album art
+# Works best when lrclib provides accurate artist/track metadata
+enable_itunes = true
+
 [behavior]
 # Reserved for future behavior settings
 # This section is currently not used but may be expanded in future releases

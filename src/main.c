@@ -536,10 +536,9 @@ static bool update_track_info(struct lyrics_state *state) {
         }
         system_tray_update_tooltip(tooltip);
 
-        // Update system tray icon with album art (after a short delay for visual feedback)
-        if (new_track.art_url) {
-            system_tray_update_icon(new_track.art_url);
-        }
+        // Update system tray icon with album art
+        // Try MPRIS art_url first, fallback to iTunes Search API if unavailable
+        system_tray_update_icon_with_fallback(new_track.art_url, new_track.artist, new_track.title);
     } else {
         mpris_free_metadata(&new_track);
     }
@@ -563,6 +562,26 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
     // Set initial line
     state->current_line = state->lyrics.lines;
     state->track_changed = false;
+
+    // If MPRIS didn't provide album art and iTunes is enabled, try iTunes API with metadata from lyrics
+    // (lrclib may have populated artist/album information)
+    if (g_config.lyrics.enable_itunes && (!state->current_track.art_url || strlen(state->current_track.art_url) == 0)) {
+        const char *artist = state->lyrics.metadata.artist;
+        const char *title = state->lyrics.metadata.title;
+
+        // Use lyrics metadata if available, otherwise fall back to MPRIS metadata
+        if (!artist || strlen(artist) == 0) {
+            artist = state->current_track.artist;
+        }
+        if (!title || strlen(title) == 0) {
+            title = state->current_track.title;
+        }
+
+        if (artist && title && strlen(artist) > 0 && strlen(title) > 0) {
+            printf("Trying iTunes API with lyrics metadata (artist: %s, title: %s)\n", artist, title);
+            system_tray_update_icon_with_fallback(NULL, artist, title);
+        }
+    }
 
     return true;
 }

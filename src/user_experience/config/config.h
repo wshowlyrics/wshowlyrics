@@ -23,6 +23,7 @@ struct lyrics_config {
     char *search_dirs;  // Colon-separated paths
     char *extensions;   // Comma-separated extensions (e.g., "lrcx,lrc,srt")
     bool enable_lrclib;
+    bool enable_itunes;
 };
 
 // Main configuration

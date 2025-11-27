@@ -1,6 +1,7 @@
 #include "lrclib_provider.h"
 #include "../../parser/lrc/lrc_parser.h"
 #include "../../utils/curl/curl_utils.h"
+#include "../../utils/string/string_utils.h"
 #include "../../constants.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,69 +13,6 @@
 static char* url_encode(CURL *curl, const char *str) {
     if (!str) return NULL;
     return curl_easy_escape(curl, str, 0);
-}
-
-// Sanitize title by removing YouTube ID and file extensions
-// Example: "[4K60FPS] Song Title [AbCdEfG1234].mkv" -> "Song Title"
-static char* sanitize_title(const char *title) {
-    if (!title) return NULL;
-
-    char *result = strdup(title);
-    if (!result) return NULL;
-
-    // Remove file extensions (.mkv, .mp4, .mp3, .flac, .m4a, .webm, etc.)
-    char *ext = strrchr(result, '.');
-    if (ext) {
-        const char *common_exts[] = {
-            ".mkv", ".mp4", ".avi", ".webm", ".mov", ".flv",
-            ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav",
-            NULL
-        };
-        for (int i = 0; common_exts[i]; i++) {
-            if (strcasecmp(ext, common_exts[i]) == 0) {
-                *ext = '\0';
-                break;
-            }
-        }
-    }
-
-    // Remove YouTube ID pattern: [alphanumeric 11 chars] or (alphanumeric 11 chars)
-    // Also remove quality tags like [4K], [60FPS], etc.
-    char *write_pos = result;
-    char *read_pos = result;
-
-    while (*read_pos) {
-        if (*read_pos == '[' || *read_pos == '(') {
-            char open = *read_pos;
-            char close = (open == '[') ? ']' : ')';
-            char *bracket_end = strchr(read_pos + 1, close);
-
-            if (bracket_end) {
-                // Skip this bracketed content
-                read_pos = bracket_end + 1;
-                continue;
-            }
-        }
-        *write_pos++ = *read_pos++;
-    }
-    *write_pos = '\0';
-
-    // Trim leading/trailing whitespace
-    char *start = result;
-    while (*start == ' ' || *start == '\t') start++;
-
-    char *end = start + strlen(start) - 1;
-    while (end > start && (*end == ' ' || *end == '\t')) {
-        *end = '\0';
-        end--;
-    }
-
-    // If start != result, we need to move the string
-    if (start != result) {
-        memmove(result, start, strlen(start) + 1);
-    }
-
-    return result;
 }
 
 // Simple JSON string extractor (looks for "key":"value")
@@ -265,6 +203,7 @@ static bool lrclib_search_fallback(const char *title, const char *artist, const 
     // Find the best match by duration (if we have duration)
     // Otherwise just take the first result with syncedLyrics
     char *best_synced_lyrics = NULL;
+    char *best_obj_start = NULL;  // Track the JSON object for metadata extraction
     int64_t best_duration_diff = INT64_MAX;
     char *search_pos = response.data + 1; // Skip opening '['
 
@@ -289,11 +228,13 @@ static bool lrclib_search_fallback(const char *title, const char *artist, const 
                     best_duration_diff = duration_diff;
                     free(best_synced_lyrics);
                     best_synced_lyrics = synced_lyrics;
+                    best_obj_start = obj_start;  // Remember this object for metadata
                     synced_lyrics = NULL; // Prevent free below
                 }
             } else if (!best_synced_lyrics) {
                 // No duration to compare, just take first result
                 best_synced_lyrics = synced_lyrics;
+                best_obj_start = obj_start;  // Remember this object for metadata
                 synced_lyrics = NULL; // Prevent free below
                 printf("Found result (no duration comparison)\n");
             }
@@ -314,6 +255,37 @@ static bool lrclib_search_fallback(const char *title, const char *artist, const 
         }
         printf("Found synced lyrics from lrclib search\n");
         success = lrc_parse_string(best_synced_lyrics, data);
+
+        // Extract metadata from the matched result
+        if (success && best_obj_start) {
+            char *artist_name = extract_json_string(best_obj_start, "artistName");
+            char *album_name = extract_json_string(best_obj_start, "albumName");
+            char *track_name = extract_json_string(best_obj_start, "trackName");
+
+            if (artist_name && strlen(artist_name) > 0) {
+                free(data->metadata.artist);
+                data->metadata.artist = artist_name;
+                printf("lrclib metadata: artist = %s\n", artist_name);
+            } else {
+                free(artist_name);
+            }
+
+            if (album_name && strlen(album_name) > 0) {
+                free(data->metadata.album);
+                data->metadata.album = album_name;
+                printf("lrclib metadata: album = %s\n", album_name);
+            } else {
+                free(album_name);
+            }
+
+            if (track_name && strlen(track_name) > 0) {
+                free(data->metadata.title);
+                data->metadata.title = track_name;
+                printf("lrclib metadata: title = %s\n", track_name);
+            } else {
+                free(track_name);
+            }
+        }
     } else {
         printf("No synced lyrics in search results\n");
     }

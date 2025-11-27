@@ -10,6 +10,11 @@ bool system_tray_init(void);
 // Returns true if icon was updated successfully
 bool system_tray_update_icon(const char *art_url);
 
+// Update tray icon with iTunes fallback
+// Uses iTunes Search API if MPRIS art_url is unavailable
+// Returns true if icon was updated successfully
+bool system_tray_update_icon_with_fallback(const char *art_url, const char *artist, const char *track);
+
 // Reset icon to default (called before track change)
 void system_tray_reset_icon(void);
 
