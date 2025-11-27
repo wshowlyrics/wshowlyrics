@@ -384,6 +384,17 @@ int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_s
     return count;
 }
 
+// Helper: Free all ruby segments in a linked list
+static void free_ruby_segments_list(struct ruby_segment *head) {
+    while (head) {
+        struct ruby_segment *next = head->next;
+        free(head->text);
+        free(head->ruby);
+        free(head);
+        head = next;
+    }
+}
+
 int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
     if (!text || !segments) {
         return 0;
@@ -422,7 +433,8 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             if (pos > seg_start) {
                 struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
                 if (!seg) {
-                    goto ruby_error;
+                    free_ruby_segments_list(head);
+                    return 0;
                 }
                 seg->text = strndup(seg_start, pos - seg_start);
                 seg->ruby = NULL;
@@ -434,7 +446,8 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             // Create a newline segment
             struct ruby_segment *nl_seg = calloc(1, sizeof(struct ruby_segment));
             if (!nl_seg) {
-                goto ruby_error;
+                free_ruby_segments_list(head);
+                return 0;
             }
             nl_seg->text = strdup("\n");
             nl_seg->ruby = NULL;
@@ -466,7 +479,8 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
                 struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
                 if (!seg) {
                     free(ruby);
-                    goto ruby_error;
+                    free_ruby_segments_list(head);
+                    return 0;
                 }
                 seg->text = strndup(seg_start, word_start - seg_start);
                 seg->ruby = NULL;
@@ -479,7 +493,8 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
             if (!seg) {
                 free(ruby);
-                goto ruby_error;
+                free_ruby_segments_list(head);
+                return 0;
             }
             seg->text = strndup(word_start, word_end - word_start);
             seg->ruby = ruby;
@@ -499,7 +514,8 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
     if (seg_start < text_end) {
         struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
         if (!seg) {
-            goto ruby_error;
+            free_ruby_segments_list(head);
+            return 0;
         }
         seg->text = strdup(seg_start);
         seg->ruby = NULL;
@@ -522,17 +538,6 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
 
     *segments = head;
     return count;
-
-ruby_error:
-    // Cleanup on error
-    while (head) {
-        struct ruby_segment *next = head->next;
-        free(head->text);
-        free(head->ruby);
-        free(head);
-        head = next;
-    }
-    return 0;
 }
 
 // ============================================================================
