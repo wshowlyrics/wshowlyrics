@@ -17,14 +17,6 @@ static bool is_lyrics_format(struct lyrics_state *state, const char *extension) 
     return ext && strcasecmp(ext, extension) == 0;
 }
 
-static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
-    cairo_set_source_rgba(cairo,
-            COLOR_CAIRO_R(color),
-            COLOR_CAIRO_G(color),
-            COLOR_CAIRO_B(color),
-            COLOR_CAIRO_A(color));
-}
-
 static cairo_subpixel_order_t to_cairo_subpixel_order(
         enum wl_output_subpixel subpixel) {
     switch (subpixel) {
@@ -294,7 +286,7 @@ static void output_mode(void *data, struct wl_output *wl_output,
     struct lyrics_output *output = data;
     output->width = width;
     output->height = height;
-    printf("Screen resolution: %dx%d\n", width, height);
+    log_info("Screen resolution: %dx%d", width, height);
 }
 
 static void output_done(void *data, struct wl_output *wl_output) {
@@ -342,7 +334,7 @@ static void registry_global(void *data, struct wl_registry *wl_registry,
         // Set first output as default
         if (!state->output) {
             state->output = output;
-            printf("Set primary output\n");
+            log_info("Set primary output");
         }
     }
 }
@@ -636,7 +628,7 @@ static void update_current_line(struct lyrics_state *state) {
 
         if (display_line && display_line->text) {
             int index = lrc_get_line_index(&state->lyrics, display_line);
-            printf("Line %d/%d: %s\n", index + 1, state->lyrics.line_count, display_line->text);
+            log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, display_line->text);
 
             // For karaoke (LRCX), set initial segment
             if (is_lyrics_format(state, ".lrcx") && display_line->segments) {
@@ -644,7 +636,7 @@ static void update_current_line(struct lyrics_state *state) {
             }
         } else {
             // Debug: why is this being printed?
-            printf("Instrumental break - clearing lyrics (new_line=%p, is_empty_text=%d, display_line=%p)\n",
+            log_info("Instrumental break - clearing lyrics (new_line=%p, is_empty_text=%d, display_line=%p)",
                 (void*)new_line, is_empty_text, (void*)display_line);
 
             // Mark that we're in instrumental break (for file check during idle time)
@@ -888,29 +880,29 @@ int main(int argc, char *argv[]) {
 
     // Fontconfig initializations
     if(!FcInit()) {
-        fprintf(stderr, "Failed to initialize fontconfig\n");
+        log_error("Failed to initialize fontconfig");
         return 1;
     }
 
-    printf("Compositor: %s\n", getenv("WAYLAND_DISPLAY") ?: "wayland-0");
-    printf("Using compositor interfaces...\n");
+    log_info("Compositor: %s", getenv("WAYLAND_DISPLAY") ?: "wayland-0");
+    log_info("Using compositor interfaces...");
 
     // Initialize lyrics providers
     lyrics_providers_init();
 
     // Initialize MPRIS for automatic lyrics detection
     if (!mpris_init()) {
-        fprintf(stderr, "Failed to initialize MPRIS (playerctl not found?)\n");
+        log_error("Failed to initialize MPRIS (playerctl not found?)");
         ret = 1;
         goto exit;
     }
-    printf("MPRIS mode enabled - will track currently playing music\n");
+    log_info("MPRIS mode enabled - will track currently playing music");
 
     // Initialize system tray
     if (system_tray_init()) {
-        printf("System tray initialized (album art display)\n");
+        log_info("System tray initialized (album art display)");
     } else {
-        fprintf(stderr, LOG_WARN " Failed to initialize system tray\n");
+        log_warn("Failed to initialize system tray");
     }
 
     state.display = wl_display_connect(NULL);
@@ -1088,7 +1080,7 @@ int main(int argc, char *argv[]) {
             if (state.current_line != NULL) {
                 state.current_line = NULL;
                 set_dirty(&state);
-                printf("Playback stopped/paused - clearing lyrics\n");
+                log_info("Playback stopped/paused - clearing lyrics");
             }
         }
 

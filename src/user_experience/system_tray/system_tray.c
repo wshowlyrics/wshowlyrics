@@ -89,8 +89,8 @@ static bool save_default_icon(const char *output_path) {
     }
 
     if (!icon) {
-        fprintf(stderr, "Failed to load default icon from theme: %s\n",
-            error ? error->message : "unknown error");
+        log_error("Failed to load default icon from theme: %s",
+                  error ? error->message : "unknown error");
         if (error) g_error_free(error);
         return false;
     }
@@ -98,14 +98,14 @@ static bool save_default_icon(const char *output_path) {
     // Save to file
     g_clear_error(&error);
     if (!gdk_pixbuf_save(icon, output_path, "png", &error, NULL)) {
-        fprintf(stderr, "Failed to save default icon: %s\n", error->message);
+        log_error("Failed to save default icon: %s", error->message);
         g_error_free(error);
         g_object_unref(icon);
         return false;
     }
 
     g_object_unref(icon);
-    printf("Default icon saved to: %s\n", output_path);
+    log_info("Default icon saved to: %s", output_path);
     return true;
 }
 
@@ -120,7 +120,7 @@ static GdkPixbuf* load_image_from_url(const char *url) {
         pixbuf = gdk_pixbuf_new_from_file(file_path, &error);
 
         if (error) {
-            fprintf(stderr, "Failed to load image from file: %s\n", error->message);
+            log_error("Failed to load image from file: %s", error->message);
             g_error_free(error);
             return NULL;
         }
@@ -131,14 +131,14 @@ static GdkPixbuf* load_image_from_url(const char *url) {
         curl_memory_buffer_init(&buffer);
 
         if (!download_image(url, &buffer)) {
-            fprintf(stderr, "Failed to download image from URL\n");
+            log_error("Failed to download image from URL");
             return NULL;
         }
 
         GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
 
         if (!gdk_pixbuf_loader_write(loader, (const guchar *)buffer.data, buffer.size, &error)) {
-            fprintf(stderr, "Failed to load image data: %s\n", error->message);
+            log_error("Failed to load image data: %s", error->message);
             g_error_free(error);
             g_object_unref(loader);
             curl_memory_buffer_free(&buffer);
@@ -160,7 +160,7 @@ static GdkPixbuf* load_image_from_url(const char *url) {
     if (pixbuf && !is_square_image(pixbuf)) {
         int width = gdk_pixbuf_get_width(pixbuf);
         int height = gdk_pixbuf_get_height(pixbuf);
-        fprintf(stderr, "Image aspect ratio too far from square (%dx%d), using default icon\n", width, height);
+        log_warn("Image aspect ratio too far from square (%dx%d), using default icon", width, height);
         g_object_unref(pixbuf);
         return NULL;
     }
@@ -179,7 +179,7 @@ static GtkWidget* create_menu(void) {
 
     gtk_widget_show_all(menu);
 
-    printf("Minimal tray menu created (album art display only)\n");
+    log_info("Minimal tray menu created (album art display only)");
 
     return menu;
 }
@@ -187,7 +187,7 @@ static GtkWidget* create_menu(void) {
 bool system_tray_init(void) {
     // Initialize GTK if not already initialized
     if (!gtk_init_check(NULL, NULL)) {
-        fprintf(stderr, "Failed to initialize GTK\n");
+        log_error("Failed to initialize GTK");
         return false;
     }
 
@@ -202,7 +202,7 @@ bool system_tray_init(void) {
     );
 
     if (!indicator) {
-        fprintf(stderr, "Failed to create AppIndicator\n");
+        log_error("Failed to create AppIndicator");
         return false;
     }
 
@@ -214,14 +214,14 @@ bool system_tray_init(void) {
     app_indicator_set_menu(indicator, GTK_MENU(menu));
 
     // Set initial default icon
-    printf("Setting initial default icon\n");
+    log_info("Setting initial default icon");
     mkdir(ICON_DIR, 0755);
     if (save_default_icon(ICON_PATH)) {
         app_indicator_set_icon_theme_path(indicator, ICON_DIR);
         app_indicator_set_icon_full(indicator, ICON_NAME, "Music Player");
-        printf("Initial icon set to default\n");
+        log_info("Initial icon set to default");
     } else {
-        fprintf(stderr, LOG_WARN " Could not save initial default icon, using system icon\n");
+        log_warn("Could not save initial default icon, using system icon");
     }
 
     return true;
@@ -229,30 +229,30 @@ bool system_tray_init(void) {
 
 bool system_tray_update_icon(const char *art_url) {
     if (!indicator || !art_url) {
-        fprintf(stderr, "update_icon: indicator=%p, art_url=%p\n", (void*)indicator, (void*)art_url);
+        log_error("update_icon: indicator=%p, art_url=%p", (void*)indicator, (void*)art_url);
         return false;
     }
 
-    printf("Updating tray icon with art URL: %s\n", art_url);
+    log_info("Updating tray icon with art URL: %s", art_url);
 
     // Skip if same as last URL
     if (last_art_url && strcmp(last_art_url, art_url) == 0) {
-        printf("Same as last URL, skipping update\n");
+        log_info("Same as last URL, skipping update");
         return true;
     }
 
     // Load image from URL
-    printf("Loading image from URL...\n");
+    log_info("Loading image from URL...");
     GdkPixbuf *pixbuf = load_image_from_url(art_url);
 
     if (!pixbuf) {
         // Fallback to default icon
-        fprintf(stderr, "Failed to load image, using default icon\n");
+        log_warn("Failed to load image, using default icon");
         app_indicator_set_icon(indicator, "audio-player");
         return false;
     }
 
-    printf("Image loaded successfully\n");
+    log_info("Image loaded successfully");
 
     // Create directory if it doesn't exist
     mkdir(ICON_DIR, 0755);
@@ -264,7 +264,7 @@ bool system_tray_update_icon(const char *art_url) {
     // Save as PNG (overwrites previous)
     GError *error = NULL;
     if (!gdk_pixbuf_save(scaled, ICON_PATH, "png", &error, NULL)) {
-        fprintf(stderr, "Failed to save icon: %s\n", error->message);
+        log_error("Failed to save icon: %s", error->message);
         g_error_free(error);
         g_object_unref(scaled);
         return false;
@@ -272,7 +272,7 @@ bool system_tray_update_icon(const char *art_url) {
 
     g_object_unref(scaled);
 
-    printf("Album art saved to: %s\n", ICON_PATH);
+    log_info("Album art saved to: %s", ICON_PATH);
 
     // Set the icon theme path to our directory
     app_indicator_set_icon_theme_path(indicator, ICON_DIR);
@@ -280,7 +280,7 @@ bool system_tray_update_icon(const char *art_url) {
     // Update indicator icon using just the name (without extension or path)
     app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
 
-    printf("Icon updated: name=%s, theme_path=%s\n", ICON_NAME, ICON_DIR);
+    log_info("Icon updated: name=%s, theme_path=%s", ICON_NAME, ICON_DIR);
 
     // Update last URL
     free(last_art_url);
@@ -294,7 +294,7 @@ void system_tray_reset_icon(void) {
         return;
     }
 
-    printf("Resetting tray icon to default\n");
+    log_info("Resetting tray icon to default");
 
     // Clear last URL to force reload on next update
     free(last_art_url);
@@ -305,7 +305,7 @@ void system_tray_reset_icon(void) {
 
     // Save default icon to file
     if (!save_default_icon(ICON_PATH)) {
-        fprintf(stderr, LOG_WARN " Could not save default icon\n");
+        log_warn("Could not save default icon");
         // Fallback: use system icon name without file
         app_indicator_set_icon_theme_path(indicator, NULL);
         app_indicator_set_icon_full(indicator, "audio-player", "Music Player");
@@ -318,12 +318,12 @@ void system_tray_reset_icon(void) {
     // Update indicator icon
     app_indicator_set_icon_full(indicator, ICON_NAME, "Music Player");
 
-    printf("Icon reset to default: %s\n", ICON_PATH);
+    log_info("Icon reset to default: %s", ICON_PATH);
 }
 
 void system_tray_update_tooltip(const char *text) {
     if (indicator && text) {
-        printf("Updating tray tooltip: %s\n", text);
+        log_info("Updating tray tooltip: %s", text);
         app_indicator_set_title(indicator, text);
     }
 }
@@ -332,13 +332,13 @@ void system_tray_update_tooltip(const char *text) {
 bool system_tray_update_icon_with_fallback(const char *art_url, const char *artist, const char *track) {
     // Try MPRIS art URL first
     if (art_url && strlen(art_url) > 0) {
-        printf("Using MPRIS album art: %s\n", art_url);
+        log_info("Using MPRIS album art: %s", art_url);
         return system_tray_update_icon(art_url);
     }
 
     // Fallback to iTunes Search API (if enabled in config)
     if (g_config.lyrics.enable_itunes && track && strlen(track) > 0) {
-        printf("MPRIS art unavailable, trying iTunes Search API...\n");
+        log_info("MPRIS art unavailable, trying iTunes Search API...");
         char *itunes_url = itunes_search_artwork(artist, track);
 
         if (itunes_url) {
@@ -347,13 +347,13 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
             return result;
         }
 
-        printf("iTunes Search API did not return artwork\n");
+        log_info("iTunes Search API did not return artwork");
     } else if (!g_config.lyrics.enable_itunes) {
-        printf("iTunes API disabled in config\n");
+        log_info("iTunes API disabled in config");
     }
 
     // No artwork available - reset to default icon
-    printf("No artwork available from any source, using default icon\n");
+    log_info("No artwork available from any source, using default icon");
     system_tray_reset_icon();
     return false;
 }

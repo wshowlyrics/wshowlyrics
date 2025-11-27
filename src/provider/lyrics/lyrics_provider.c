@@ -83,7 +83,7 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
     // Try LRCX only for .lrcx files
     if (strcasecmp(ext, ".lrcx") == 0) {
         if (lrcx_parse_file(path, data)) {
-            printf("Loaded LRCX file: %s\n", path);
+            log_success("Loaded LRCX file: %s", path);
             success = true;
         }
     }
@@ -91,7 +91,7 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
     // Try LRC for .lrc files
     if (strcasecmp(ext, ".lrc") == 0) {
         if (lrc_parse_file(path, data)) {
-            printf("Loaded LRC file: %s\n", path);
+            log_success("Loaded LRC file: %s", path);
             success = true;
         }
     }
@@ -99,7 +99,7 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
     // Try SRT for .srt and .vtt files
     if (strcasecmp(ext, ".srt") == 0 || strcasecmp(ext, ".vtt") == 0) {
         if (srt_parse_file(path, data)) {
-            printf("Loaded %s file: %s\n", strcasecmp(ext, ".vtt") == 0 ? "VTT" : "SRT", path);
+            log_success("Loaded %s file: %s", strcasecmp(ext, ".vtt") == 0 ? "VTT" : "SRT", path);
             success = true;
         }
     }
@@ -108,7 +108,7 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
         // Store the file path and calculate checksum
         data->source_file_path = strdup(path);
         if (!calculate_file_md5(path, data->md5_checksum)) {
-            fprintf(stderr, LOG_WARN " Failed to calculate MD5 checksum for %s\n", path);
+            log_warn("Failed to calculate MD5 checksum for %s", path);
             data->md5_checksum[0] = '\0';
         }
     }
@@ -263,7 +263,7 @@ static char* get_directory_from_url(const char *url) {
         return NULL;
     }
 
-    printf("Extracted directory from URL: %s\n", decoded_path);
+    log_info("Extracted directory from URL: %s", decoded_path);
     return decoded_path;
 }
 
@@ -378,7 +378,7 @@ static bool local_search(const char *title, const char *artist, const char *albu
             // HIGHEST PRIORITY: Try exact filename from URL (in current directory)
             if (i == 0 && filename_from_url) {
                 snprintf(path, sizeof(path), "%s/%s.%s", search_dirs[i], filename_from_url, ext);
-                printf("Trying: %s\n", path);
+                log_info("Trying: %s", path);
                 if (try_load_lyrics_file(path, data)) {
                     free_extension_priority(extensions);
                     free(title_safe);
@@ -396,7 +396,7 @@ static bool local_search(const char *title, const char *artist, const char *albu
 
             // Try: Title.ext
             snprintf(path, sizeof(path), "%s/%s.%s", search_dirs[i], title_safe, ext);
-            printf("Trying: %s\n", path);
+            log_info("Trying: %s", path);
             if (try_load_lyrics_file(path, data)) {
                 free_extension_priority(extensions);
                 free(title_safe);
@@ -489,11 +489,11 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
         return false;
     }
 
-    printf("Searching lyrics for: %s - %s\n",
-           track->artist ? track->artist : "Unknown", track->title);
+    log_info("Searching lyrics for: %s - %s",
+             track->artist ? track->artist : "Unknown", track->title);
 
     if (track->url) {
-        printf("File location: %s\n", track->url);
+        log_info("File location: %s", track->url);
     }
 
     // Convert duration from microseconds to milliseconds
@@ -503,18 +503,18 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
     for (int i = 0; providers[i]; i++) {
         // Skip lrclib if disabled in config
         if (strcmp(providers[i]->name, "lrclib") == 0 && !g_config.lyrics.enable_lrclib) {
-            printf("Skipped provider: %s (disabled in config)\n", providers[i]->name);
+            log_info("Skipped provider: %s (disabled in config)", providers[i]->name);
             continue;
         }
 
-        printf("Trying provider: %s\n", providers[i]->name);
+        log_info("Trying provider: %s", providers[i]->name);
         if (providers[i]->search(track->title, track->artist, track->album,
                                  track->url, duration_ms, data)) {
-            printf("Found lyrics via %s provider\n", providers[i]->name);
+            log_success("Found lyrics via %s provider", providers[i]->name);
             return true;
         }
     }
 
-    printf("No lyrics found\n");
+    log_warn("No lyrics found");
     return false;
 }

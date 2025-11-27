@@ -186,8 +186,8 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
                 // Append line text if there's space
                 size_t line_len = strlen(line);
                 if (line_len > remaining) {
-                    fprintf(stderr, LOG_WARN " SRT subtitle line truncated (exceeds %zu bytes buffer limit)\n",
-                            sizeof(text_buffer));
+                    log_warn("SRT subtitle line truncated (exceeds %zu bytes buffer limit)",
+                             sizeof(text_buffer));
                     line_len = remaining;  // Truncate if needed
                 }
                 if (line_len > 0) {

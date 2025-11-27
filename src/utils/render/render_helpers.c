@@ -4,15 +4,6 @@
 #include <string.h>
 #include <ctype.h>
 
-// Helper to set cairo source color from uint32_t
-static void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
-    cairo_set_source_rgba(cairo,
-        (double)((color >> 24) & 0xFF) / 255.0,
-        (double)((color >> 16) & 0xFF) / 255.0,
-        (double)((color >> 8) & 0xFF) / 255.0,
-        (double)(color & 0xFF) / 255.0);
-}
-
 // Find active unfill segment at current playback position
 // Returns the unfill segment if active, NULL otherwise
 static struct word_segment* find_active_unfill_segment(struct word_segment *start, int64_t position_us) {

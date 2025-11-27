@@ -179,7 +179,7 @@ bool config_load(struct config *cfg, const char *path) {
     }
 
     fclose(f);
-    printf("Loaded configuration from: %s\n", path);
+    log_info("Loaded configuration from: %s", path);
     return true;
 }
 

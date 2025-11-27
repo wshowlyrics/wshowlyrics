@@ -55,7 +55,7 @@ char* itunes_search_artwork(const char *artist, const char *track) {
 
     CURL *curl = curl_easy_init();
     if (!curl) {
-        fprintf(stderr, "Failed to initialize CURL for iTunes search\n");
+        log_error("Failed to initialize CURL for iTunes search");
         return NULL;
     }
 
@@ -68,7 +68,7 @@ char* itunes_search_artwork(const char *artist, const char *track) {
     }
 
     if (strcmp(track, clean_track) != 0) {
-        printf("iTunes search: sanitized '%s' -> '%s'\n", track, clean_track);
+        log_info("iTunes search: sanitized '%s' -> '%s'", track, clean_track);
     }
 
     // Build search term
@@ -98,7 +98,7 @@ char* itunes_search_artwork(const char *artist, const char *track) {
 
     curl_free(term_encoded);
 
-    printf("iTunes API request: %s\n", request_url);
+    log_info("iTunes API request: %s", request_url);
 
     // Setup CURL request
     struct curl_memory_buffer response;
@@ -117,19 +117,19 @@ char* itunes_search_artwork(const char *artist, const char *track) {
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
-        printf("iTunes API request failed: %s\n", curl_easy_strerror(res));
+        log_warn("iTunes API request failed: %s", curl_easy_strerror(res));
         curl_memory_buffer_free(&response);
         return NULL;
     }
 
     if (http_code != HTTP_OK) {
-        printf("iTunes API returned HTTP %ld\n", http_code);
+        log_warn("iTunes API returned HTTP %ld", http_code);
         curl_memory_buffer_free(&response);
         return NULL;
     }
 
     if (!response.data || response.size < 2) {
-        printf("iTunes API: empty response\n");
+        log_warn("iTunes API: empty response");
         curl_memory_buffer_free(&response);
         return NULL;
     }
@@ -141,7 +141,7 @@ char* itunes_search_artwork(const char *artist, const char *track) {
         free(result_count_str);
 
         if (result_count == 0) {
-            printf("iTunes API: no tracks found\n");
+            log_info("iTunes API: no tracks found");
             curl_memory_buffer_free(&response);
             return NULL;
         }
@@ -157,9 +157,9 @@ char* itunes_search_artwork(const char *artist, const char *track) {
     }
 
     if (artwork_url && strlen(artwork_url) > 0) {
-        printf("iTunes API: found artwork: %s\n", artwork_url);
+        log_info("iTunes API: found artwork: %s", artwork_url);
     } else {
-        printf("iTunes API: no artwork found\n");
+        log_info("iTunes API: no artwork found");
         free(artwork_url);
         artwork_url = NULL;
     }

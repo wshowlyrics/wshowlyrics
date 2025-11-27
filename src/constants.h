@@ -50,6 +50,16 @@
 #define COLOR_CAIRO_B(c) (COLOR_TO_CAIRO(COLOR_EXTRACT_B(c)))
 #define COLOR_CAIRO_A(c) (COLOR_TO_CAIRO(COLOR_EXTRACT_A(c)))
 
+// Helper function to set Cairo source color from uint32_t (inline for performance)
+#include <cairo.h>
+static inline void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
+    cairo_set_source_rgba(cairo,
+        COLOR_CAIRO_R(color),
+        COLOR_CAIRO_G(color),
+        COLOR_CAIRO_B(color),
+        COLOR_CAIRO_A(color));
+}
+
 // ============================================================================
 // Logging Macros
 // ============================================================================
@@ -58,12 +68,20 @@
 #define LOG_COLOR_RED     "\033[1;31m"
 #define LOG_COLOR_YELLOW  "\033[1;33m"
 #define LOG_COLOR_GREEN   "\033[1;32m"
+#define LOG_COLOR_BLUE    "\033[1;34m"
 #define LOG_COLOR_RESET   "\033[0m"
 
-// Log level tags with colors
-#define LOG_ERROR   LOG_COLOR_RED "ERROR:" LOG_COLOR_RESET
-#define LOG_WARN    LOG_COLOR_YELLOW "WARN:" LOG_COLOR_RESET
-#define LOG_SUCCESS LOG_COLOR_GREEN
+// Log level tags with colors (3-character format)
+#define LOG_ERROR   LOG_COLOR_RED "ERR:" LOG_COLOR_RESET
+#define LOG_WARN    LOG_COLOR_YELLOW "WRN:" LOG_COLOR_RESET
+#define LOG_SUCCESS LOG_COLOR_GREEN "SUC:" LOG_COLOR_RESET
+#define LOG_INFO    LOG_COLOR_BLUE "INF:" LOG_COLOR_RESET
+
+// Logging functions - consistent interface
+#define log_error(fmt, ...)   fprintf(stderr, LOG_ERROR " " fmt "\n", ##__VA_ARGS__)
+#define log_warn(fmt, ...)    fprintf(stderr, LOG_WARN " " fmt "\n", ##__VA_ARGS__)
+#define log_success(fmt, ...) fprintf(stdout, LOG_SUCCESS " " fmt "\n", ##__VA_ARGS__)
+#define log_info(fmt, ...)    fprintf(stdout, LOG_INFO " " fmt "\n", ##__VA_ARGS__)
 
 // ============================================================================
 // HTTP Status Codes
