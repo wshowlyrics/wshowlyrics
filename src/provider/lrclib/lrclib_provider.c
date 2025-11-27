@@ -9,10 +9,9 @@
 #include <strings.h>
 #include <curl/curl.h>
 
-// URL encode a string for use in query parameters
+// Deprecated: Use curl_url_encode from curl_utils.h instead
 static char* url_encode(CURL *curl, const char *str) {
-    if (!str) return NULL;
-    return curl_easy_escape(curl, str, 0);
+    return curl_url_encode(curl, str);
 }
 
 // Simple JSON string extractor (looks for "key":"value")

@@ -31,3 +31,8 @@ size_t curl_write_to_memory(void *contents, size_t size, size_t nmemb, void *use
 
     return realsize;
 }
+
+char* curl_url_encode(CURL *curl, const char *str) {
+    if (!str) return NULL;
+    return curl_easy_escape(curl, str, 0);
+}
