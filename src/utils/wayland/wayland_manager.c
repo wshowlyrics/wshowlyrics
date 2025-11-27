@@ -1,5 +1,6 @@
 #include "wayland_manager.h"
 #include <assert.h>
+#include "../../constants.h"
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,7 +17,7 @@ bool wayland_manager_init(struct wayland_connection *conn) {
     // Connect to Wayland display
     conn->display = wl_display_connect(NULL);
     if (!conn->display) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Failed to connect to Wayland display: %s\n", strerror(errno));
+        fprintf(stderr, LOG_ERROR "  Failed to connect to Wayland display: %s\n", strerror(errno));
         return false;
     }
 
@@ -46,7 +47,7 @@ bool wayland_manager_reconnect(struct wayland_connection *conn) {
 
     conn->display = wl_display_connect(NULL);
     if (!conn->display) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Reconnection failed: %s\n", strerror(errno));
+        fprintf(stderr, LOG_ERROR "  Reconnection failed: %s\n", strerror(errno));
         conn->connected = false;
         return false;
     }
@@ -106,11 +107,11 @@ bool wayland_manager_dispatch(struct wayland_connection *conn) {
     }
 
     if (wl_display_dispatch(conn->display) == -1) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Wayland display dispatch error: %s (errno=%d)\n",
+        fprintf(stderr, LOG_ERROR "  Wayland display dispatch error: %s (errno=%d)\n",
                 strerror(errno), errno);
 
         if (errno == EPIPE || errno == ECONNRESET) {
-            fprintf(stderr, "\033[1;31mERROR:\033[0m Wayland connection lost (possibly due to screen lock or compositor restart)\n");
+            fprintf(stderr, LOG_ERROR "  Wayland connection lost (possibly due to screen lock or compositor restart)\n");
             conn->connected = false;
         }
 
@@ -128,11 +129,11 @@ bool wayland_manager_flush(struct wayland_connection *conn) {
     errno = 0;
     do {
         if (wl_display_flush(conn->display) == -1 && errno != EAGAIN) {
-            fprintf(stderr, "\033[1;31mERROR:\033[0m Wayland display flush error: %s (errno=%d)\n",
+            fprintf(stderr, LOG_ERROR "  Wayland display flush error: %s (errno=%d)\n",
                     strerror(errno), errno);
 
             if (errno == EPIPE || errno == ECONNRESET) {
-                fprintf(stderr, "\033[1;31mERROR:\033[0m Wayland connection lost (possibly due to screen lock or compositor restart)\n");
+                fprintf(stderr, LOG_ERROR "  Wayland connection lost (possibly due to screen lock or compositor restart)\n");
                 conn->connected = false;
             }
 
@@ -177,14 +178,14 @@ static const struct wl_registry_listener registry_listener = {
 
 bool wayland_manager_init_globals(struct wayland_connection *conn) {
     if (!conn || !conn->display) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Invalid connection or display\n");
+        fprintf(stderr, LOG_ERROR "  Invalid connection or display\n");
         return false;
     }
 
     // Create registry
     conn->registry = wl_display_get_registry(conn->display);
     if (!conn->registry) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Failed to get registry\n");
+        fprintf(stderr, LOG_ERROR "  Failed to get registry\n");
         return false;
     }
 
@@ -194,15 +195,15 @@ bool wayland_manager_init_globals(struct wayland_connection *conn) {
 
     // Check that all required globals were bound
     if (!conn->compositor) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m wl_compositor not available\n");
+        fprintf(stderr, LOG_ERROR "  wl_compositor not available\n");
         return false;
     }
     if (!conn->shm) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m wl_shm not available\n");
+        fprintf(stderr, LOG_ERROR "  wl_shm not available\n");
         return false;
     }
     if (!conn->layer_shell) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m zwlr_layer_shell_v1 not available\n");
+        fprintf(stderr, LOG_ERROR "  zwlr_layer_shell_v1 not available\n");
         return false;
     }
 
@@ -214,14 +215,14 @@ bool wayland_manager_init_surface(struct wayland_connection *conn,
         uint32_t layer, const char *namespace,
         uint32_t anchor, int32_t margin) {
     if (!conn || !conn->compositor || !conn->layer_shell) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Invalid connection or missing globals\n");
+        fprintf(stderr, LOG_ERROR "  Invalid connection or missing globals\n");
         return false;
     }
 
     // Create surface
     conn->surface = wl_compositor_create_surface(conn->compositor);
     if (!conn->surface) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Failed to create surface\n");
+        fprintf(stderr, LOG_ERROR "  Failed to create surface\n");
         return false;
     }
 
@@ -229,7 +230,7 @@ bool wayland_manager_init_surface(struct wayland_connection *conn,
     conn->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
             conn->layer_shell, conn->surface, NULL, layer, namespace);
     if (!conn->layer_surface) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Failed to create layer surface\n");
+        fprintf(stderr, LOG_ERROR "  Failed to create layer surface\n");
         wl_surface_destroy(conn->surface);
         conn->surface = NULL;
         return false;
@@ -270,7 +271,7 @@ bool wayland_manager_reconnect_full(struct wayland_connection *conn,
     printf("Attempting to reconnect to Wayland compositor...\n");
     conn->display = wl_display_connect(NULL);
     if (!conn->display) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Reconnection failed: %s\n", strerror(errno));
+        fprintf(stderr, LOG_ERROR "  Reconnection failed: %s\n", strerror(errno));
         conn->connected = false;
         return false;
     }
@@ -279,7 +280,7 @@ bool wayland_manager_reconnect_full(struct wayland_connection *conn,
 
     // Initialize globals (registry, compositor, shm, layer_shell)
     if (!wayland_manager_init_globals(conn)) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Failed to initialize globals after reconnection\n");
+        fprintf(stderr, LOG_ERROR "  Failed to initialize globals after reconnection\n");
         wl_display_disconnect(conn->display);
         conn->display = NULL;
         conn->connected = false;
@@ -288,7 +289,7 @@ bool wayland_manager_reconnect_full(struct wayland_connection *conn,
 
     // Initialize surface and layer surface
     if (!wayland_manager_init_surface(conn, layer, namespace, anchor, margin)) {
-        fprintf(stderr, "\033[1;31mERROR:\033[0m Failed to initialize surface after reconnection\n");
+        fprintf(stderr, LOG_ERROR "  Failed to initialize surface after reconnection\n");
         wayland_manager_cleanup(conn);
         return false;
     }

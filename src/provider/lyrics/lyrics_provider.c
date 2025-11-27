@@ -108,7 +108,7 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
         // Store the file path and calculate checksum
         data->source_file_path = strdup(path);
         if (!calculate_file_md5(path, data->md5_checksum)) {
-            fprintf(stderr, "Warning: Failed to calculate MD5 checksum for %s\n", path);
+            fprintf(stderr, LOG_WARN " Failed to calculate MD5 checksum for %s\n", path);
             data->md5_checksum[0] = '\0';
         }
     }

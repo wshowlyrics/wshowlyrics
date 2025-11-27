@@ -1,5 +1,6 @@
 #include "parser_utils.h"
 #include <stdio.h>
+#include "../../constants.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -674,7 +675,7 @@ bool validate_timestamp_order(int64_t current_us, int64_t *last_us, const char *
 
     if (current_us < *last_us) {
         // Warn about backwards timestamp
-        fprintf(stderr, "\033[1;33mWARN:\033[0m %s timestamp goes backwards: %02ld:%02ld:%02ld,%03ld -> %02ld:%02ld:%02ld,%03ld\n",
+        fprintf(stderr, LOG_WARN "  %s timestamp goes backwards: %02ld:%02ld:%02ld,%03ld -> %02ld:%02ld:%02ld,%03ld\n",
                 format_name,
                 *last_us / 3600000000,
                 (*last_us / 60000000) % 60,

@@ -1,5 +1,6 @@
 #include "lrcx_parser.h"
 #include "../utils/parser_utils.h"
+#include "../../constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -339,7 +340,19 @@ bool lrcx_parse_string(const char *content, struct lyrics_data *data) {
 }
 
 bool lrcx_parse_file(const char *filename, struct lyrics_data *data) {
-    return parse_file_generic(filename, "LRCX", data, lrcx_parse_string);
+    bool success = parse_file_generic(filename, "LRCX", data, lrcx_parse_string);
+
+    // Warn if critical metadata is missing (only for local files)
+    if (success) {
+        if (!data->metadata.artist || strlen(data->metadata.artist) == 0) {
+            fprintf(stderr, LOG_WARN " LRCX file missing artist metadata [ar:Artist Name]\n");
+        }
+        if (!data->metadata.album || strlen(data->metadata.album) == 0) {
+            fprintf(stderr, LOG_WARN " LRCX file missing album metadata [al:Album Name]\n");
+        }
+    }
+
+    return success;
 }
 
 struct word_segment* lrcx_find_segment_at_time(struct lyrics_line *line, int64_t timestamp_us, int *segment_index) {

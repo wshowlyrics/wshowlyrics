@@ -246,7 +246,7 @@ static void layer_surface_closed(void *data,
         return;
     }
 
-    fprintf(stderr, "\033[1;33mWARNING:\033[0m Layer surface closed by compositor\n");
+    fprintf(stderr, LOG_WARN "  Layer surface closed by compositor\n");
     // Signal that we need to reconnect
     state->needs_reconnect = true;
     state->wl_conn->connected = false;
@@ -400,7 +400,7 @@ static bool handle_wayland_reconnection(struct lyrics_state *state,
     state->width = state->height = 0;
     while ((state->width == 0 || state->height == 0) && retry < 10) {
         if (wl_display_roundtrip(state->display) == -1) {
-            fprintf(stderr, "\033[1;33mWARNING:\033[0m Roundtrip failed, compositor may not be available yet\n");
+            fprintf(stderr, LOG_WARN "  Roundtrip failed, compositor may not be available yet\n");
             state->reconnecting = false;
             return false;
         }
@@ -408,7 +408,7 @@ static bool handle_wayland_reconnection(struct lyrics_state *state,
     }
 
     if (state->width == 0 || state->height == 0) {
-        fprintf(stderr, "\033[1;33mWARNING:\033[0m Layer surface configuration failed after reconnection (compositor not ready)\n");
+        fprintf(stderr, LOG_WARN "  Layer surface configuration failed after reconnection (compositor not ready)\n");
         state->reconnecting = false;
         return false;
     }
@@ -417,7 +417,7 @@ static bool handle_wayland_reconnection(struct lyrics_state *state,
     pollfd->fd = wl_display_get_fd(wl_conn->display);
 
     state->reconnecting = false;
-    printf("\033[1;32mSuccessfully reconnected - overlay should be visible again\033[0m\n");
+    printf(LOG_SUCCESS "Successfully reconnected - overlay should be visible again" LOG_COLOR_RESET "\n");
     set_dirty(state);
     return true;
 }
@@ -892,7 +892,7 @@ int main(int argc, char *argv[]) {
     if (system_tray_init()) {
         printf("System tray initialized (album art display)\n");
     } else {
-        fprintf(stderr, "Warning: Failed to initialize system tray\n");
+        fprintf(stderr, LOG_WARN " Failed to initialize system tray\n");
     }
 
     state.display = wl_display_connect(NULL);
@@ -1020,15 +1020,15 @@ int main(int argc, char *argv[]) {
                 // Interrupted by signal, continue
                 continue;
             }
-            fprintf(stderr, "\033[1;31mERROR:\033[0m Poll error: %s (errno=%d)\n", strerror(errno), errno);
+            fprintf(stderr, LOG_ERROR "  Poll error: %s (errno=%d)\n", strerror(errno), errno);
             break;
         }
 
         // Check for errors or hangup on the Wayland fd
         if (pollfds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            fprintf(stderr, "\033[1;33mWARNING:\033[0m Wayland connection error detected (revents=0x%x)\n", pollfds[0].revents);
+            fprintf(stderr, LOG_WARN "  Wayland connection error detected (revents=0x%x)\n", pollfds[0].revents);
             if (pollfds[0].revents & POLLHUP) {
-                fprintf(stderr, "\033[1;33mWARNING:\033[0m Wayland compositor disconnected (possibly due to screen lock or tty switch)\n");
+                fprintf(stderr, LOG_WARN "  Wayland compositor disconnected (possibly due to screen lock or tty switch)\n");
             }
             // Attempt full reconnection
             handle_wayland_reconnection(&state, &wl_conn, pollfds);

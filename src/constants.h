@@ -51,6 +51,21 @@
 #define COLOR_CAIRO_A(c) (COLOR_TO_CAIRO(COLOR_EXTRACT_A(c)))
 
 // ============================================================================
+// Logging Macros
+// ============================================================================
+
+// ANSI color codes for terminal output
+#define LOG_COLOR_RED     "\033[1;31m"
+#define LOG_COLOR_YELLOW  "\033[1;33m"
+#define LOG_COLOR_GREEN   "\033[1;32m"
+#define LOG_COLOR_RESET   "\033[0m"
+
+// Log level tags with colors
+#define LOG_ERROR   LOG_COLOR_RED "ERROR:" LOG_COLOR_RESET
+#define LOG_WARN    LOG_COLOR_YELLOW "WARN:" LOG_COLOR_RESET
+#define LOG_SUCCESS LOG_COLOR_GREEN
+
+// ============================================================================
 // HTTP Status Codes
 // ============================================================================
 

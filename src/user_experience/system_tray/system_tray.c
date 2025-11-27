@@ -3,6 +3,7 @@
 #include "../../provider/itunes/itunes_artwork.h"
 #include "../config/config.h"
 #include <stdio.h>
+#include "../../constants.h"
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -49,7 +50,7 @@ static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
 }
 
 // Check if image is approximately square (allow small aspect ratio differences)
-// Most people cannot perceive aspect ratio differences below ~2%
+// Most people cannot perceive aspect ratio differences below ~5%
 static bool is_square_image(GdkPixbuf *pixbuf) {
     if (!pixbuf) {
         return false;
@@ -62,9 +63,9 @@ static bool is_square_image(GdkPixbuf *pixbuf) {
         return false;
     }
 
-    // Allow 2% tolerance for aspect ratio (e.g., 100x99, 100x98 accepted)
+    // Allow 5% tolerance for aspect ratio (e.g., 100x95, 95x100 accepted)
     float ratio = (float)width / (float)height;
-    return (ratio >= 0.98f && ratio <= 1.02f);
+    return (ratio >= 0.95f && ratio <= 1.05f);
 }
 
 // Save default icon from theme to file
@@ -155,11 +156,11 @@ static GdkPixbuf* load_image_from_url(const char *url) {
         curl_memory_buffer_free(&buffer);
     }
 
-    // Verify image is approximately square (allow 2% tolerance)
+    // Verify image is approximately square (allow 5% tolerance)
     if (pixbuf && !is_square_image(pixbuf)) {
         int width = gdk_pixbuf_get_width(pixbuf);
         int height = gdk_pixbuf_get_height(pixbuf);
-        fprintf(stderr, "Image aspect ratio too far from square (%dx%d), rejecting\n", width, height);
+        fprintf(stderr, "Image aspect ratio too far from square (%dx%d), using default icon\n", width, height);
         g_object_unref(pixbuf);
         return NULL;
     }
@@ -220,7 +221,7 @@ bool system_tray_init(void) {
         app_indicator_set_icon_full(indicator, ICON_NAME, "Music Player");
         printf("Initial icon set to default\n");
     } else {
-        fprintf(stderr, "Warning: Could not save initial default icon, using system icon\n");
+        fprintf(stderr, LOG_WARN " Could not save initial default icon, using system icon\n");
     }
 
     return true;
@@ -304,7 +305,7 @@ void system_tray_reset_icon(void) {
 
     // Save default icon to file
     if (!save_default_icon(ICON_PATH)) {
-        fprintf(stderr, "Warning: Could not save default icon\n");
+        fprintf(stderr, LOG_WARN " Could not save default icon\n");
         // Fallback: use system icon name without file
         app_indicator_set_icon_theme_path(indicator, NULL);
         app_indicator_set_icon_full(indicator, "audio-player", "Music Player");
