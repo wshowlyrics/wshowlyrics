@@ -21,6 +21,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
 
     steps:
     - name: Checkout code
@@ -28,18 +30,20 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
+        pacman -Syu --noconfirm
+        pacman -S --noconfirm \
+          base-devel \
           meson \
-          ninja-build \
-          libwayland-dev \
+          ninja \
+          wayland \
           wayland-protocols \
-          libcairo2-dev \
-          libpango1.0-dev \
-          libfontconfig1-dev \
-          libcurl4-openssl-dev \
-          libappindicator3-dev \
-          libgdk-pixbuf2.0-dev \
+          cairo \
+          pango \
+          fontconfig \
+          curl \
+          libappindicator-gtk3 \
+          gdk-pixbuf2 \
+          openssl \
           pkg-config
 
     - name: Setup build directory

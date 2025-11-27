@@ -70,6 +70,7 @@ static inline void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
 // ============================================================================
 // Logging Macros
 // ============================================================================
+// Provides consistent logging interface with color-coded severity levels
 
 // ANSI color codes for terminal output
 #define LOG_COLOR_RED     "\033[1;31m"
