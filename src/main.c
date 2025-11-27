@@ -17,6 +17,62 @@ static bool is_lyrics_format(struct lyrics_state *state, const char *extension) 
     return ext && strcasecmp(ext, extension) == 0;
 }
 
+// Helper function to escape newlines for logging
+// Returns a newly allocated string that must be freed by caller
+// Converts: LF (\n) -> ^J, CRLF (\r\n) -> ^M^J
+static char *escape_newlines_for_log(const char *text) {
+    if (!text) {
+        return NULL;
+    }
+
+    // Count newlines to calculate needed buffer size
+    // CRLF needs 4 chars (^M^J), LF needs 2 chars (^J), CR needs 2 chars (^M)
+    size_t extra_chars = 0;
+    for (const char *p = text; *p; p++) {
+        if (*p == '\r' && *(p + 1) == '\n') {
+            extra_chars += 3; // ^M^J (4 chars) - 2 original = 2 extra
+            p++; // Skip the \n
+        } else if (*p == '\n') {
+            extra_chars += 1; // ^J (2 chars) - 1 original = 1 extra
+        } else if (*p == '\r') {
+            extra_chars += 1; // ^M (2 chars) - 1 original = 1 extra
+        }
+    }
+
+    // Allocate buffer
+    size_t len = strlen(text);
+    char *escaped = malloc(len + extra_chars + 1);
+    if (!escaped) {
+        return NULL;
+    }
+
+    // Copy and escape newlines
+    char *dst = escaped;
+    for (const char *src = text; *src; src++) {
+        if (*src == '\r' && *(src + 1) == '\n') {
+            // CRLF -> ^M^J
+            *dst++ = '^';
+            *dst++ = 'M';
+            *dst++ = '^';
+            *dst++ = 'J';
+            src++; // Skip the \n
+        } else if (*src == '\n') {
+            // LF -> ^J
+            *dst++ = '^';
+            *dst++ = 'J';
+        } else if (*src == '\r') {
+            // CR -> ^M
+            *dst++ = '^';
+            *dst++ = 'M';
+        } else {
+            *dst++ = *src;
+        }
+    }
+    *dst = '\0';
+
+    return escaped;
+}
+
 static cairo_subpixel_order_t to_cairo_subpixel_order(
         enum wl_output_subpixel subpixel) {
     switch (subpixel) {
@@ -635,7 +691,16 @@ static void update_current_line(struct lyrics_state *state) {
 
         if (display_line && display_line->text) {
             int index = lrc_get_line_index(&state->lyrics, display_line);
-            log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, display_line->text);
+
+            // Escape newlines for cleaner log output
+            char *escaped_text = escape_newlines_for_log(display_line->text);
+            if (escaped_text) {
+                log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, escaped_text);
+                free(escaped_text);
+            } else {
+                // Fallback if allocation failed
+                log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, display_line->text);
+            }
 
             // For karaoke (LRCX), set initial segment
             if (is_lyrics_format(state, ".lrcx") && display_line->segments) {
