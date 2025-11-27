@@ -297,149 +297,172 @@ static char* get_filename_from_url(const char *url) {
     return result;
 }
 
-static bool local_search(const char *title, const char *artist, const char *album,
-                         const char *url, int64_t duration_ms, struct lyrics_data *data) {
-    (void)duration_ms; // Unused for local search
-    if (!title) {
+// Check if running from local build directory
+static bool is_local_build_executable(void) {
+    char exe_path[PATH_BUFFER_SIZE];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len == -1) {
         return false;
     }
 
-    // Remove extension from title first (in case it's a filename)
-    char *title_no_ext = remove_extension(title);
-    char *title_safe = sanitize_filename(title_no_ext ? title_no_ext : title);
-    char *artist_safe = artist ? sanitize_filename(artist) : NULL;
-    free(title_no_ext);
+    exe_path[len] = '\0';
+    // Check if executable path contains "build/" or ends with "/lyrics" in local directory
+    return (strstr(exe_path, "/build/") != NULL ||
+            (strstr(exe_path, "/lyrics") != NULL && exe_path[0] != '/' &&
+             strncmp(exe_path, "/usr/", 5) != 0));
+}
 
-    // PRIORITY 1: Directory of the currently playing file
-    char *current_dir = get_directory_from_url(url);
-
-    // Also try using the actual filename from URL
-    char *filename_from_url = get_filename_from_url(url);
-
-    // Try various locations and naming schemes
-    const char *home = getenv("HOME");
-    const char *xdg_music = getenv("XDG_MUSIC_DIR");
-
-    const char *search_dirs[10] = {0};
+// Build list of directories to search for lyrics files
+// Returns number of directories added
+static int build_search_directories(const char **search_dirs, int max_dirs,
+                                    const char *current_dir, char *lyrics_dir_buf, size_t buf_size) {
     int dir_count = 0;
 
-    // Add current directory as first priority
-    if (current_dir) {
+    // Priority 1: Directory of currently playing file
+    if (current_dir && dir_count < max_dirs) {
         search_dirs[dir_count++] = current_dir;
     }
 
-    // Check if running from local build (e.g., ./build/lyrics)
-    // to enable current directory search for development
-    bool is_local_build = false;
-    char exe_path[PATH_BUFFER_SIZE];
-    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-    if (len != -1) {
-        exe_path[len] = '\0';
-        // Check if executable path contains "build/" or ends with "/lyrics" in local directory
-        if (strstr(exe_path, "/build/") != NULL ||
-            (strstr(exe_path, "/lyrics") != NULL && exe_path[0] != '/' && strncmp(exe_path, "/usr/", 5) != 0)) {
-            is_local_build = true;
-        }
-    }
-
-    // Only search current directory for local builds (not installed to /usr/bin)
-    if (is_local_build) {
+    // Priority 2: Current directory (only for local builds)
+    if (is_local_build_executable() && dir_count < max_dirs) {
         search_dirs[dir_count++] = ".";
     }
 
-    if (xdg_music) search_dirs[dir_count++] = xdg_music;
-
-    // Add ~/.lyrics directory
-    char lyrics_dir[FILENAME_BUFFER_SIZE] = {0};
-    if (home) {
-        snprintf(lyrics_dir, sizeof(lyrics_dir), "%s/.lyrics", home);
-        search_dirs[dir_count++] = lyrics_dir;
+    // Priority 3: XDG_MUSIC_DIR
+    const char *xdg_music = getenv("XDG_MUSIC_DIR");
+    if (xdg_music && dir_count < max_dirs) {
+        search_dirs[dir_count++] = xdg_music;
     }
 
-    if (home) search_dirs[dir_count++] = home;
+    // Priority 4: ~/.lyrics directory
+    const char *home = getenv("HOME");
+    if (home && dir_count < max_dirs) {
+        snprintf(lyrics_dir_buf, buf_size, "%s/.lyrics", home);
+        search_dirs[dir_count++] = lyrics_dir_buf;
+    }
 
-    char path[PATH_BUFFER_SIZE];
-    char **extensions = get_extension_priority();
-    if (!extensions) {
-        free(title_safe);
-        free(artist_safe);
-        free(current_dir);
-        free(filename_from_url);
+    // Priority 5: Home directory
+    if (home && dir_count < max_dirs) {
+        search_dirs[dir_count++] = home;
+    }
+
+    return dir_count;
+}
+
+// Try to find lyrics using exact filename from URL
+static bool try_exact_filename(const char *dir, const char *filename,
+                                char **extensions, struct lyrics_data *data) {
+    if (!filename) {
         return false;
     }
 
-    for (int i = 0; i < dir_count; i++) {
-        if (!search_dirs[i]) continue;
+    char path[PATH_BUFFER_SIZE];
+    for (int ext_idx = 0; extensions[ext_idx]; ext_idx++) {
+        snprintf(path, sizeof(path), "%s/%s.%s", dir, filename, extensions[ext_idx]);
+        log_info("Trying: %s", path);
+        if (try_load_lyrics_file(path, data)) {
+            return true;
+        }
+    }
 
-        // Try each extension in priority order
-        for (int ext_idx = 0; extensions[ext_idx]; ext_idx++) {
-            const char *ext = extensions[ext_idx];
+    return false;
+}
 
-            // HIGHEST PRIORITY: Try exact filename from URL (in current directory)
-            if (i == 0 && filename_from_url) {
-                snprintf(path, sizeof(path), "%s/%s.%s", search_dirs[i], filename_from_url, ext);
-                log_info("Trying: %s", path);
-                if (try_load_lyrics_file(path, data)) {
-                    free_extension_priority(extensions);
-                    free(title_safe);
-                    free(artist_safe);
-                    free(current_dir);
-                    free(filename_from_url);
-                    return true;
-                }
-            }
+// Try to find lyrics using title-based patterns
+static bool try_title_patterns(const char *dir, const char *title_safe,
+                                const char *artist_safe, char **extensions,
+                                struct lyrics_data *data) {
+    char path[PATH_BUFFER_SIZE];
+
+    for (int ext_idx = 0; extensions[ext_idx]; ext_idx++) {
+        const char *ext = extensions[ext_idx];
+
+        // Pattern 1: Title.ext
+        snprintf(path, sizeof(path), "%s/%s.%s", dir, title_safe, ext);
+        log_info("Trying: %s", path);
+        if (try_load_lyrics_file(path, data)) {
+            return true;
         }
 
-        // Try each extension in priority order for other patterns
-        for (int ext_idx = 0; extensions[ext_idx]; ext_idx++) {
-            const char *ext = extensions[ext_idx];
-
-            // Try: Title.ext
-            snprintf(path, sizeof(path), "%s/%s.%s", search_dirs[i], title_safe, ext);
-            log_info("Trying: %s", path);
+        if (artist_safe) {
+            // Pattern 2: Artist - Title.ext
+            snprintf(path, sizeof(path), "%s/%s - %s.%s", dir, artist_safe, title_safe, ext);
             if (try_load_lyrics_file(path, data)) {
-                free_extension_priority(extensions);
-                free(title_safe);
-                free(artist_safe);
-                free(current_dir);
-                free(filename_from_url);
                 return true;
             }
 
-            if (artist_safe) {
-                // Try: Artist - Title.ext
-                snprintf(path, sizeof(path), "%s/%s - %s.%s",
-                         search_dirs[i], artist_safe, title_safe, ext);
-                if (try_load_lyrics_file(path, data)) {
-                    free_extension_priority(extensions);
-                    free(title_safe);
-                    free(artist_safe);
-                    free(current_dir);
-                    free(filename_from_url);
-                    return true;
-                }
-
-                // Try: Artist/Title.ext
-                snprintf(path, sizeof(path), "%s/%s/%s.%s",
-                         search_dirs[i], artist_safe, title_safe, ext);
-                if (try_load_lyrics_file(path, data)) {
-                    free_extension_priority(extensions);
-                    free(title_safe);
-                    free(artist_safe);
-                    free(current_dir);
-                    free(filename_from_url);
-                    return true;
-                }
+            // Pattern 3: Artist/Title.ext
+            snprintf(path, sizeof(path), "%s/%s/%s.%s", dir, artist_safe, title_safe, ext);
+            if (try_load_lyrics_file(path, data)) {
+                return true;
             }
         }
     }
 
-    // No lyrics found - cleanup and return false
+    return false;
+}
+
+// Cleanup all allocated resources used in search
+static void cleanup_search_resources(char **extensions, char *title_safe,
+                                     char *artist_safe, char *current_dir,
+                                     char *filename_from_url) {
     free_extension_priority(extensions);
     free(title_safe);
     free(artist_safe);
     free(current_dir);
     free(filename_from_url);
+}
+
+static bool local_search(const char *title, const char *artist, const char *album,
+                         const char *url, int64_t duration_ms, struct lyrics_data *data) {
+    (void)duration_ms; // Unused for local search
+    (void)album;       // Unused for local search
+
+    if (!title) {
+        return false;
+    }
+
+    // Prepare sanitized filenames
+    char *title_no_ext = remove_extension(title);
+    char *title_safe = sanitize_filename(title_no_ext ? title_no_ext : title);
+    char *artist_safe = artist ? sanitize_filename(artist) : NULL;
+    free(title_no_ext);
+
+    // Extract paths from URL
+    char *current_dir = get_directory_from_url(url);
+    char *filename_from_url = get_filename_from_url(url);
+
+    // Get extension priority list
+    char **extensions = get_extension_priority();
+    if (!extensions) {
+        cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url);
+        return false;
+    }
+
+    // Build directory search list
+    const char *search_dirs[10] = {0};
+    char lyrics_dir[FILENAME_BUFFER_SIZE] = {0};
+    int dir_count = build_search_directories(search_dirs, 10, current_dir, lyrics_dir, sizeof(lyrics_dir));
+
+    // Search all directories
+    for (int i = 0; i < dir_count; i++) {
+        if (!search_dirs[i]) continue;
+
+        // Try exact filename first (only in first directory - file's own directory)
+        if (i == 0 && try_exact_filename(search_dirs[i], filename_from_url, extensions, data)) {
+            cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url);
+            return true;
+        }
+
+        // Try title-based patterns
+        if (try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data)) {
+            cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url);
+            return true;
+        }
+    }
+
+    // No lyrics found
+    cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url);
     return false;
 }
 
