@@ -554,6 +554,12 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                 if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
                     FILE *f = fopen(cache_path, "w");
                     if (f) {
+                        // Write LRC metadata tags
+                        fprintf(f, "[ar:%s]\n", track->artist ? track->artist : "Unknown");
+                        fprintf(f, "[ti:%s]\n", track->title ? track->title : "Unknown");
+                        fprintf(f, "[al:%s]\n", track->album ? track->album : "Unknown");
+
+                        // Write lyrics lines with timestamps
                         struct lyrics_line *line = data->lines;
                         while (line) {
                             fprintf(f, "[%02ld:%02ld.%02ld]%s\n",

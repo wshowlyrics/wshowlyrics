@@ -386,9 +386,6 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
     if (!calculate_metadata_md5(artist, track, NULL, metadata_hash)) {
         log_error("Failed to calculate metadata hash");
         metadata_hash[0] = '\0';
-    } else {
-        log_info("Album art metadata hash: %s (artist=%s, title=%s)",
-                 metadata_hash, artist ? artist : "NULL", track ? track : "NULL");
     }
 
     // Check if we already loaded this artwork (same metadata hash)
