@@ -1,6 +1,7 @@
 #include "itunes_artwork.h"
 #include "../../utils/curl/curl_utils.h"
 #include "../../utils/string/string_utils.h"
+#include "../../utils/json/json_utils.h"
 #include "../../constants.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,38 +9,9 @@
 #include <strings.h>
 #include <curl/curl.h>
 
-// Simple JSON string extractor (looks for "key":"value")
+// Deprecated: Use json_extract_string from json_utils.h instead
 static char* extract_json_string(const char *json, const char *key) {
-    if (!json || !key) return NULL;
-
-    // Build search pattern: "key":"
-    char pattern[JSON_PATTERN_SIZE];
-    snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
-
-    char *start = strstr(json, pattern);
-    if (!start) return NULL;
-
-    start += strlen(pattern);
-    char *end = start;
-
-    // Find the closing quote, handling escaped characters
-    while (*end) {
-        if (*end == '"' && (end == start || *(end - 1) != '\\')) {
-            break;
-        }
-        end++;
-    }
-
-    if (*end != '"') return NULL;
-
-    size_t len = end - start;
-    char *result = malloc(len + 1);
-    if (!result) return NULL;
-
-    memcpy(result, start, len);
-    result[len] = '\0';
-
-    return result;
+    return json_extract_string(json, key);
 }
 
 // Deprecated: Use curl_url_encode from curl_utils.h instead

@@ -66,6 +66,7 @@ executable(
 		'src/parser/utils/parser_utils.c',
 		'src/utils/curl/curl_utils.c',
 		'src/utils/file/file_utils.c',
+		'src/utils/json/json_utils.c',
 		'src/utils/string/string_utils.c',
 		'src/utils/render/render_helpers.c',
 		'src/utils/wayland/wayland_manager.c',
