@@ -1,6 +1,7 @@
 #include "lrcx_parser.h"
 #include "../utils/parser_utils.h"
 #include "../../constants.h"
+#include "../../utils/string/string_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -340,10 +341,8 @@ bool lrcx_parse_string(const char *content, struct lyrics_data *data) {
     int64_t last_line_timestamp_us = -1; // Track last line timestamp for validation
 
     while (line) {
-        // Skip empty lines
-        while (*line && isspace(*line)) {
-            line++;
-        }
+        // Trim whitespace
+        line = trim_whitespace(line);
 
         if (*line == '\0') {
             line = strtok(NULL, "\n");

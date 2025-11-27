@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <ctype.h>
 
 // Sanitize title by removing YouTube ID and file extensions
 // Example: "[4K60FPS] Song Title [AbCdEfG1234].mkv" -> "Song Title"
@@ -49,19 +50,36 @@ char* sanitize_title(const char *title) {
     *write_pos = '\0';
 
     // Trim leading/trailing whitespace
-    char *start = result;
-    while (*start == ' ' || *start == '\t') start++;
+    char *trimmed = trim_whitespace(result);
 
-    char *end = start + strlen(start) - 1;
-    while (end > start && (*end == ' ' || *end == '\t')) {
-        *end = '\0';
-        end--;
-    }
-
-    // If start != result, we need to move the string
-    if (start != result) {
-        memmove(result, start, strlen(start) + 1);
+    // If trimmed pointer moved, we need to shift the string within the buffer
+    if (trimmed != result) {
+        memmove(result, trimmed, strlen(trimmed) + 1);
     }
 
     return result;
+}
+
+// Trim leading and trailing whitespace from string (in-place)
+char* trim_whitespace(char *str) {
+    if (!str) return NULL;
+
+    // Trim leading whitespace
+    while (isspace((unsigned char)*str)) {
+        str++;
+    }
+
+    // Empty string after trimming leading whitespace
+    if (*str == '\0') {
+        return str;
+    }
+
+    // Trim trailing whitespace
+    char *end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) {
+        end--;
+    }
+    *(end + 1) = '\0';
+
+    return str;
 }

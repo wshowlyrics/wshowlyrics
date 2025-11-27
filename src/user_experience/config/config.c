@@ -1,5 +1,6 @@
 #include "config.h"
 #include "../../constants.h"
+#include "../../utils/string/string_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,21 +35,10 @@ static bool parse_hex_color(const char *hex, double rgba[4]) {
     return true;
 }
 
-// Trim whitespace from string
+// Deprecated: Use trim_whitespace from string_utils.h instead
+// Kept for backwards compatibility with existing code
 char* config_trim_whitespace(char *str) {
-    if (!str) return NULL;
-
-    // Trim leading
-    while (isspace(*str)) str++;
-
-    if (*str == '\0') return str;
-
-    // Trim trailing
-    char *end = str + strlen(str) - 1;
-    while (end > str && isspace(*end)) end--;
-    *(end + 1) = '\0';
-
-    return str;
+    return trim_whitespace(str);
 }
 
 void config_init_defaults(struct config *cfg) {

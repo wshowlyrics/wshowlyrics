@@ -1,6 +1,7 @@
 #include "lrc_parser.h"
 #include "../utils/parser_utils.h"
 #include "../../constants.h"
+#include "../../utils/string/string_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,10 +18,8 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
     int64_t last_timestamp_us = -1; // Track last timestamp for validation
 
     while (line) {
-        // Skip empty lines
-        while (*line && isspace(*line)) {
-            line++;
-        }
+        // Trim whitespace
+        line = trim_whitespace(line);
 
         if (*line == '\0') {
             line = strtok(NULL, "\n");
@@ -38,7 +37,7 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
             int64_t timestamp_us;
             if (parse_lrc_timestamp(line, &timestamp_us, NULL)) {
                 // Find the end of timestamp(s)
-                const char *text_start = line;
+                char *text_start = line;
                 while (*text_start == '[') {
                     text_start = strchr(text_start, ']');
                     if (!text_start) {
@@ -47,9 +46,9 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
                     text_start++;
                 }
 
-                // Skip leading whitespace after timestamp tags
-                while (text_start && *text_start && isspace((unsigned char)*text_start)) {
-                    text_start++;
+                // Trim whitespace after timestamp tags
+                if (text_start) {
+                    text_start = trim_whitespace(text_start);
                 }
 
                 // Create new line even if text is empty or whitespace-only
@@ -114,20 +113,9 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
                             }
                         } else {
                             // No segments created (error case) - use original text, trimmed
-                            // Trim trailing whitespace
-                            const char *end = text_start + strlen(text_start) - 1;
-                            while (end > text_start && isspace((unsigned char)*end)) {
-                                end--;
-                            }
-                            size_t len = end - text_start + 1;
-                            char *trimmed = malloc(len + 1);
-                            if (trimmed) {
-                                memcpy(trimmed, text_start, len);
-                                trimmed[len] = '\0';
-                                new_line->text = trimmed;
-                            } else {
-                                new_line->text = strdup("");
-                            }
+                            // text_start is already in a mutable buffer (from strtok), safe to trim in-place
+                            char *trimmed = trim_whitespace(text_start);
+                            new_line->text = strdup(trimmed ? trimmed : "");
                         }
                     }
                 } else {

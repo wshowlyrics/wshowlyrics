@@ -6,4 +6,9 @@
 // Caller must free the returned string
 char* sanitize_title(const char *title);
 
+// Trim leading and trailing whitespace from string (in-place)
+// Returns pointer to trimmed string (within original buffer)
+// NULL-safe: returns NULL if input is NULL
+char* trim_whitespace(char *str);
+
 #endif

@@ -1,6 +1,7 @@
 #include "srt_parser.h"
 #include "../utils/parser_utils.h"
 #include "../../constants.h"
+#include "../../utils/string/string_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,16 +114,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
         }
 
         // Trim whitespace
-        while (*line && isspace(*line)) {
-            line++;
-        }
-
-        // Remove trailing whitespace
-        char *end = line + strlen(line) - 1;
-        while (end > line && isspace(*end)) {
-            *end = '\0';
-            end--;
-        }
+        line = trim_whitespace(line);
 
         switch (state) {
         case STATE_INDEX:
