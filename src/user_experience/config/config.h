@@ -32,8 +32,11 @@ struct config {
     struct lyrics_config lyrics;
 };
 
-// Global configuration instance
+// Global configuration instance (prefer using config_get() instead of direct access)
 extern struct config g_config;
+
+// Get pointer to global config (use this instead of accessing g_config directly)
+struct config* config_get(void);
 
 // Initialize configuration with defaults
 void config_init_defaults(struct config *cfg);

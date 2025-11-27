@@ -12,6 +12,11 @@
 // Global configuration instance
 struct config g_config;
 
+// Get pointer to global config (encapsulated access)
+struct config* config_get(void) {
+    return &g_config;
+}
+
 // Parse hex color string (RRGGBBAA) to RGBA array
 static bool parse_hex_color(const char *hex, double rgba[4]) {
     if (!hex) return false;
