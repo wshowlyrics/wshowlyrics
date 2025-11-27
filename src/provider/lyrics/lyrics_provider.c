@@ -337,8 +337,9 @@ static int build_search_directories(const char **search_dirs, int max_dirs,
     // Priority 4: ~/.lyrics directory
     const char *home = getenv("HOME");
     if (home && dir_count < max_dirs) {
-        snprintf(lyrics_dir_buf, buf_size, "%s/.lyrics", home);
-        search_dirs[dir_count++] = lyrics_dir_buf;
+        if (build_path(lyrics_dir_buf, buf_size, "%s/.lyrics", home) >= 0) {
+            search_dirs[dir_count++] = lyrics_dir_buf;
+        }
     }
 
     // Priority 5: Home directory
@@ -358,7 +359,9 @@ static bool try_exact_filename(const char *dir, const char *filename,
 
     char path[PATH_BUFFER_SIZE];
     for (int ext_idx = 0; extensions[ext_idx]; ext_idx++) {
-        snprintf(path, sizeof(path), "%s/%s.%s", dir, filename, extensions[ext_idx]);
+        if (build_path(path, sizeof(path), "%s/%s.%s", dir, filename, extensions[ext_idx]) < 0) {
+            continue;  // Path too long, skip
+        }
         log_info("Trying: %s", path);
         if (try_load_lyrics_file(path, data)) {
             return true;
@@ -378,23 +381,26 @@ static bool try_title_patterns(const char *dir, const char *title_safe,
         const char *ext = extensions[ext_idx];
 
         // Pattern 1: Title.ext
-        snprintf(path, sizeof(path), "%s/%s.%s", dir, title_safe, ext);
-        log_info("Trying: %s", path);
-        if (try_load_lyrics_file(path, data)) {
-            return true;
+        if (build_path(path, sizeof(path), "%s/%s.%s", dir, title_safe, ext) >= 0) {
+            log_info("Trying: %s", path);
+            if (try_load_lyrics_file(path, data)) {
+                return true;
+            }
         }
 
         if (artist_safe) {
             // Pattern 2: Artist - Title.ext
-            snprintf(path, sizeof(path), "%s/%s - %s.%s", dir, artist_safe, title_safe, ext);
-            if (try_load_lyrics_file(path, data)) {
-                return true;
+            if (build_path(path, sizeof(path), "%s/%s - %s.%s", dir, artist_safe, title_safe, ext) >= 0) {
+                if (try_load_lyrics_file(path, data)) {
+                    return true;
+                }
             }
 
             // Pattern 3: Artist/Title.ext
-            snprintf(path, sizeof(path), "%s/%s/%s.%s", dir, artist_safe, title_safe, ext);
-            if (try_load_lyrics_file(path, data)) {
-                return true;
+            if (build_path(path, sizeof(path), "%s/%s/%s.%s", dir, artist_safe, title_safe, ext) >= 0) {
+                if (try_load_lyrics_file(path, data)) {
+                    return true;
+                }
             }
         }
     }

@@ -1,6 +1,7 @@
 #include "config.h"
 #include "../../constants.h"
 #include "../../utils/string/string_utils.h"
+#include "../../utils/file/file_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,10 +89,16 @@ static char* config_get_user_path(void) {
     char *path = malloc(CONFIG_PATH_SIZE);
     if (!path) return NULL;
 
+    int result;
     if (config_home) {
-        snprintf(path, CONFIG_PATH_SIZE, "%s/wshowlyrics/settings.ini", config_home);
+        result = build_path(path, CONFIG_PATH_SIZE, "%s/wshowlyrics/settings.ini", config_home);
     } else {
-        snprintf(path, CONFIG_PATH_SIZE, "%s/.config/wshowlyrics/settings.ini", home);
+        result = build_path(path, CONFIG_PATH_SIZE, "%s/.config/wshowlyrics/settings.ini", home);
+    }
+
+    if (result < 0) {
+        free(path);
+        return NULL;
     }
 
     return path;

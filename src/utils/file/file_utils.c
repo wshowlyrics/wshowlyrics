@@ -2,6 +2,7 @@
 #include "../../constants.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <openssl/evp.h>
 #include <sys/stat.h>
 
@@ -76,4 +77,22 @@ bool file_has_changed(const char *filepath, const char *expected_checksum) {
     }
 
     return strcmp(current_checksum, expected_checksum) != 0;
+}
+
+int build_path(char *dest, size_t dest_size, const char *fmt, ...) {
+    if (!dest || !fmt || dest_size == 0) {
+        return -1;
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    int written = vsnprintf(dest, dest_size, fmt, args);
+    va_end(args);
+
+    // Check for error or truncation
+    if (written < 0 || written >= (int)dest_size) {
+        return -1;
+    }
+
+    return written;
 }
