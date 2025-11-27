@@ -295,7 +295,8 @@ static char* get_filename_from_url(const char *url) {
 }
 
 static bool local_search(const char *title, const char *artist, const char *album,
-                         const char *url, struct lyrics_data *data) {
+                         const char *url, int64_t duration_ms, struct lyrics_data *data) {
+    (void)duration_ms; // Unused for local search
     if (!title) {
         return false;
     }
@@ -492,6 +493,9 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
         printf("File location: %s\n", track->url);
     }
 
+    // Convert duration from microseconds to milliseconds
+    int64_t duration_ms = track->length_us / 1000;
+
     // Try each provider in order
     for (int i = 0; providers[i]; i++) {
         // Skip lrclib if disabled in config
@@ -502,7 +506,7 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
 
         printf("Trying provider: %s\n", providers[i]->name);
         if (providers[i]->search(track->title, track->artist, track->album,
-                                 track->url, data)) {
+                                 track->url, duration_ms, data)) {
             printf("Found lyrics via %s provider\n", providers[i]->name);
             return true;
         }

@@ -11,8 +11,9 @@ struct lyrics_provider {
 
     // Search for lyrics
     // url: optional file path/URL for local file search optimization
+    // duration_ms: track duration in milliseconds (0 if unknown)
     bool (*search)(const char *title, const char *artist, const char *album,
-                   const char *url, struct lyrics_data *data);
+                   const char *url, int64_t duration_ms, struct lyrics_data *data);
 
     // Initialize provider
     bool (*init)(void);
