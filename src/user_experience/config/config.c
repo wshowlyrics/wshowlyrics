@@ -113,7 +113,7 @@ char* config_get_path(void) {
 bool config_load(struct config *cfg, const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) {
-        fprintf(stderr, "Config file not found: %s (using defaults)\n", path);
+        log_warn("Config file not found: %s (using defaults)", path);
         return false;
     }
 

@@ -140,7 +140,7 @@ bool parse_file_generic(const char *filename, const char *format_name,
                         bool (*parser_func)(const char *, struct lyrics_data *)) {
     FILE *fp = fopen(filename, "r");
     if (!fp) {
-        fprintf(stderr, "Failed to open %s file: %s\n", format_name, filename);
+        log_error("Failed to open %s file: %s", format_name, filename);
         return false;
     }
 

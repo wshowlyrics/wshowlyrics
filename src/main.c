@@ -240,7 +240,7 @@ static void layer_surface_closed(void *data,
         return;
     }
 
-    fprintf(stderr, LOG_WARN "  Layer surface closed by compositor\n");
+    log_warn("Layer surface closed by compositor");
     // Signal that we need to reconnect
     state->needs_reconnect = true;
     state->wl_conn->connected = false;
@@ -367,7 +367,7 @@ static bool handle_wayland_reconnection(struct lyrics_state *state,
 
     if (!wayland_manager_reconnect_full(wl_conn, ZWLR_LAYER_SHELL_V1_LAYER_TOP,
             "lyrics", state->anchor, state->margin)) {
-        fprintf(stderr, "Full reconnection failed, will retry...\n");
+        log_error("Full reconnection failed, will retry...");
         state->reconnecting = false;
         return false;
     }
@@ -394,7 +394,7 @@ static bool handle_wayland_reconnection(struct lyrics_state *state,
     state->width = state->height = 0;
     while ((state->width == 0 || state->height == 0) && retry < 10) {
         if (wl_display_roundtrip(state->display) == -1) {
-            fprintf(stderr, LOG_WARN "  Roundtrip failed, compositor may not be available yet\n");
+            log_warn("Roundtrip failed, compositor may not be available yet");
             state->reconnecting = false;
             return false;
         }
@@ -402,7 +402,7 @@ static bool handle_wayland_reconnection(struct lyrics_state *state,
     }
 
     if (state->width == 0 || state->height == 0) {
-        fprintf(stderr, LOG_WARN "  Layer surface configuration failed after reconnection (compositor not ready)\n");
+        log_warn("Layer surface configuration failed after reconnection (compositor not ready)");
         state->reconnecting = false;
         return false;
     }
@@ -411,7 +411,7 @@ static bool handle_wayland_reconnection(struct lyrics_state *state,
     pollfd->fd = wl_display_get_fd(wl_conn->display);
 
     state->reconnecting = false;
-    printf(LOG_SUCCESS "Successfully reconnected - overlay should be visible again" LOG_COLOR_RESET "\n");
+    log_info("Successfully reconnected - overlay should be visible again");
     set_dirty(state);
     return true;
 }
@@ -423,8 +423,7 @@ static uint32_t parse_color(const char *color) {
 
     const int len = strlen(color);
     if (len != 6 && len != 8) {
-        fprintf(stderr, "Invalid color %s, defaulting to color "
-                "0xFFFFFFFF\n", color);
+        log_warn("Invalid color %s, defaulting to color 0xFFFFFFFF", color);
         return 0xFFFFFFFF;
     }
     uint32_t res = (uint32_t)strtoul(color, NULL, 16);
@@ -440,7 +439,7 @@ static bool update_track_info(struct lyrics_state *state) {
     if (!mpris_get_metadata(&new_track)) {
         // No player found - clear everything if we had a track before
         if (state->current_track.title) {
-            printf("\n=== No player found, clearing lyrics ===\n");
+            log_info("=== No player found, clearing lyrics ===");
 
             // Free track metadata
             mpris_free_metadata(&state->current_track);
@@ -467,11 +466,11 @@ static bool update_track_info(struct lyrics_state *state) {
     }
 
     if (changed) {
-        printf("\n=== Track changed ===\n");
-        printf("Title: %s\n", new_track.title);
-        printf("Artist: %s\n", new_track.artist ? new_track.artist : "Unknown");
-        printf("Album: %s\n", new_track.album ? new_track.album : "Unknown");
-        printf("Art URL: %s\n", new_track.art_url ? new_track.art_url : "None");
+        log_info("=== Track changed ===");
+        log_info("Title: %s", new_track.title);
+        log_info("Artist: %s", new_track.artist ? new_track.artist : "Unknown");
+        log_info("Album: %s", new_track.album ? new_track.album : "Unknown");
+        log_info("Art URL: %s", new_track.art_url ? new_track.art_url : "None");
 
         mpris_free_metadata(&state->current_track);
         state->current_track = new_track;
@@ -555,11 +554,11 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
 
     // Try to find lyrics
     if (!lyrics_find_for_track(&state->current_track, &state->lyrics)) {
-        printf("No lyrics found for current track\n");
+        log_info("No lyrics found for current track");
         return false;
     }
 
-    printf("Loaded %d lines of lyrics\n", state->lyrics.line_count);
+    log_info("Loaded %d lines of lyrics", state->lyrics.line_count);
 
     // Set initial line
     state->current_line = state->lyrics.lines;
@@ -580,7 +579,7 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
         }
 
         if (artist && title && strlen(artist) > 0 && strlen(title) > 0) {
-            printf("Trying iTunes API with lyrics metadata (artist: %s, title: %s)\n", artist, title);
+            log_info("Trying iTunes API with lyrics metadata (artist: %s, title: %s)", artist, title);
             system_tray_update_icon_with_fallback(NULL, artist, title);
         }
     }
@@ -677,7 +676,7 @@ int main(int argc, char *argv[]) {
     // Extract program name for help messages
     char *argv0_copy = strdup(argv[0]);
     if (!argv0_copy) {
-        fprintf(stderr, "Memory allocation failed\n");
+        log_error("Memory allocation failed");
         return 1;
     }
     const char *program_name = basename(argv0_copy);
@@ -922,7 +921,7 @@ int main(int argc, char *argv[]) {
 
     state.display = wl_display_connect(NULL);
     if (!state.display) {
-        fprintf(stderr, "wl_display_connect: %s\n", strerror(errno));
+        log_error("wl_display_connect: %s", strerror(errno));
         ret = 1;
         goto exit;
     }
@@ -942,8 +941,7 @@ int main(int argc, char *argv[]) {
     };
     for (size_t i = 0; i < sizeof(need_globals) / sizeof(need_globals[0]); ++i) {
         if (!need_globals[i].ptr) {
-            fprintf(stderr, "Error: required Wayland interface '%s' "
-                    "is not present\n", need_globals[i].name);
+            log_error("Required Wayland interface '%s' is not present", need_globals[i].name);
             ret = 1;
             goto exit;
         }
@@ -988,7 +986,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (state.width == 0 || state.height == 0) {
-        fprintf(stderr, "Layer surface configuration failed\n");
+        log_error("Layer surface configuration failed");
         ret = 1;
         goto exit;
     }
@@ -1023,7 +1021,7 @@ int main(int argc, char *argv[]) {
     while (state.run) {
         // Check if reconnection is needed (e.g., layer surface was closed)
         if (state.needs_reconnect) {
-            fprintf(stderr, "Reconnection needed, attempting full reconnection...\n");
+            log_info("Reconnection needed, attempting full reconnection...");
             if (handle_wayland_reconnection(&state, &wl_conn, pollfds)) {
                 state.needs_reconnect = false;
             }
@@ -1045,15 +1043,15 @@ int main(int argc, char *argv[]) {
                 // Interrupted by signal, continue
                 continue;
             }
-            fprintf(stderr, LOG_ERROR "  Poll error: %s (errno=%d)\n", strerror(errno), errno);
+            log_error("Poll error: %s (errno=%d)", strerror(errno), errno);
             break;
         }
 
         // Check for errors or hangup on the Wayland fd
         if (pollfds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            fprintf(stderr, LOG_WARN "  Wayland connection error detected (revents=0x%x)\n", pollfds[0].revents);
+            log_warn("Wayland connection error detected (revents=0x%x)", pollfds[0].revents);
             if (pollfds[0].revents & POLLHUP) {
-                fprintf(stderr, LOG_WARN "  Wayland compositor disconnected (possibly due to screen lock or tty switch)\n");
+                log_warn("Wayland compositor disconnected (possibly due to screen lock or tty switch)");
             }
             // Attempt full reconnection
             handle_wayland_reconnection(&state, &wl_conn, pollfds);
@@ -1072,7 +1070,7 @@ int main(int argc, char *argv[]) {
                     char current_checksum[MD5_DIGEST_STRING_LENGTH];
                     if (calculate_file_md5(state.lyrics.source_file_path, current_checksum)) {
                         if (strcmp(current_checksum, state.lyrics.md5_checksum) != 0) {
-                            printf("Lyrics file changed, reloading: %s\n", state.lyrics.source_file_path);
+                            log_info("Lyrics file changed, reloading: %s", state.lyrics.source_file_path);
                             // Hide overlay during reload to prevent flickering
                             render_transparent_frame(&state);
                             load_lyrics_for_track(&state);
@@ -1115,26 +1113,26 @@ int main(int argc, char *argv[]) {
 
             if (!state.need_lyrics_search && !file_exists) {
                 // First detection: file was deleted or moved
-                printf("Lyrics file was deleted or moved: %s\n", state.lyrics.source_file_path);
-                printf("Will search for lyrics during next instrumental break\n");
+                log_info("Lyrics file was deleted or moved: %s", state.lyrics.source_file_path);
+                log_info("Will search for lyrics during next instrumental break");
                 state.need_lyrics_search = true;
                 state.in_instrumental_break = false; // Reset to trigger search on next break
             } else if (state.need_lyrics_search) {
                 if (file_exists) {
                     // File is back! No need to search
-                    printf("Lyrics file is back at original location: %s\n", state.lyrics.source_file_path);
+                    log_info("Lyrics file is back at original location: %s", state.lyrics.source_file_path);
                 } else {
                     // File still missing - search for lyrics again
-                    printf("Searching for lyrics again...\n");
+                    log_info("Searching for lyrics again...");
                     struct lyrics_data new_lyrics = {0};
                     if (lyrics_find_for_track(&state.current_track, &new_lyrics)) {
-                        printf("Found new lyrics, replacing old ones\n");
+                        log_info("Found new lyrics, replacing old ones");
                         lrc_free_data(&state.lyrics);
                         state.lyrics = new_lyrics;
                         state.current_line = NULL;
                         set_dirty(&state);
                     } else {
-                        printf("No lyrics found, keeping existing lyrics displayed\n");
+                        log_info("No lyrics found, keeping existing lyrics displayed");
                     }
                 }
                 // Clear flags after handling

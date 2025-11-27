@@ -1,4 +1,5 @@
 #include "curl_utils.h"
+#include "../../constants.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +21,7 @@ size_t curl_write_to_memory(void *contents, size_t size, size_t nmemb, void *use
 
     char *ptr = realloc(mem->data, mem->size + realsize + 1);
     if (!ptr) {
-        fprintf(stderr, "Out of memory for CURL response\n");
+        log_error("Out of memory for CURL response");
         return 0;
     }
 
