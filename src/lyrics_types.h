@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "constants.h"
 
 // Ruby segment for furigana (ruby text) support in LRC/SRT formats
 // No timing information - used only for displaying ruby text above base text
@@ -48,7 +49,7 @@ struct lyrics_data {
     struct lyrics_line *lines;
     int line_count;
     char *source_file_path; // Path to the loaded lyrics file (for reload detection)
-    char md5_checksum[33]; // MD5 checksum of the file (32 hex chars + null terminator)
+    char md5_checksum[MD5_DIGEST_STRING_LENGTH]; // MD5 checksum of the file
 };
 
 #endif // _LYRICS_TYPES_H

@@ -1054,7 +1054,7 @@ int main(int argc, char *argv[]) {
             } else {
                 // Check if current lyrics file has changed (every 2 seconds)
                 if (state.lyrics.source_file_path && state.lyrics.md5_checksum[0] != '\0') {
-                    char current_checksum[33];
+                    char current_checksum[MD5_DIGEST_STRING_LENGTH];
                     if (calculate_file_md5(state.lyrics.source_file_path, current_checksum)) {
                         if (strcmp(current_checksum, state.lyrics.md5_checksum) != 0) {
                             printf("Lyrics file changed, reloading: %s\n", state.lyrics.source_file_path);

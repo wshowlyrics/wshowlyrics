@@ -130,7 +130,7 @@ static bool lrclib_search_fallback(const char *title, const char *artist, const 
     printf("Sanitized title: '%s' -> '%s'\n", title, clean_title);
 
     // Build search query - use track_name with sanitized title
-    char request_url[2048];
+    char request_url[URL_BUFFER_SIZE];
     char *title_encoded = url_encode(curl, clean_title);
     free(clean_title);
 
@@ -171,7 +171,7 @@ static bool lrclib_search_fallback(const char *title, const char *artist, const 
     curl_easy_setopt(curl, CURLOPT_URL, request_url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "wshowlyrics/0.1.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
@@ -331,7 +331,7 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     }
 
     // Build request URL for exact match API (include duration if available)
-    char request_url[2048];
+    char request_url[URL_BUFFER_SIZE];
     if (duration_ms > 0) {
         int64_t duration_sec = duration_ms / 1000;
         snprintf(request_url, sizeof(request_url),
@@ -355,7 +355,7 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     curl_easy_setopt(curl, CURLOPT_URL, request_url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "wshowlyrics/0.1.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 

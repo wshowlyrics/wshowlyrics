@@ -72,7 +72,7 @@ char* itunes_search_artwork(const char *artist, const char *track) {
     }
 
     // Build search term
-    char search_term[2048];
+    char search_term[URL_BUFFER_SIZE];
     if (artist && strlen(artist) > 0 && strcasecmp(artist, "Unknown") != 0) {
         // Include artist in search
         snprintf(search_term, sizeof(search_term), "%s %s", artist, clean_track);
@@ -91,7 +91,7 @@ char* itunes_search_artwork(const char *artist, const char *track) {
     }
 
     // Build iTunes Search API URL
-    char request_url[2048];
+    char request_url[URL_BUFFER_SIZE];
     snprintf(request_url, sizeof(request_url),
              "https://itunes.apple.com/search?term=%s&entity=song&limit=1",
              term_encoded);
@@ -106,7 +106,7 @@ char* itunes_search_artwork(const char *artist, const char *track) {
     curl_easy_setopt(curl, CURLOPT_URL, request_url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "wshowlyrics/0.1.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 

@@ -27,6 +27,13 @@
 // JSON parsing
 #define JSON_PATTERN_SIZE 256
 
+// Network buffers
+#define URL_BUFFER_SIZE 2048
+#define USER_AGENT_STRING "wshowlyrics/0.1.0"
+
+// Cryptographic buffers
+#define MD5_DIGEST_STRING_LENGTH 33  // 32 hex chars + null terminator
+
 // ============================================================================
 // Color Utilities
 // ============================================================================

@@ -1,4 +1,5 @@
 #include "file_utils.h"
+#include "../../constants.h"
 #include <stdio.h>
 #include <string.h>
 #include <openssl/evp.h>
@@ -69,7 +70,7 @@ bool file_has_changed(const char *filepath, const char *expected_checksum) {
         return false; // File doesn't exist
     }
 
-    char current_checksum[33];
+    char current_checksum[MD5_DIGEST_STRING_LENGTH];
     if (!calculate_file_md5(filepath, current_checksum)) {
         return false;
     }
