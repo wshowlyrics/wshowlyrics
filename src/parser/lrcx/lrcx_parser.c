@@ -86,6 +86,171 @@ static const char* parse_first_text_segment(const char *pos, int64_t line_timest
     return pos;
 }
 
+// Parse a single word segment with timestamp
+// Returns updated position, or NULL on error
+static const char* parse_word_timestamp_segment(const char *pos, struct lyrics_data *data,
+                                                 struct lyrics_line *new_line,
+                                                 struct word_segment ***next_segment_ptr,
+                                                 char **full_text, size_t *full_text_len,
+                                                 size_t *full_text_capacity,
+                                                 int64_t *last_timestamp_us) {
+    int64_t segment_timestamp_us;
+    const char *after_timestamp = NULL;
+    bool is_unfill = false;
+
+    if (!parse_lrc_timestamp_ex(pos, &segment_timestamp_us, &after_timestamp, &is_unfill)) {
+        return pos + 1;  // Not a valid timestamp, skip this character
+    }
+
+    // This is a word timestamp
+    pos = after_timestamp;
+
+    // Skip whitespace after timestamp
+    while (*pos && isspace(*pos)) {
+        pos++;
+    }
+
+    // Find end of word (next '[' or end of string)
+    const char *word_start = pos;
+    const char *word_end = pos;
+    while (*word_end && *word_end != '[') {
+        word_end++;
+    }
+
+    // Trim trailing whitespace
+    while (word_end > word_start && isspace(*(word_end - 1))) {
+        word_end--;
+    }
+
+    // Always create segment for every timestamp (even if empty for idle display)
+    struct word_segment *segment = calloc(1, sizeof(struct word_segment));
+    if (!segment) {
+        return NULL;  // Signal error
+    }
+
+    segment->timestamp_us = apply_timestamp_offset(segment_timestamp_us, data->metadata.offset_ms);
+    segment->is_unfill = is_unfill;
+    *last_timestamp_us = segment_timestamp_us;
+
+    if (word_end > word_start) {
+        // Has text - parse ruby annotations
+        char *raw_text = strndup(word_start, word_end - word_start);
+        struct word_segment *word_segments = NULL;
+        int word_seg_count = parse_karaoke_segments(raw_text,
+                                                     apply_timestamp_offset(segment_timestamp_us, data->metadata.offset_ms),
+                                                     &word_segments);
+
+        if (word_seg_count > 0 && word_segments) {
+            // Free raw_text and temporary segment
+            free(raw_text);
+            free(segment);
+
+            // Add all parsed segments to the line
+            struct word_segment *ws = word_segments;
+            while (ws) {
+                ws->is_unfill = is_unfill;
+                **next_segment_ptr = ws;
+                *next_segment_ptr = &ws->next;
+                new_line->segment_count++;
+
+                // Add to full text (base text only)
+                if (ws->text && ws->text[0] != '\0') {
+                    size_t word_len = strlen(ws->text);
+                    if (*full_text_len + word_len + 1 > *full_text_capacity) {
+                        *full_text_capacity = (*full_text_len + word_len + 1) * 2;
+                        char *new_full_text = realloc(*full_text, *full_text_capacity);
+                        if (!new_full_text) {
+                            return NULL;  // Signal error
+                        }
+                        *full_text = new_full_text;
+                    }
+
+                    if (*full_text_len > 0) {
+                        (*full_text)[(*full_text_len)++] = ' ';
+                    }
+                    memcpy(*full_text + *full_text_len, ws->text, word_len);
+                    *full_text_len += word_len;
+                    (*full_text)[*full_text_len] = '\0';
+                }
+
+                ws = ws->next;
+            }
+        } else {
+            // No segments - use raw text directly
+            segment->text = raw_text;  // Take ownership
+            segment->ruby = NULL;
+
+            **next_segment_ptr = segment;
+            *next_segment_ptr = &segment->next;
+            new_line->segment_count++;
+
+            if (*full_text_len > 0) {
+                (*full_text)[(*full_text_len)++] = ' ';
+            }
+            size_t word_len = strlen(segment->text);
+            memcpy(*full_text + *full_text_len, segment->text, word_len);
+            *full_text_len += word_len;
+            (*full_text)[*full_text_len] = '\0';
+        }
+    } else {
+        // Empty text for idle display
+        segment->text = strdup("");
+        **next_segment_ptr = segment;
+        *next_segment_ptr = &segment->next;
+        new_line->segment_count++;
+    }
+
+    return word_end;
+}
+
+// Finalize line segments: normalize, set full text, calculate end timestamps
+// Returns false on error
+static bool finalize_line_segments(struct lyrics_line *new_line, char *full_text,
+                                   int64_t line_timestamp_us, int64_t last_timestamp_us) {
+    // Normalize all word segments first
+    normalize_word_segments(new_line->segments);
+
+    // Set the full line text (built from already-normalized segments)
+    if (full_text) {
+        new_line->text = full_text;
+    } else {
+        new_line->text = strdup("");
+    }
+
+    // If no segments were parsed, create empty segment
+    if (new_line->segment_count == 0) {
+        struct word_segment *segment = calloc(1, sizeof(struct word_segment));
+        if (!segment) {
+            free(new_line->text);
+            return false;
+        }
+        segment->timestamp_us = new_line->timestamp_us;
+        segment->text = strdup("");
+        new_line->segments = segment;
+        new_line->segment_count = 1;
+    }
+
+    // Set line end timestamp if we saw more than the initial timestamp
+    if (last_timestamp_us > line_timestamp_us) {
+        new_line->end_timestamp_us = last_timestamp_us;
+    }
+
+    // Calculate end_timestamp_us for each segment
+    struct word_segment *seg = new_line->segments;
+    while (seg) {
+        if (seg->next) {
+            // Use next segment's start time as this segment's end time
+            seg->end_timestamp_us = seg->next->timestamp_us;
+        } else {
+            // Last segment - use line's end timestamp if available, otherwise 0
+            seg->end_timestamp_us = new_line->end_timestamp_us;
+        }
+        seg = seg->next;
+    }
+
+    return true;
+}
+
 // Parse a line with word-level timestamps
 // Example: [00:05.00][00:05.20]첫 [00:05.50]번 [00:05.80]째 [00:06.00]줄
 static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct lyrics_line **line_ptr) {
@@ -125,6 +290,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
         return false;
     }
 
+    // Parse remaining word segments with timestamps
     while (*pos) {
         // Skip whitespace
         while (*pos && isspace(*pos)) {
@@ -137,116 +303,14 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 
         // Check for timestamp
         if (*pos == '[') {
-            int64_t segment_timestamp_us;
-            const char *after_timestamp = NULL;
-            bool is_unfill = false;
-            if (parse_lrc_timestamp_ex(pos, &segment_timestamp_us, &after_timestamp, &is_unfill)) {
-                // This is a word timestamp
-                pos = after_timestamp;
-
-                // Skip whitespace after timestamp
-                while (*pos && isspace(*pos)) {
-                    pos++;
-                }
-
-                // Find end of word (next '[' or end of string)
-                const char *word_start = pos;
-                const char *word_end = pos;
-                while (*word_end && *word_end != '[') {
-                    word_end++;
-                }
-
-                // Trim trailing whitespace
-                while (word_end > word_start && isspace(*(word_end - 1))) {
-                    word_end--;
-                }
-
-                // Always create segment for every timestamp (even if empty for idle display)
-                struct word_segment *segment = calloc(1, sizeof(struct word_segment));
-                if (!segment) {
-                    free(full_text);
-                    free(new_line);
-                    return false;
-                }
-
-                segment->timestamp_us = apply_timestamp_offset(segment_timestamp_us, data->metadata.offset_ms);
-                segment->is_unfill = is_unfill; // Set unfill flag
-                last_timestamp_us = segment_timestamp_us; // Update last seen timestamp
-
-                if (word_end > word_start) {
-                    // Has text - parse ruby annotations
-                    char *raw_text = strndup(word_start, word_end - word_start);
-
-                    // Parse ruby text into segments
-                    struct word_segment *word_segments = NULL;
-                    int word_seg_count = parse_karaoke_segments(raw_text, apply_timestamp_offset(segment_timestamp_us, data->metadata.offset_ms), &word_segments);
-
-                    if (word_seg_count > 0 && word_segments) {
-                        // Free raw_text and temporary segment
-                        free(raw_text);
-                        free(segment);
-
-                        // Add all parsed segments to the line
-                        struct word_segment *ws = word_segments;
-                        while (ws) {
-                            ws->is_unfill = is_unfill; // Inherit unfill flag
-                            *next_segment = ws;
-                            next_segment = &ws->next;
-                            new_line->segment_count++;
-
-                            // Add to full text (base text only)
-                            if (ws->text && ws->text[0] != '\0') {
-                                size_t word_len = strlen(ws->text);
-                                if (full_text_len + word_len + 1 > full_text_capacity) {
-                                    full_text_capacity = (full_text_len + word_len + 1) * 2;
-                                    char *new_full_text = realloc(full_text, full_text_capacity);
-                                    if (!new_full_text) {
-                                        free(full_text);
-                                        free(new_line);
-                                        return false;
-                                    }
-                                    full_text = new_full_text;
-                                }
-
-                                if (full_text_len > 0) {
-                                    full_text[full_text_len++] = ' ';
-                                }
-                                memcpy(full_text + full_text_len, ws->text, word_len);
-                                full_text_len += word_len;
-                                full_text[full_text_len] = '\0';
-                            }
-
-                            ws = ws->next;
-                        }
-                    } else {
-                        // No segments - use raw text directly
-                        segment->text = raw_text;  // Take ownership
-                        segment->ruby = NULL;
-
-                        *next_segment = segment;
-                        next_segment = &segment->next;
-                        new_line->segment_count++;
-
-                        if (full_text_len > 0) {
-                            full_text[full_text_len++] = ' ';
-                        }
-                        size_t word_len = strlen(segment->text);
-                        memcpy(full_text + full_text_len, segment->text, word_len);
-                        full_text_len += word_len;
-                        full_text[full_text_len] = '\0';
-                    }
-                } else {
-                    // Empty text for idle display (e.g., [00:01.00] or [00:01.00][00:01.20]...)
-                    segment->text = strdup("");
-                    *next_segment = segment;
-                    next_segment = &segment->next;
-                    new_line->segment_count++;
-                }
-
-                pos = word_end;
-            } else {
-                // Not a valid timestamp, skip this character
-                pos++;
+            pos = parse_word_timestamp_segment(pos, data, new_line, &next_segment,
+                                               &full_text, &full_text_len, &full_text_capacity,
+                                               &last_timestamp_us);
+            if (!pos) {
+                // Error during word segment parsing
+                free(full_text);
+                free(new_line);
+                return false;
             }
         } else {
             // Text without timestamp - skip
@@ -254,47 +318,11 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
         }
     }
 
-    // Normalize all word segments first
-    normalize_word_segments(new_line->segments);
-
-    // Set the full line text (built from already-normalized segments)
-    if (full_text) {
-        new_line->text = full_text;
-    } else {
-        new_line->text = strdup("");
-    }
-    // Note: No need to normalize text since it's built from normalized segments
-
-    // If no segments were parsed, create empty segment
-    if (new_line->segment_count == 0) {
-        struct word_segment *segment = calloc(1, sizeof(struct word_segment));
-        if (!segment) {
-            free(new_line->text);
-            free(new_line);
-            return false;
-        }
-        segment->timestamp_us = new_line->timestamp_us;
-        segment->text = strdup("");
-        new_line->segments = segment;
-        new_line->segment_count = 1;
-    }
-
-    // Set line end timestamp if we saw more than the initial timestamp
-    if (last_timestamp_us > line_timestamp_us) {
-        new_line->end_timestamp_us = apply_timestamp_offset(last_timestamp_us, data->metadata.offset_ms);
-    }
-
-    // Calculate end_timestamp_us for each segment
-    struct word_segment *seg = new_line->segments;
-    while (seg) {
-        if (seg->next) {
-            // Use next segment's start time as this segment's end time
-            seg->end_timestamp_us = seg->next->timestamp_us;
-        } else {
-            // Last segment - use line's end timestamp if available, otherwise 0
-            seg->end_timestamp_us = new_line->end_timestamp_us;
-        }
-        seg = seg->next;
+    // Finalize line: normalize segments, set text, calculate end timestamps
+    if (!finalize_line_segments(new_line, full_text, line_timestamp_us,
+                                 apply_timestamp_offset(last_timestamp_us, data->metadata.offset_ms))) {
+        free(new_line);
+        return false;
     }
 
     *line_ptr = new_line;
