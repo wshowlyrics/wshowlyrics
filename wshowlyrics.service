@@ -1,0 +1,20 @@
+[Unit]
+Description=Wayland Lyrics Overlay
+Documentation=https://github.com/unstable-code/lyrics
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wshowlyrics
+Restart=on-failure
+RestartSec=5
+
+# Automatically capture stdout/stderr to systemd journal
+StandardOutput=journal
+StandardError=journal
+
+# Syslog identifier for easy filtering
+SyslogIdentifier=wshowlyrics
+
+[Install]
+WantedBy=default.target

@@ -86,7 +86,51 @@ sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
 
 ## Usage
 
-Automatically displays lyrics for the currently playing music via MPRIS:
+### Running as a systemd User Service (Recommended)
+
+After installation, you can manage wshowlyrics as a systemd user service:
+
+```bash
+# Enable auto-start on login
+systemctl --user enable wshowlyrics.service
+
+# Start the service
+systemctl --user start wshowlyrics.service
+
+# Check service status
+systemctl --user status wshowlyrics.service
+
+# Stop the service
+systemctl --user stop wshowlyrics.service
+
+# Disable auto-start
+systemctl --user disable wshowlyrics.service
+```
+
+**View logs with journalctl:**
+
+```bash
+# View all logs
+journalctl --user -u wshowlyrics
+
+# Follow logs in real-time
+journalctl --user -u wshowlyrics -f
+
+# View last 50 lines
+journalctl --user -u wshowlyrics -n 50
+
+# View logs since today
+journalctl --user -u wshowlyrics --since today
+
+# View logs with priority level (err, warning, info)
+journalctl --user -u wshowlyrics -p err
+```
+
+The systemd service automatically captures all `log_info()`, `log_warn()`, and `log_error()` output to the systemd journal with proper timestamps and priority levels.
+
+### Running Manually
+
+You can also run wshowlyrics directly from the command line:
 
 ```bash
 # Basic execution - automatically finds and displays lyrics for the current song

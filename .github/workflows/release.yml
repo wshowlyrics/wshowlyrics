@@ -11,24 +11,28 @@ permissions:
 jobs:
   verify-build:
     runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm \
+            base-devel \
             meson \
-            ninja-build \
-            libwayland-dev \
+            ninja \
+            wayland \
             wayland-protocols \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libfontconfig1-dev \
-            libcurl4-openssl-dev \
-            libappindicator3-dev \
-            libgdk-pixbuf2.0-dev \
+            cairo \
+            pango \
+            fontconfig \
+            curl \
+            libappindicator-gtk3 \
+            gdk-pixbuf2 \
+            openssl \
             pkg-config
 
       - name: Setup build directory
@@ -54,6 +58,33 @@ jobs:
             echo "Error: Invalid binary format"
             exit 1
           fi
+
+      - name: Verify installation files
+        run: |
+          # Verify that all required files for installation exist
+          if [ ! -f wshowlyrics.service ]; then
+            echo "Error: wshowlyrics.service not found"
+            exit 1
+          fi
+
+          # Verify systemd service file syntax
+          if ! grep -q "ExecStart=/usr/bin/wshowlyrics" wshowlyrics.service; then
+            echo "Error: Invalid service file content"
+            exit 1
+          fi
+
+          echo "Installation files verified"
+
+          # Test dry-run installation to verify meson install configuration
+          meson install -C build --dry-run --no-rebuild | tee install-check.log
+
+          # Verify service file will be installed
+          if ! grep -q "wshowlyrics.service to /usr/lib/systemd/user" install-check.log; then
+            echo "Error: Service file not configured for installation"
+            exit 1
+          fi
+
+          echo "Installation configuration verified"
 
   aur-release:
     needs: verify-build

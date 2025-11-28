@@ -84,7 +84,51 @@ sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
 
 ## 사용 방법
 
-MPRIS를 통해 현재 재생중인 음악에 자동으로 가사를 표시합니다:
+### systemd 유저 서비스로 실행 (권장)
+
+설치 후, wshowlyrics를 systemd 유저 서비스로 관리할 수 있습니다:
+
+```bash
+# 로그인 시 자동 시작 활성화
+systemctl --user enable wshowlyrics.service
+
+# 서비스 시작
+systemctl --user start wshowlyrics.service
+
+# 서비스 상태 확인
+systemctl --user status wshowlyrics.service
+
+# 서비스 중지
+systemctl --user stop wshowlyrics.service
+
+# 자동 시작 비활성화
+systemctl --user disable wshowlyrics.service
+```
+
+**journalctl로 로그 확인:**
+
+```bash
+# 전체 로그 보기
+journalctl --user -u wshowlyrics
+
+# 실시간 로그 추적
+journalctl --user -u wshowlyrics -f
+
+# 최근 50줄 보기
+journalctl --user -u wshowlyrics -n 50
+
+# 오늘 로그만 보기
+journalctl --user -u wshowlyrics --since today
+
+# 우선순위 레벨별 로그 보기 (err, warning, info)
+journalctl --user -u wshowlyrics -p err
+```
+
+systemd 서비스는 모든 `log_info()`, `log_warn()`, `log_error()` 출력을 자동으로 systemd journal에 기록하며, 타임스탬프와 우선순위 레벨도 자동으로 관리합니다.
+
+### 수동 실행
+
+명령줄에서 직접 wshowlyrics를 실행할 수도 있습니다:
 
 ```bash
 # 기본 실행 - 자동으로 현재 재생중인 곡의 가사를 찾아 표시

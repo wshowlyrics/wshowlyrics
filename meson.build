@@ -95,3 +95,9 @@ install_data(
 	install_dir: '/etc/wshowlyrics',
 	rename: 'settings.ini',
 )
+
+# Install systemd user service file
+install_data(
+	'wshowlyrics.service',
+	install_dir: '/usr/lib/systemd/user',
+)
