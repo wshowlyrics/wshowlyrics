@@ -17,6 +17,40 @@ static bool is_lyrics_format(struct lyrics_state *state, const char *extension) 
     return ext && strcasecmp(ext, extension) == 0;
 }
 
+// Helper function to clean up track title (remove file extension and YouTube ID)
+static void clean_track_title(char *dest, size_t dest_size, const char *title) {
+    if (!title) {
+        dest[0] = '\0';
+        return;
+    }
+
+    strncpy(dest, title, dest_size - 1);
+    dest[dest_size - 1] = '\0';
+
+    // Remove file extension
+    char *ext = strrchr(dest, '.');
+    if (ext) {
+        if (strcmp(ext, ".mkv") == 0 || strcmp(ext, ".mp4") == 0 ||
+            strcmp(ext, ".webm") == 0 || strcmp(ext, ".mp3") == 0 ||
+            strcmp(ext, ".flac") == 0 || strcmp(ext, ".opus") == 0 ||
+            strcmp(ext, ".ogg") == 0 || strcmp(ext, ".m4a") == 0) {
+            *ext = '\0';
+        }
+    }
+
+    // Remove YouTube ID pattern [xxxxx]
+    char *youtube_id = strrchr(dest, '[');
+    if (youtube_id) {
+        char *bracket_end = strchr(youtube_id, ']');
+        if (bracket_end && bracket_end[1] == '\0') {
+            if (youtube_id > dest && youtube_id[-1] == ' ') {
+                youtube_id--;
+            }
+            *youtube_id = '\0';
+        }
+    }
+}
+
 // Helper function to escape newlines for logging
 // Returns a newly allocated string that must be freed by caller
 // Converts: LF (\n) -> ^J, CRLF (\r\n) -> ^M^J
@@ -506,7 +540,6 @@ static bool update_track_info(struct lyrics_state *state) {
 
             // Reset tray icon to default
             system_tray_reset_icon();
-            system_tray_update_tooltip("wshowlyrics");
 
             // Clear the display
             set_dirty(state);
@@ -541,59 +574,7 @@ static bool update_track_info(struct lyrics_state *state) {
         // Reset tray icon to default before updating
         system_tray_reset_icon();
 
-        // Update tooltip
-        char tooltip[TOOLTIP_BUFFER_SIZE];
-        char cleaned_title[TITLE_BUFFER_SIZE];
-
-        // Clean up title: remove YouTube ID and file extension
-        if (new_track.title) {
-            strncpy(cleaned_title, new_track.title, sizeof(cleaned_title) - 1);
-            cleaned_title[sizeof(cleaned_title) - 1] = '\0';
-
-            // Remove file extension first
-            char *ext = strrchr(cleaned_title, '.');
-            if (ext) {
-                // Common video/audio extensions
-                if (strcmp(ext, ".mkv") == 0 || strcmp(ext, ".mp4") == 0 ||
-                    strcmp(ext, ".webm") == 0 || strcmp(ext, ".mp3") == 0 ||
-                    strcmp(ext, ".flac") == 0 || strcmp(ext, ".opus") == 0 ||
-                    strcmp(ext, ".ogg") == 0 || strcmp(ext, ".m4a") == 0) {
-                    *ext = '\0';
-                }
-            }
-
-            // Remove YouTube ID pattern [xxxxx]
-            char *youtube_id = strrchr(cleaned_title, '[');
-            if (youtube_id) {
-                char *bracket_end = strchr(youtube_id, ']');
-                if (bracket_end && bracket_end[1] == '\0') {
-                    // Remove trailing space before bracket if exists
-                    if (youtube_id > cleaned_title && youtube_id[-1] == ' ') {
-                        youtube_id--;
-                    }
-                    *youtube_id = '\0';
-                }
-            }
-        } else {
-            cleaned_title[0] = '\0';
-        }
-
-        int tooltip_len;
-        if (new_track.artist && strlen(new_track.artist) > 0) {
-            tooltip_len = snprintf(tooltip, sizeof(tooltip), "%s - %s", new_track.artist, cleaned_title);
-        } else {
-            tooltip_len = snprintf(tooltip, sizeof(tooltip), "%s", cleaned_title);
-        }
-
-        // Check for truncation
-        if (tooltip_len < 0 || tooltip_len >= (int)sizeof(tooltip)) {
-            log_warn("Tooltip truncated (needed %d bytes, have %zu)",
-                     tooltip_len, sizeof(tooltip));
-        }
-
-        system_tray_update_tooltip(tooltip);
-
-        // Album art will be updated after lyrics are loaded (to use lyrics metadata if available)
+        // Album art and notification will be sent after lyrics are loaded (to use lyrics metadata if available)
     } else {
         mpris_free_metadata(&new_track);
     }
@@ -617,6 +598,13 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
                 state->current_track.artist,
                 state->current_track.title
             );
+        }
+
+        // Send notification even without lyrics
+        if (g_config.lyrics.enable_notifications) {
+            char cleaned_title[TITLE_BUFFER_SIZE];
+            clean_track_title(cleaned_title, sizeof(cleaned_title), state->current_track.title);
+            system_tray_send_notification(state->current_track.artist, cleaned_title);
         }
 
         return false;
@@ -645,6 +633,13 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
     log_info("Updating album art with metadata (artist: %s, title: %s)",
              artist ? artist : "Unknown", title ? title : "Unknown");
     system_tray_update_icon_with_fallback(state->current_track.art_url, artist, title);
+
+    // Send desktop notification after album art is updated
+    if (g_config.lyrics.enable_notifications) {
+        char cleaned_title[TITLE_BUFFER_SIZE];
+        clean_track_title(cleaned_title, sizeof(cleaned_title), title);
+        system_tray_send_notification(artist, cleaned_title);
+    }
 
     return true;
 }

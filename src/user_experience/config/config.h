@@ -24,6 +24,7 @@ struct lyrics_config {
     char *extensions;   // Comma-separated extensions (e.g., "lrcx,lrc,srt")
     bool enable_lrclib;
     bool enable_itunes;
+    bool enable_notifications;  // Desktop notifications for track changes
 };
 
 // Main configuration

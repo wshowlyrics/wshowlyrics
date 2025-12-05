@@ -21,6 +21,9 @@ void system_tray_reset_icon(void);
 // Update tooltip text (e.g., "Artist - Title")
 void system_tray_update_tooltip(const char *text);
 
+// Send desktop notification for track change
+void system_tray_send_notification(const char *artist, const char *title);
+
 // Update the system tray (process GTK events)
 // Should be called periodically from main loop
 void system_tray_update(void);

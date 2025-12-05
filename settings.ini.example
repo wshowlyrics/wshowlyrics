@@ -69,6 +69,11 @@ enable_lrclib = true
 # Works best when lrclib provides accurate artist/track metadata
 enable_itunes = true
 
+# Desktop notifications for track changes
+# Set to false to disable desktop notifications when the track changes
+# Uses notify-send to display artist, track, and album art
+enable_notifications = true
+
 [behavior]
 # Reserved for future behavior settings
 # This section is currently not used but may be expanded in future releases

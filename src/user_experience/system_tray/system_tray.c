@@ -379,6 +379,62 @@ void system_tray_update_tooltip(const char *text) {
     }
 }
 
+void system_tray_send_notification(const char *artist, const char *title) {
+    if (!artist && !title) {
+        return;
+    }
+
+    // Build notification body
+    char body[512];
+    if (artist && strlen(artist) > 0 && title && strlen(title) > 0) {
+        snprintf(body, sizeof(body), "%s - %s", artist, title);
+    } else if (title && strlen(title) > 0) {
+        snprintf(body, sizeof(body), "%s", title);
+    } else {
+        return;
+    }
+
+    // Escape special characters for shell
+    char escaped_body[1024];
+    const char *src = body;
+    char *dst = escaped_body;
+    size_t remaining = sizeof(escaped_body) - 1;
+
+    while (*src && remaining > 1) {
+        if (*src == '"' || *src == '\\' || *src == '$' || *src == '`') {
+            if (remaining > 2) {
+                *dst++ = '\\';
+                remaining--;
+            }
+        }
+        *dst++ = *src++;
+        remaining--;
+    }
+    *dst = '\0';
+
+    // Check if album art exists, otherwise use default icon
+    const char *icon_path = ICON_PATH;
+    struct stat st;
+    if (stat(icon_path, &st) != 0) {
+        // Album art not found, use default icon name
+        icon_path = "audio-player";
+    }
+
+    // Build notify-send command with ephemeral flag and timeout
+    // -e: ephemeral (don't save to notification center)
+    // -t: timeout in milliseconds (5 seconds)
+    char cmd[2048];
+    snprintf(cmd, sizeof(cmd), "notify-send -a wshowlyrics -i \"%s\" -e -t 5000 \"🎵 Now Playing\" \"%s\" 2>/dev/null", icon_path, escaped_body);
+
+    log_info("Sending desktop notification: %s", body);
+
+    // Execute notify-send in background
+    int ret = system(cmd);
+    if (ret != 0) {
+        log_warn("notify-send command failed with exit code: %d", ret);
+    }
+}
+
 
 bool system_tray_update_icon_with_fallback(const char *art_url, const char *artist, const char *track) {
     // Calculate metadata hash for caching
@@ -397,42 +453,12 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
     // Ensure cache directories exist
     ensure_cache_directories();
 
-    // Priority 1: Try MPRIS art URL first (most accurate and fast)
-    bool success = false;
-    if (art_url && strlen(art_url) > 0) {
-        log_info("Using MPRIS album art: %s", art_url);
-        success = system_tray_update_icon(art_url);
-
-        // Cache MPRIS artwork if successful
-        if (success && metadata_hash[0] != '\0') {
-            char cache_path[512];
-            if (build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
-                GError *error = NULL;
-                GdkPixbuf *current = gdk_pixbuf_new_from_file(ICON_PATH, &error);
-
-                if (current) {
-                    if (gdk_pixbuf_save(current, cache_path, "png", NULL, NULL)) {
-                        log_info("Cached MPRIS album art: %s", cache_path);
-                    }
-                    g_object_unref(current);
-                } else if (error) {
-                    log_warn("Failed to cache MPRIS album art: %s", error->message);
-                    g_error_free(error);
-                }
-            }
-
-            snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
-        }
-
-        return success;
-    }
-
-    // Priority 2: Check cache (if we have metadata hash)
+    // Priority 1: Check cache first (fastest, no network request)
     char cache_path[512];
     if (metadata_hash[0] != '\0' && build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
         struct stat st;
         if (stat(cache_path, &st) == 0) {
-            log_info("Found cached album art: %s", cache_path);
+            log_success("Found cached album art: %s", cache_path);
 
             // Load from cache
             GError *error = NULL;
@@ -452,7 +478,7 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
 
                     // Update state
                     snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
-                    log_info("Loaded album art from cache");
+                    log_success("Loaded album art from cache");
                     return true;
                 } else {
                     g_object_unref(scaled);
@@ -462,6 +488,33 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
                 g_error_free(error);
             }
         }
+    }
+
+    // Priority 2: Try MPRIS art URL (network request if cache miss)
+    bool success = false;
+    if (art_url && strlen(art_url) > 0) {
+        log_info("Using MPRIS album art: %s", art_url);
+        success = system_tray_update_icon(art_url);
+
+        // Cache MPRIS artwork if successful
+        if (success && metadata_hash[0] != '\0') {
+            GError *error = NULL;
+            GdkPixbuf *current = gdk_pixbuf_new_from_file(ICON_PATH, &error);
+
+            if (current) {
+                if (gdk_pixbuf_save(current, cache_path, "png", NULL, NULL)) {
+                    log_info("Cached MPRIS album art: %s", cache_path);
+                }
+                g_object_unref(current);
+            } else if (error) {
+                log_warn("Failed to cache MPRIS album art: %s", error->message);
+                g_error_free(error);
+            }
+
+            snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
+        }
+
+        return success;
     }
 
     // Priority 3: Try iTunes API (network request)
