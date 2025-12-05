@@ -149,6 +149,14 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     }
 
     free(result);
+
+    // Ignore Spotify advertisements (title="Advertisement" and URL contains "spotify.com/ad/")
+    if (metadata->title && strcmp(metadata->title, "Advertisement") == 0 &&
+        metadata->url && strstr(metadata->url, "spotify.com/ad/")) {
+        mpris_free_metadata(metadata);
+        return false;
+    }
+
     return metadata->title != NULL;
 }
 
