@@ -407,14 +407,63 @@ void config_validate_user_config(void) {
         log_warn("User config: %s", user_path);
         log_warn("");
 
+        // Build missing keys list for notification
+        char missing_keys_list[1024] = {0};
+        int count = 0;
+        int total_count = 0;
+
         for (struct config_key *node = missing_head; node != NULL; node = node->next) {
             log_warn("  [%s] %s", node->section, node->key);
+            total_count++;
+
+            // Add to notification message (limit to first 5 keys to avoid too long message)
+            if (count < 5) {
+                char entry[256];
+                snprintf(entry, sizeof(entry), "• [%s] %s\\n", node->section, node->key);
+                strncat(missing_keys_list, entry, sizeof(missing_keys_list) - strlen(missing_keys_list) - 1);
+                count++;
+            }
+        }
+
+        // Add "and X more..." if there are more than 5 missing keys
+        if (total_count > 5) {
+            char more[64];
+            snprintf(more, sizeof(more), "...and %d more", total_count - 5);
+            strncat(missing_keys_list, more, sizeof(missing_keys_list) - strlen(missing_keys_list) - 1);
         }
 
         log_warn("");
         log_warn("Please check the example configuration file for details:");
         log_warn("  %s", found_example_path);
         log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+        // Send desktop notification
+        // Check if notifications are explicitly disabled in config
+        bool should_notify = true;
+
+        // Check if enable_notifications key exists in user config
+        if (key_exists_in_file(user_path, "lyrics", "enable_notifications")) {
+            // Key exists, use its value
+            should_notify = g_config.lyrics.enable_notifications;
+        }
+        // If key doesn't exist, default to true (show notification)
+
+        if (should_notify) {
+            char cmd[2048];
+            snprintf(cmd, sizeof(cmd),
+                "notify-send -a wshowlyrics -u normal -t %d "
+                "\"⚠️ Configuration Update Required\" "
+                "\"Your config is missing new settings:\\n%s\\n"
+                "Check: %s\" 2>/dev/null",
+                g_config.lyrics.notification_timeout,
+                missing_keys_list,
+                found_example_path);
+
+            int ret = system(cmd);
+            if (ret != 0) {
+                log_warn("Failed to send desktop notification (notify-send may not be available)");
+            }
+        }
     }
 
     // Cleanup
