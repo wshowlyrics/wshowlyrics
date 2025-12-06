@@ -422,9 +422,10 @@ void system_tray_send_notification(const char *artist, const char *title) {
 
     // Build notify-send command with ephemeral flag and timeout
     // -e: ephemeral (don't save to notification center)
-    // -t: timeout in milliseconds (5 seconds)
+    // -t: timeout in milliseconds (configurable, default 5 seconds)
     char cmd[2048];
-    snprintf(cmd, sizeof(cmd), "notify-send -a wshowlyrics -i \"%s\" -e -t 5000 \"🎵 Now Playing\" \"%s\" 2>/dev/null", icon_path, escaped_body);
+    snprintf(cmd, sizeof(cmd), "notify-send -a wshowlyrics -i \"%s\" -e -t %d \"🎵 Now Playing\" \"%s\" 2>/dev/null",
+             icon_path, g_config.lyrics.notification_timeout, escaped_body);
 
     log_info("Sending desktop notification: %s", body);
 

@@ -25,6 +25,7 @@ struct lyrics_config {
     bool enable_lrclib;
     bool enable_itunes;
     bool enable_notifications;  // Desktop notifications for track changes
+    int notification_timeout;   // Notification timeout in milliseconds (default: 5000)
 };
 
 // Main configuration

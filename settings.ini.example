@@ -74,6 +74,11 @@ enable_itunes = true
 # Uses notify-send to display artist, track, and album art
 enable_notifications = true
 
+# Notification timeout in milliseconds (default: 5000)
+# How long the notification stays visible before auto-dismissing
+# Examples: 3000 (3 seconds), 5000 (5 seconds), 7000 (7 seconds)
+notification_timeout = 5000
+
 [behavior]
 # Reserved for future behavior settings
 # This section is currently not used but may be expanded in future releases
