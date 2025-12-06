@@ -58,4 +58,7 @@ bool config_is_extension_enabled(const char *ext);
 // Helper: Trim whitespace from string (modifies in-place)
 char* config_trim_whitespace(char *str);
 
+// Validate user config against settings.ini.example
+void config_validate_user_config(void);
+
 #endif // CONFIG_H

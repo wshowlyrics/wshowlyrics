@@ -872,6 +872,9 @@ int main(int argc, char *argv[]) {
         // We'll just use the defaults initialized above
     }
 
+    // Validate user config against settings.ini.example
+    config_validate_user_config();
+
     unsigned int anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
     int margin = g_config.display.margin_bottom;
     struct lyrics_state state = { 0 };

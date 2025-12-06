@@ -218,3 +218,207 @@ bool config_is_extension_enabled(const char *ext) {
     free(exts);
     return found;
 }
+
+// Structure to hold config key information
+struct config_key {
+    char section[64];
+    char key[64];
+    struct config_key *next;
+};
+
+// Free config key list
+static void free_config_keys(struct config_key *head) {
+    while (head) {
+        struct config_key *next = head->next;
+        free(head);
+        head = next;
+    }
+}
+
+// Parse settings.ini.example to extract all config keys
+static struct config_key* parse_example_config_keys(const char *example_path) {
+    FILE *f = fopen(example_path, "r");
+    if (!f) {
+        return NULL;
+    }
+
+    struct config_key *head = NULL;
+    struct config_key *tail = NULL;
+    char line[CONFIG_LINE_SIZE];
+    char section[64] = {0};
+
+    while (fgets(line, sizeof(line), f)) {
+        char *trimmed = config_trim_whitespace(line);
+
+        // Skip empty lines and comments
+        if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
+            continue;
+        }
+
+        // Section header
+        if (trimmed[0] == '[') {
+            char *end = strchr(trimmed, ']');
+            if (end) {
+                *end = '\0';
+                strncpy(section, trimmed + 1, sizeof(section) - 1);
+            }
+            continue;
+        }
+
+        // Key-value pair
+        char *equals = strchr(trimmed, '=');
+        if (!equals || section[0] == '\0') continue;
+
+        *equals = '\0';
+        char *key = config_trim_whitespace(trimmed);
+
+        // Add to list
+        struct config_key *node = malloc(sizeof(struct config_key));
+        if (!node) continue;
+
+        strncpy(node->section, section, sizeof(node->section) - 1);
+        strncpy(node->key, key, sizeof(node->key) - 1);
+        node->next = NULL;
+
+        if (!head) {
+            head = tail = node;
+        } else {
+            tail->next = node;
+            tail = node;
+        }
+    }
+
+    fclose(f);
+    return head;
+}
+
+// Check if a key exists in user config file
+static bool key_exists_in_file(const char *user_path, const char *section, const char *key) {
+    FILE *f = fopen(user_path, "r");
+    if (!f) {
+        return false;
+    }
+
+    char line[CONFIG_LINE_SIZE];
+    char current_section[64] = {0};
+    bool found = false;
+
+    while (fgets(line, sizeof(line), f)) {
+        char *trimmed = config_trim_whitespace(line);
+
+        // Skip empty lines and comments
+        if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
+            continue;
+        }
+
+        // Section header
+        if (trimmed[0] == '[') {
+            char *end = strchr(trimmed, ']');
+            if (end) {
+                *end = '\0';
+                strncpy(current_section, trimmed + 1, sizeof(current_section) - 1);
+            }
+            continue;
+        }
+
+        // Key-value pair
+        char *equals = strchr(trimmed, '=');
+        if (!equals) continue;
+
+        *equals = '\0';
+        char *file_key = config_trim_whitespace(trimmed);
+
+        if (strcmp(current_section, section) == 0 && strcmp(file_key, key) == 0) {
+            found = true;
+            break;
+        }
+    }
+
+    fclose(f);
+    return found;
+}
+
+// Validate user config against settings.ini.example
+void config_validate_user_config(void) {
+    // Get user config path
+    char *user_path = config_get_user_path();
+    if (!user_path) {
+        return;
+    }
+
+    // Check if user config exists
+    struct stat st;
+    if (stat(user_path, &st) != 0) {
+        free(user_path);
+        return;  // User config doesn't exist, no validation needed
+    }
+
+    // Find settings.ini.example in multiple locations
+    const char *example_paths[] = {
+        "/etc/wshowlyrics/settings.ini.example",
+        "/usr/share/wshowlyrics/settings.ini.example",
+        "settings.ini.example",  // Current directory (for local builds)
+        NULL
+    };
+
+    struct config_key *example_keys = NULL;
+    const char *found_example_path = NULL;
+
+    for (int i = 0; example_paths[i] != NULL; i++) {
+        example_keys = parse_example_config_keys(example_paths[i]);
+        if (example_keys) {
+            found_example_path = example_paths[i];
+            break;
+        }
+    }
+
+    if (!example_keys) {
+        free(user_path);
+        return;  // Could not find example config, skip validation
+    }
+
+    // Check for missing keys
+    struct config_key *missing_head = NULL;
+    struct config_key *missing_tail = NULL;
+
+    for (struct config_key *node = example_keys; node != NULL; node = node->next) {
+        if (!key_exists_in_file(user_path, node->section, node->key)) {
+            // Add to missing list
+            struct config_key *missing = malloc(sizeof(struct config_key));
+            if (missing) {
+                strncpy(missing->section, node->section, sizeof(missing->section) - 1);
+                strncpy(missing->key, node->key, sizeof(missing->key) - 1);
+                missing->next = NULL;
+
+                if (!missing_head) {
+                    missing_head = missing_tail = missing;
+                } else {
+                    missing_tail->next = missing;
+                    missing_tail = missing;
+                }
+            }
+        }
+    }
+
+    // Display warnings for missing keys
+    if (missing_head) {
+        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        log_warn("Your configuration file is missing some new settings:");
+        log_warn("User config: %s", user_path);
+        log_warn("");
+
+        for (struct config_key *node = missing_head; node != NULL; node = node->next) {
+            log_warn("  [%s] %s", node->section, node->key);
+        }
+
+        log_warn("");
+        log_warn("Please check the example configuration file for details:");
+        log_warn("  %s", found_example_path);
+        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    }
+
+    // Cleanup
+    free_config_keys(example_keys);
+    free_config_keys(missing_head);
+    free(user_path);
+}
