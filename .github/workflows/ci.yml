@@ -46,8 +46,11 @@ jobs:
           openssl \
           pkg-config
 
-    - name: Setup build directory
-      run: meson setup build
+    - name: Setup build directory (with Arch Linux flags)
+      run: |
+        # Use arch-meson to apply Arch Linux's strict compilation flags
+        # This ensures we catch issues that would fail in AUR builds
+        arch-meson . build
 
     - name: Compile
       run: meson compile -C build
