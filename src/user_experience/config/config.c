@@ -277,7 +277,9 @@ static struct config_key* parse_example_config_keys(const char *example_path) {
         if (!node) continue;
 
         strncpy(node->section, section, sizeof(node->section) - 1);
+        node->section[sizeof(node->section) - 1] = '\0';
         strncpy(node->key, key, sizeof(node->key) - 1);
+        node->key[sizeof(node->key) - 1] = '\0';
         node->next = NULL;
 
         if (!head) {
@@ -387,7 +389,9 @@ void config_validate_user_config(void) {
             struct config_key *missing = malloc(sizeof(struct config_key));
             if (missing) {
                 strncpy(missing->section, node->section, sizeof(missing->section) - 1);
+                missing->section[sizeof(missing->section) - 1] = '\0';
                 strncpy(missing->key, node->key, sizeof(missing->key) - 1);
+                missing->key[sizeof(missing->key) - 1] = '\0';
                 missing->next = NULL;
 
                 if (!missing_head) {
