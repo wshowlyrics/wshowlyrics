@@ -1,5 +1,6 @@
 #include "mpris.h"
 #include "../../constants.h"
+#include "../../user_experience/config/config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,24 @@
 
 // Simple implementation using playerctl command
 // For a full implementation, we would use D-Bus directly
+
+// Build player argument for playerctl command
+// Returns "--player=<players>" or "--player=%any" if no preference set
+static char* build_player_arg(void) {
+    struct config *cfg = config_get();
+
+    // If preferred_players is empty or not set, use %any
+    if (!cfg->lyrics.preferred_players || cfg->lyrics.preferred_players[0] == '\0') {
+        return strdup("--player=%any");
+    }
+
+    // Build --player=<player1>,<player2>,...
+    char *arg = malloc(SMALL_BUFFER_SIZE);
+    if (!arg) return strdup("--player=%any");
+
+    snprintf(arg, SMALL_BUFFER_SIZE, "--player=%s", cfg->lyrics.preferred_players);
+    return arg;
+}
 
 bool mpris_init(void) {
     // Check if playerctl is available
@@ -63,17 +82,25 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 
     memset(metadata, 0, sizeof(struct track_metadata));
 
+    // Get player argument from config
+    char *player_arg = build_player_arg();
+    if (!player_arg) {
+        return false;
+    }
+
     // Check player name first to filter out browsers
     int player_exit_code = 0;
-    char *player_name = execute_command(
-        "playerctl --player=%any metadata --format '{{playerName}}' 2>/dev/null",
-        &player_exit_code
-    );
+    char cmd[SMALL_BUFFER_SIZE];
+    snprintf(cmd, sizeof(cmd),
+        "playerctl %s metadata --format '{{playerName}}' 2>/dev/null",
+        player_arg);
+    char *player_name = execute_command(cmd, &player_exit_code);
 
     // Ignore browsers (chromium includes chrome/edge, firefox)
     if (player_name && player_exit_code == 0) {
         if (strstr(player_name, "chromium") || strstr(player_name, "firefox")) {
             free(player_name);
+            free(player_arg);
             return false;
         }
         free(player_name);
@@ -82,15 +109,16 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     // Get all metadata in a single command to ensure consistency
     // Format: title|artist|album|url|artUrl|length
     int exit_code = 0;
-    char *result = execute_command(
-        "playerctl --player=%any metadata --format "
+    snprintf(cmd, sizeof(cmd),
+        "playerctl %s metadata --format "
         "'{{title}}|||{{artist}}|||{{album}}|||{{xesam:url}}|||{{mpris:artUrl}}|||{{mpris:length}}' 2>/dev/null",
-        &exit_code
-    );
+        player_arg);
+    char *result = execute_command(cmd, &exit_code);
 
     // If playerctl exits with code 1, it means no players found
     if (!result || exit_code != 0) {
         free(result);
+        free(player_arg);
         return false;
     }
 
@@ -101,6 +129,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     char *artist_start = strstr(title_start, "|||");
     if (!artist_start) {
         free(result);
+        free(player_arg);
         return false;
     }
     *artist_start = '\0';
@@ -109,6 +138,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     char *album_start = strstr(artist_start, "|||");
     if (!album_start) {
         free(result);
+        free(player_arg);
         return false;
     }
     *album_start = '\0';
@@ -117,6 +147,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     char *url_start = strstr(album_start, "|||");
     if (!url_start) {
         free(result);
+        free(player_arg);
         return false;
     }
     *url_start = '\0';
@@ -125,6 +156,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     char *art_url_start = strstr(url_start, "|||");
     if (!art_url_start) {
         free(result);
+        free(player_arg);
         return false;
     }
     *art_url_start = '\0';
@@ -133,6 +165,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     char *length_start = strstr(art_url_start, "|||");
     if (!length_start) {
         free(result);
+        free(player_arg);
         return false;
     }
     *length_start = '\0';
@@ -157,7 +190,8 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     }
 
     // Get position separately (not available in metadata format)
-    char *position_str = execute_command("playerctl --player=%any position 2>/dev/null", NULL);
+    snprintf(cmd, sizeof(cmd), "playerctl %s position 2>/dev/null", player_arg);
+    char *position_str = execute_command(cmd, NULL);
     if (position_str) {
         double position_sec = atof(position_str);
         metadata->position_us = (int64_t)(position_sec * 1000000);
@@ -165,6 +199,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     }
 
     free(result);
+    free(player_arg);
 
     // Ignore Spotify advertisements (title="Advertisement" and URL contains "spotify.com/ad/")
     if (metadata->title && strcmp(metadata->title, "Advertisement") == 0 &&
@@ -177,8 +212,20 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 }
 
 int64_t mpris_get_position(void) {
+    // Get player argument from config
+    char *player_arg = build_player_arg();
+    if (!player_arg) {
+        return 0;
+    }
+
     // Use metadata format to get position in microseconds
-    char *position_str = execute_command("playerctl --player=%any metadata -f '{{position}}' 2>/dev/null", NULL);
+    char cmd[SMALL_BUFFER_SIZE];
+    snprintf(cmd, sizeof(cmd),
+        "playerctl %s metadata -f '{{position}}' 2>/dev/null",
+        player_arg);
+    char *position_str = execute_command(cmd, NULL);
+    free(player_arg);
+
     if (!position_str) {
         return 0;
     }
@@ -190,8 +237,20 @@ int64_t mpris_get_position(void) {
 }
 
 bool mpris_is_playing(void) {
+    // Get player argument from config
+    char *player_arg = build_player_arg();
+    if (!player_arg) {
+        return false;
+    }
+
     int exit_code = 0;
-    char *status = execute_command("playerctl --player=%any status 2>/dev/null", &exit_code);
+    char cmd[SMALL_BUFFER_SIZE];
+    snprintf(cmd, sizeof(cmd),
+        "playerctl %s status 2>/dev/null",
+        player_arg);
+    char *status = execute_command(cmd, &exit_code);
+    free(player_arg);
+
     if (!status || exit_code != 0) {
         free(status);
         return false;

@@ -58,6 +58,14 @@ search_dirs =
 # Example: extensions = lrc,srt (this would skip .lrcx and .vtt files)
 extensions = lrcx,lrc,srt,vtt
 
+# Preferred music players (comma-separated player names)
+# Empty string or not set = use %any (all players except browsers)
+# This setting allows you to prioritize specific music players
+# Common player names: mpv, spotify, vlc, rhythmbox, audacious
+# Example: preferred_players = mpv,spotify
+# Note: Browsers (chromium, firefox) are always ignored regardless of this setting
+preferred_players =
+
 # Online lyrics provider (lrclib.net)
 # Set to false to disable online lyrics fetching
 # Only used when local files are not found

@@ -22,6 +22,7 @@ struct display_config {
 struct lyrics_config {
     char *search_dirs;  // Colon-separated paths
     char *extensions;   // Comma-separated extensions (e.g., "lrcx,lrc,srt")
+    char *preferred_players;  // Comma-separated player names (e.g., "mpv,spotify")
     bool enable_lrclib;
     bool enable_itunes;
     bool enable_notifications;  // Desktop notifications for track changes

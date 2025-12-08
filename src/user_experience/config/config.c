@@ -65,6 +65,7 @@ void config_init_defaults(struct config *cfg) {
     // Lyrics defaults
     cfg->lyrics.search_dirs = strdup("");  // Empty = use hardcoded defaults
     cfg->lyrics.extensions = strdup("lrcx,lrc,srt");  // All formats
+    cfg->lyrics.preferred_players = strdup("");  // Empty = use %any
     cfg->lyrics.enable_lrclib = true;
     cfg->lyrics.enable_itunes = true;
     cfg->lyrics.enable_notifications = true;  // Enabled by default
@@ -76,6 +77,7 @@ void config_free(struct config *cfg) {
     free(cfg->display.font_weight);
     free(cfg->lyrics.search_dirs);
     free(cfg->lyrics.extensions);
+    free(cfg->lyrics.preferred_players);
     memset(cfg, 0, sizeof(*cfg));
 }
 
@@ -174,6 +176,9 @@ bool config_load(struct config *cfg, const char *path) {
             } else if (strcmp(key, "extensions") == 0) {
                 free(cfg->lyrics.extensions);
                 cfg->lyrics.extensions = strdup(value);
+            } else if (strcmp(key, "preferred_players") == 0) {
+                free(cfg->lyrics.preferred_players);
+                cfg->lyrics.preferred_players = strdup(value);
             } else if (strcmp(key, "enable_lrclib") == 0) {
                 cfg->lyrics.enable_lrclib = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
             } else if (strcmp(key, "enable_itunes") == 0) {
