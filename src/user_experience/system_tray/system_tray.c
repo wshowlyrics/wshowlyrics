@@ -437,10 +437,10 @@ void system_tray_send_notification(const char *artist, const char *title) {
 }
 
 
-bool system_tray_update_icon_with_fallback(const char *art_url, const char *artist, const char *track) {
-    // Calculate metadata hash for caching
+bool system_tray_update_icon_with_fallback(const char *art_url, const char *artist, const char *album, const char *track) {
+    // Calculate metadata hash for caching (using artist + track + album)
     char metadata_hash[MD5_DIGEST_STRING_LENGTH];
-    if (!calculate_metadata_md5(artist, track, NULL, metadata_hash)) {
+    if (!calculate_metadata_md5(artist, track, album, metadata_hash)) {
         log_error("Failed to calculate metadata hash");
         metadata_hash[0] = '\0';
     }
@@ -521,7 +521,7 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
     // Priority 3: Try iTunes API (network request)
     if (g_config.lyrics.enable_itunes && track && strlen(track) > 0) {
         log_info("Trying iTunes Search API...");
-        char *itunes_url = itunes_search_artwork(artist, track);
+        char *itunes_url = itunes_search_artwork(artist, album, track);
 
         if (itunes_url) {
             success = system_tray_update_icon(itunes_url);

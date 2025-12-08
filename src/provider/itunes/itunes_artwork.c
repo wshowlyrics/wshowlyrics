@@ -19,8 +19,10 @@ static char* url_encode(CURL *curl, const char *str) {
     return curl_url_encode(curl, str);
 }
 
-char* itunes_search_artwork(const char *artist, const char *track) {
-    if (!track) {
+char* itunes_search_artwork(const char *artist, const char *album, const char *track) {
+    // Require at least a track title with non-empty content
+    if (!track || strlen(track) == 0) {
+        log_info("Missing track title, cannot search iTunes");
         return NULL;
     }
 
@@ -42,15 +44,26 @@ char* itunes_search_artwork(const char *artist, const char *track) {
         log_info("iTunes search: sanitized '%s' -> '%s'", track, clean_track);
     }
 
-    // Build search term
+    // Validate metadata availability (similar to lrclib provider)
+    bool has_artist = (artist && strlen(artist) > 0 && strcasecmp(artist, "Unknown") != 0);
+    bool has_album = (album && strlen(album) > 0 && strcasecmp(album, "Unknown") != 0);
+
+    // Build search term with available metadata
     char search_term[URL_BUFFER_SIZE];
-    if (artist && strlen(artist) > 0 && strcasecmp(artist, "Unknown") != 0) {
-        // Include artist in search
-        snprintf(search_term, sizeof(search_term), "%s %s", artist, clean_track);
-    } else {
-        // Artist unknown - search by track only
-        snprintf(search_term, sizeof(search_term), "%s", clean_track);
+    int offset = snprintf(search_term, sizeof(search_term), "%s", clean_track);
+
+    if (has_artist) {
+        offset += snprintf(search_term + offset, sizeof(search_term) - offset,
+                          " %s", artist);
     }
+
+    if (has_album) {
+        snprintf(search_term + offset, sizeof(search_term) - offset,
+                " %s", album);
+    }
+
+    log_info("iTunes search metadata (artist: %s, album: %s)",
+             has_artist ? artist : "none", has_album ? album : "none");
 
     free(clean_track);
 

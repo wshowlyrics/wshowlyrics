@@ -598,6 +598,7 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
             system_tray_update_icon_with_fallback(
                 state->current_track.art_url,
                 state->current_track.artist,
+                state->current_track.album,
                 state->current_track.title
             );
         }
@@ -621,20 +622,24 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
     // Update album art with best available metadata
     // Prefer lyrics metadata (more accurate) over MPRIS metadata
     const char *artist = state->lyrics.metadata.artist;
+    const char *album = state->lyrics.metadata.album;
     const char *title = state->lyrics.metadata.title;
 
     // Fall back to MPRIS metadata if lyrics metadata is not available
     if (!artist || strlen(artist) == 0) {
         artist = state->current_track.artist;
     }
+    if (!album || strlen(album) == 0) {
+        album = state->current_track.album;
+    }
     if (!title || strlen(title) == 0) {
         title = state->current_track.title;
     }
 
     // Update album art (try MPRIS URL first, then iTunes API)
-    log_info("Updating album art with metadata (artist: %s, title: %s)",
-             artist ? artist : "Unknown", title ? title : "Unknown");
-    system_tray_update_icon_with_fallback(state->current_track.art_url, artist, title);
+    log_info("Updating album art with metadata (artist: %s, album: %s, title: %s)",
+             artist ? artist : "Unknown", album ? album : "Unknown", title ? title : "Unknown");
+    system_tray_update_icon_with_fallback(state->current_track.art_url, artist, album, title);
 
     // Send desktop notification after album art is updated
     if (g_config.lyrics.enable_notifications) {
