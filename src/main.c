@@ -547,18 +547,20 @@ static bool update_track_info(struct lyrics_state *state) {
         return false;
     }
 
-    // Check if track changed
+    // Check if track changed by comparing URL (unique identifier)
     bool changed = false;
-    if (!state->current_track.title ||
-        strcmp(new_track.title, state->current_track.title) != 0) {
+    if (!state->current_track.url ||
+        !new_track.url ||
+        strcmp(new_track.url, state->current_track.url) != 0) {
         changed = true;
     }
 
     if (changed) {
         log_info("=== Track changed ===");
-        log_info("Title: %s", new_track.title);
+        log_info("Title: %s", new_track.title ? new_track.title : "Unknown");
         log_info("Artist: %s", new_track.artist ? new_track.artist : "Unknown");
         log_info("Album: %s", new_track.album ? new_track.album : "Unknown");
+        log_info("URL: %s", new_track.url ? new_track.url : "None");
         log_info("Art URL: %s", new_track.art_url ? new_track.art_url : "None");
 
         mpris_free_metadata(&state->current_track);
