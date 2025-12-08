@@ -215,13 +215,18 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
                           const char *url, int64_t duration_ms, struct lyrics_data *data) {
     (void)url; // Unused for online search
 
-    // Require at least a title
-    if (!title) {
+    // Require at least a title with non-empty content
+    if (!title || strlen(title) == 0) {
+        log_info("Missing title, cannot search lrclib");
         return false;
     }
 
     // If we're missing artist or album, use search API instead
-    if (!artist || !album || strlen(artist) == 0 || strlen(album) == 0) {
+    // Check for NULL or empty string for both artist and album
+    bool has_artist = (artist && strlen(artist) > 0);
+    bool has_album = (album && strlen(album) > 0);
+
+    if (!has_artist || !has_album) {
         log_info("Missing metadata (artist: %s, album: %s), using search API",
                artist ? artist : "none", album ? album : "none");
         return lrclib_search_fallback(title, artist, album, duration_ms, data);
