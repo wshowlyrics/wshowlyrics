@@ -63,6 +63,22 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 
     memset(metadata, 0, sizeof(struct track_metadata));
 
+    // Check player name first to filter out browsers
+    int player_exit_code = 0;
+    char *player_name = execute_command(
+        "playerctl --player=%any metadata --format '{{playerName}}' 2>/dev/null",
+        &player_exit_code
+    );
+
+    // Ignore browsers (chromium includes chrome/edge, firefox)
+    if (player_name && player_exit_code == 0) {
+        if (strstr(player_name, "chromium") || strstr(player_name, "firefox")) {
+            free(player_name);
+            return false;
+        }
+        free(player_name);
+    }
+
     // Get all metadata in a single command to ensure consistency
     // Format: title|artist|album|url|artUrl|length
     int exit_code = 0;
