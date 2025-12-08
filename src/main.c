@@ -882,8 +882,21 @@ int main(int argc, char *argv[]) {
     // Validate user config against settings.ini.example
     config_validate_user_config();
 
+    // Parse anchor from config
     unsigned int anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
-    int margin = g_config.display.margin_bottom;
+    if (g_config.display.anchor) {
+        if (strcmp(g_config.display.anchor, "top") == 0) {
+            anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
+        } else if (strcmp(g_config.display.anchor, "left") == 0) {
+            anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+        } else if (strcmp(g_config.display.anchor, "right") == 0) {
+            anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+        } else if (strcmp(g_config.display.anchor, "bottom") == 0) {
+            anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+        }
+    }
+
+    int margin = g_config.display.margin;
     struct lyrics_state state = { 0 };
 
     // Convert hex colors to uint32 format

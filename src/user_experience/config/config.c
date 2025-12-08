@@ -59,7 +59,8 @@ void config_init_defaults(struct config *cfg) {
     parse_hex_color("FFFFFFFF", cfg->display.color_active);
     parse_hex_color("00000080", cfg->display.color_background);
 
-    cfg->display.margin_bottom = 32;
+    cfg->display.anchor = strdup("bottom");
+    cfg->display.margin = 32;
     cfg->display.line_spacing = 10;
 
     // Lyrics defaults
@@ -75,6 +76,7 @@ void config_init_defaults(struct config *cfg) {
 void config_free(struct config *cfg) {
     free(cfg->display.font_family);
     free(cfg->display.font_weight);
+    free(cfg->display.anchor);
     free(cfg->lyrics.search_dirs);
     free(cfg->lyrics.extensions);
     free(cfg->lyrics.preferred_players);
@@ -164,8 +166,11 @@ bool config_load(struct config *cfg, const char *path) {
                 parse_hex_color(value, cfg->display.color_active);
             } else if (strcmp(key, "color_background") == 0) {
                 parse_hex_color(value, cfg->display.color_background);
-            } else if (strcmp(key, "margin_bottom") == 0) {
-                cfg->display.margin_bottom = atoi(value);
+            } else if (strcmp(key, "anchor") == 0) {
+                free(cfg->display.anchor);
+                cfg->display.anchor = strdup(value);
+            } else if (strcmp(key, "margin") == 0) {
+                cfg->display.margin = atoi(value);
             } else if (strcmp(key, "line_spacing") == 0) {
                 cfg->display.line_spacing = atoi(value);
             }

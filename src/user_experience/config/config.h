@@ -14,7 +14,8 @@ struct display_config {
     double color_active[4];
     double color_background[4];
 
-    int margin_bottom;
+    char *anchor;       // Anchor position: "top", "bottom", "left", "right"
+    int margin;         // Margin from edge in pixels
     int line_spacing;
 };
 

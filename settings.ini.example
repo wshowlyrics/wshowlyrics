@@ -34,9 +34,11 @@ color_active = FFFFFFFF
 color_background = 00000080
 
 # Position and spacing
-# margin_bottom: Distance from bottom of screen in pixels (default: 32)
+# anchor: Anchor position - top, bottom, left, right (default: bottom)
+# margin: Distance from edge of screen in pixels (default: 32)
 # line_spacing: Space between lines in pixels (default: 10)
-margin_bottom = 32
+anchor = bottom
+margin = 32
 line_spacing = 10
 
 [lyrics]
