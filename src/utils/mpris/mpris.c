@@ -10,30 +10,7 @@
 // Simple implementation using playerctl command
 // For a full implementation, we would use D-Bus directly
 
-// Build player argument for playerctl command
-// Returns "--player=<players>" or "--player=%any" if no preference set
-static char* build_player_arg(void) {
-    struct config *cfg = config_get();
-
-    // If preferred_players is empty or not set, use %any
-    if (!cfg->lyrics.preferred_players || cfg->lyrics.preferred_players[0] == '\0') {
-        return strdup("--player=%any");
-    }
-
-    // Build --player=<player1>,<player2>,...
-    char *arg = malloc(SMALL_BUFFER_SIZE);
-    if (!arg) return strdup("--player=%any");
-
-    snprintf(arg, SMALL_BUFFER_SIZE, "--player=%s", cfg->lyrics.preferred_players);
-    return arg;
-}
-
-bool mpris_init(void) {
-    // Check if playerctl is available
-    int ret = system("which playerctl > /dev/null 2>&1");
-    return ret == 0;
-}
-
+// Execute a shell command and return the output
 static char* execute_command(const char *cmd, int *exit_code) {
     FILE *fp = popen(cmd, "r");
     if (!fp) {
@@ -73,6 +50,89 @@ static char* execute_command(const char *cmd, int *exit_code) {
         *exit_code = WEXITSTATUS(status);
     }
     return result;
+}
+
+// Build player argument for playerctl command
+// Returns "--player=<player>" for the best available player
+// Prioritizes playing players over paused ones
+static char* build_player_arg(void) {
+    struct config *cfg = config_get();
+
+    // If preferred_players is empty or not set, use %any
+    if (!cfg->lyrics.preferred_players || cfg->lyrics.preferred_players[0] == '\0') {
+        return strdup("--player=%any");
+    }
+
+    // Parse preferred_players (comma-separated list)
+    char *players_copy = strdup(cfg->lyrics.preferred_players);
+    if (!players_copy) return strdup("--player=%any");
+
+    char *playing_player = NULL;
+    char *first_available = NULL;
+
+    // Check each preferred player
+    char *player = strtok(players_copy, ",");
+    while (player) {
+        // Trim whitespace
+        while (*player == ' ') player++;
+        char *end = player + strlen(player) - 1;
+        while (end > player && *end == ' ') *end-- = '\0';
+
+        // Check if this player is available and get its status
+        char cmd[SMALL_BUFFER_SIZE];
+        snprintf(cmd, sizeof(cmd), "playerctl --player=%s status 2>/dev/null", player);
+
+        int exit_code = 0;
+        char *status = execute_command(cmd, &exit_code);
+
+        if (status && exit_code == 0) {
+            // Player is available
+            if (!first_available) {
+                first_available = strdup(player);
+            }
+
+            // Check if it's playing
+            if (strcmp(status, "Playing") == 0) {
+                playing_player = strdup(player);
+                free(status);
+                break;  // Found a playing player, use it
+            }
+            free(status);
+        }
+
+        player = strtok(NULL, ",");
+    }
+
+    free(players_copy);
+
+    // Build the result
+    char *result = malloc(SMALL_BUFFER_SIZE);
+    if (!result) {
+        free(playing_player);
+        free(first_available);
+        return strdup("--player=%any");
+    }
+
+    // Priority: playing player > first available player > all preferred players
+    if (playing_player) {
+        snprintf(result, SMALL_BUFFER_SIZE, "--player=%s", playing_player);
+        free(playing_player);
+        free(first_available);
+    } else if (first_available) {
+        snprintf(result, SMALL_BUFFER_SIZE, "--player=%s", first_available);
+        free(first_available);
+    } else {
+        // No players available, fall back to checking all preferred players
+        snprintf(result, SMALL_BUFFER_SIZE, "--player=%s", cfg->lyrics.preferred_players);
+    }
+
+    return result;
+}
+
+bool mpris_init(void) {
+    // Check if playerctl is available
+    int ret = system("which playerctl > /dev/null 2>&1");
+    return ret == 0;
 }
 
 bool mpris_get_metadata(struct track_metadata *metadata) {
