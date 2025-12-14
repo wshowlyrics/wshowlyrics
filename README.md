@@ -24,6 +24,12 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
   - **Online fallback**: Automatically fetches lyrics from [lrclib.net](https://lrclib.net) when local files are not found
   - URL decoding support for Unicode paths (Korean, Japanese, etc.)
   - Automatic filename-based matching
+- **Translation Support (NEW in 0.6.0)**: DeepL API integration for automatic lyrics translation
+  - Supports both Free and Pro API keys with auto-endpoint detection
+  - Smart caching system - translates once, uses forever
+  - Configurable display modes (both original + translation, or translation only)
+  - Adjustable translation text opacity
+  - Only applies to LRC format (SRT/VTT/LRCX excluded)
 - **Karaoke Mode**: LRCX format with word-level timing and progressive fill effect
   - Past words: normal color (already sung)
   - Current word: progressively fills from left to right (currently singing)
@@ -327,6 +333,71 @@ The program automatically displays album artwork in the system tray using a fall
 3. **Default Icon**: Shows a default music icon from your system theme if no artwork is available
 
 The iTunes API feature can be disabled in `settings.ini` by setting `enable_itunes = false`.
+
+## Translation Support (DeepL API)
+
+wshowlyrics supports automatic lyrics translation using the DeepL API for LRC format files.
+
+### Configuration
+
+Add the following settings to `~/.config/wshowlyrics/settings.ini`:
+
+```ini
+[deepl]
+# Enable DeepL translation feature
+enable_deepl = true
+
+# DeepL API key (get yours at https://www.deepl.com/pro-api)
+# Free API keys end with :fx (e.g., "abc123-def456:fx")
+# Pro API keys do not have this suffix
+# The correct API endpoint is automatically selected based on the key format
+api_key = your-api-key-here
+
+# Target language for translation
+# Supported: BG, CS, DA, DE, EL, EN, ES, ET, FI, FR, HU, ID, IT, JA, KO,
+#            LT, LV, NL, PL, PT, RO, RU, SK, SL, SV, TR, UK, ZH
+target_language = EN
+
+# Translation display mode
+# Options:
+#   both - Show both original and translation (translation displayed below original)
+#   translation_only - Show only translated lyrics (hide original)
+translation_display = both
+
+# Translation text opacity (0.0 - 1.0)
+# Controls how transparent/visible the translation text appears
+# 0.7 = 70% opacity (default, slightly transparent)
+# 0.9 = 90% opacity (more visible)
+# 1.0 = 100% opacity (fully opaque, same as original text)
+translation_opacity = 0.7
+```
+
+### Features
+
+- **Auto-endpoint detection**: Automatically uses Free or Pro API endpoint based on your API key format
+- **Smart caching**: Translations are cached in `/tmp/wshowlyrics/translated/` and reused on subsequent playbacks
+- **LRC-only**: Translation only applies to LRC format files (SRT, VTT, and LRCX are excluded)
+- **Cost-effective**: Translations are only performed once per song and cached until system restart
+- **Configurable display**: Choose between showing both original + translation, or translation only
+- **Adjustable opacity**: Control how visible the translation text appears
+
+### Getting a DeepL API Key
+
+1. Visit https://www.deepl.com/pro-api
+2. Sign up for a free or paid account
+3. Free tier includes 500,000 characters/month
+4. Copy your API key to the configuration file
+
+### Example
+
+With Japanese lyrics and `target_language = EN`:
+
+```
+Original:  心の中で　響く
+Translation: Echoing in my heart
+```
+
+The translation appears below the original lyrics in a smaller, slightly dimmed font.
 
 ## Dependencies
 
