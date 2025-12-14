@@ -10,6 +10,7 @@
 #define CACHE_BASE_DIR "/tmp/wshowlyrics"
 #define CACHE_ALBUM_ART_DIR CACHE_BASE_DIR "/album_art"
 #define CACHE_LYRICS_DIR CACHE_BASE_DIR "/lyrics"
+#define CACHE_TRANSLATED_DIR CACHE_BASE_DIR "/translated"
 
 bool calculate_file_md5(const char *filepath, char *checksum_out) {
     if (!filepath || !checksum_out) {
@@ -138,6 +139,10 @@ bool ensure_cache_directories(void) {
         return false;
     }
 
+    if (!mkdir_p(CACHE_TRANSLATED_DIR)) {
+        return false;
+    }
+
     return true;
 }
 
@@ -202,4 +207,15 @@ bool calculate_metadata_md5(const char *artist, const char *title, const char *a
     md5_out[hash_len * 2] = '\0';
 
     return true;
+}
+
+int build_translation_cache_path(char *dest, size_t dest_size,
+                                  const char *original_md5,
+                                  const char *target_lang) {
+    if (!dest || !original_md5 || !target_lang || dest_size == 0) {
+        return -1;
+    }
+
+    return build_path(dest, dest_size, "%s/%s_%s.json",
+                      CACHE_TRANSLATED_DIR, original_md5, target_lang);
 }

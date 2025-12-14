@@ -38,4 +38,12 @@ int build_lyrics_cache_path(char *dest, size_t dest_size, const char *md5_hash);
 // md5_out must be at least 33 bytes (32 hex chars + null terminator)
 bool calculate_metadata_md5(const char *artist, const char *title, const char *album, char *md5_out);
 
+// Build cache file path for translated lyrics
+// original_md5: MD5 hash of the original lyrics file
+// target_lang: Target language code (e.g., "EN", "KO", "JA")
+// Returns number of characters written, or -1 on error
+int build_translation_cache_path(char *dest, size_t dest_size,
+                                  const char *original_md5,
+                                  const char *target_lang);
+
 #endif

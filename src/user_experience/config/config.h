@@ -30,10 +30,20 @@ struct lyrics_config {
     int notification_timeout;   // Notification timeout in milliseconds (default: 5000)
 };
 
+// DeepL translation settings
+struct deepl_config {
+    bool enable_deepl;           // Enable DeepL translation feature
+    char *api_key;               // DeepL API key (Free keys end with :fx)
+    char *target_language;       // Target language code (e.g., EN, KO, JA, ZH)
+    char *translation_display;   // Display mode: "both" or "translation_only"
+    double translation_opacity;  // Translation text opacity (0.0 - 1.0, default: 0.7)
+};
+
 // Main configuration
 struct config {
     struct display_config display;
     struct lyrics_config lyrics;
+    struct deepl_config deepl;
 };
 
 // Global configuration instance (prefer using config_get() instead of direct access)

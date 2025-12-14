@@ -173,6 +173,7 @@ void lrc_free_data(struct lyrics_data *data) {
     while (line) {
         struct lyrics_line *next = line->next;
         free(line->text);
+        free(line->translation);
 
         // Free ruby segments if present (LRC format)
         free_ruby_segments(line->ruby_segments);

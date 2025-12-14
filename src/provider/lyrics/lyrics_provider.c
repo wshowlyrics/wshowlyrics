@@ -4,6 +4,7 @@
 #include "../../parser/srt/srt_parser.h"
 #include "../../parser/lrcx/lrcx_parser.h"
 #include "../../user_experience/config/config.h"
+#include "../../translator/deepl/deepl_translator.h"
 #include "../../constants.h"
 #include "../../utils/file/file_utils.h"
 #include <stdio.h>
@@ -550,6 +551,9 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                                  track->url, duration_ms, data)) {
             log_success("Found lyrics via %s provider", providers[i]->name);
 
+            // Try to translate lyrics if DeepL is enabled
+            deepl_translate_lyrics(data);
+
             // If lyrics came from lrclib, cache them
             if (strcmp(providers[i]->name, "lrclib") == 0 && has_hash) {
                 char cache_path[512];
@@ -593,6 +597,10 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                     // Load from cache
                     if (lrc_parse_file(cache_path, data)) {
                         log_success("Found lyrics via cache");
+
+                        // Try to translate lyrics if DeepL is enabled
+                        deepl_translate_lyrics(data);
+
                         return true;
                     } else {
                         log_warn("Failed to parse cached lyrics, will continue to online provider");

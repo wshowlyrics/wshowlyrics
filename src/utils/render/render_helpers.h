@@ -45,6 +45,14 @@ void render_ruby_segments(cairo_t *cairo, const char *font, int scale,
                          struct ruby_segment *segments, uint32_t foreground,
                          int *width, int *height);
 
+// Render LRC-style lyrics with ruby segments and translation support
+// translation_mode: "both", "translation_only", or any other value for original only
+// translation: the translated line text (NULL if no translation available)
+void render_ruby_segments_with_translation(cairo_t *cairo, const char *font, int scale,
+                                          struct ruby_segment *segments, uint32_t foreground,
+                                          const char *translation_mode, const char *translation,
+                                          int *width, int *height);
+
 // Render LRCX word segments without karaoke effect (static display)
 void render_word_segments_static(cairo_t *cairo, const char *font, int scale,
                                  struct word_segment *segments, uint32_t foreground,

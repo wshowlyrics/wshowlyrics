@@ -71,6 +71,13 @@ void config_init_defaults(struct config *cfg) {
     cfg->lyrics.enable_itunes = true;
     cfg->lyrics.enable_notifications = true;  // Enabled by default
     cfg->lyrics.notification_timeout = 5000;  // 5 seconds by default
+
+    // DeepL translation defaults
+    cfg->deepl.enable_deepl = false;  // Disabled by default
+    cfg->deepl.api_key = strdup("");  // No API key by default
+    cfg->deepl.target_language = strdup("EN");  // English by default
+    cfg->deepl.translation_display = strdup("both");  // Show both original and translation
+    cfg->deepl.translation_opacity = 0.7;  // 70% opacity by default
 }
 
 void config_free(struct config *cfg) {
@@ -80,6 +87,9 @@ void config_free(struct config *cfg) {
     free(cfg->lyrics.search_dirs);
     free(cfg->lyrics.extensions);
     free(cfg->lyrics.preferred_players);
+    free(cfg->deepl.api_key);
+    free(cfg->deepl.target_language);
+    free(cfg->deepl.translation_display);
     memset(cfg, 0, sizeof(*cfg));
 }
 
@@ -192,6 +202,24 @@ bool config_load(struct config *cfg, const char *path) {
                 cfg->lyrics.enable_notifications = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
             } else if (strcmp(key, "notification_timeout") == 0) {
                 cfg->lyrics.notification_timeout = atoi(value);
+            }
+        } else if (strcmp(section, "deepl") == 0) {
+            if (strcmp(key, "enable_deepl") == 0) {
+                cfg->deepl.enable_deepl = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            } else if (strcmp(key, "api_key") == 0) {
+                free(cfg->deepl.api_key);
+                cfg->deepl.api_key = strdup(value);
+            } else if (strcmp(key, "target_language") == 0) {
+                free(cfg->deepl.target_language);
+                cfg->deepl.target_language = strdup(value);
+            } else if (strcmp(key, "translation_display") == 0) {
+                free(cfg->deepl.translation_display);
+                cfg->deepl.translation_display = strdup(value);
+            } else if (strcmp(key, "translation_opacity") == 0) {
+                cfg->deepl.translation_opacity = atof(value);
+                // Clamp to valid range [0.0, 1.0]
+                if (cfg->deepl.translation_opacity < 0.0) cfg->deepl.translation_opacity = 0.0;
+                if (cfg->deepl.translation_opacity > 1.0) cfg->deepl.translation_opacity = 1.0;
             }
         }
     }

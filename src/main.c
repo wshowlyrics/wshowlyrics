@@ -172,10 +172,20 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
 
         if (has_ruby_segments && !has_word_segments) {
             // Render LRC/SRT with ruby_segment (furigana only, no karaoke)
+            // Use translation-aware rendering if DeepL is enabled
             int w, h;
-            render_ruby_segments(cairo, state->font, scale,
-                                state->current_line->ruby_segments,
-                                state->foreground, &w, &h);
+            if (g_config.deepl.enable_deepl) {
+                render_ruby_segments_with_translation(cairo, state->font, scale,
+                                                     state->current_line->ruby_segments,
+                                                     state->foreground,
+                                                     g_config.deepl.translation_display,
+                                                     state->current_line->translation,
+                                                     &w, &h);
+            } else {
+                render_ruby_segments(cairo, state->font, scale,
+                                    state->current_line->ruby_segments,
+                                    state->foreground, &w, &h);
+            }
             *width = w;
             *height = h;
         } else if (has_lyrics && has_word_segments) {

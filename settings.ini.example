@@ -89,6 +89,53 @@ enable_notifications = true
 # Examples: 3000 (3 seconds), 5000 (5 seconds), 7000 (7 seconds)
 notification_timeout = 5000
 
+[deepl]
+# DeepL API translation settings
+# Automatic translation of LRC lyrics files (does not apply to SRT, VTT, or LRCX)
+# Note: This feature requires a DeepL API key (Free or Pro)
+
+# Enable DeepL translation feature
+# Set to true to enable automatic translation of LRC lyrics
+# Set to false to disable translation (show only original lyrics)
+enable_deepl = false
+
+# DeepL API key
+# Get your API key at: https://www.deepl.com/pro-api
+# Free API keys end with :fx (e.g., "abc123-def456:fx")
+# Pro API keys do not have this suffix
+# The correct API endpoint is automatically selected based on the key format
+api_key =
+
+# Target language for translation
+# Supported language codes:
+#   BG (Bulgarian), CS (Czech), DA (Danish), DE (German), EL (Greek)
+#   EN (English), ES (Spanish), ET (Estonian), FI (Finnish), FR (French)
+#   HU (Hungarian), ID (Indonesian), IT (Italian), JA (Japanese), KO (Korean)
+#   LT (Lithuanian), LV (Latvian), NL (Dutch), PL (Polish), PT (Portuguese)
+#   RO (Romanian), RU (Russian), SK (Slovak), SL (Slovenian), SV (Swedish)
+#   TR (Turkish), UK (Ukrainian), ZH (Chinese)
+# Default: EN (English)
+target_language = EN
+
+# Translation display mode
+# Options:
+#   both - Show both original and translation (translation displayed below original in smaller text)
+#   translation_only - Show only translated lyrics (hide original)
+# Default: both
+translation_display = both
+
+# Translation text opacity (0.0 - 1.0)
+# Controls how transparent/visible the translation text appears
+# Lower values make the translation more transparent (harder to see)
+# Higher values make the translation more opaque (easier to see)
+# Examples:
+#   0.5 = 50% opacity (very transparent)
+#   0.7 = 70% opacity (default, slightly transparent)
+#   0.9 = 90% opacity (almost fully opaque)
+#   1.0 = 100% opacity (fully opaque, same as original text)
+# Default: 0.7
+translation_opacity = 0.7
+
 [behavior]
 # Reserved for future behavior settings
 # This section is currently not used but may be expanded in future releases

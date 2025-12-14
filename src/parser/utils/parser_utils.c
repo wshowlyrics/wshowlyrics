@@ -390,6 +390,7 @@ static void free_ruby_segments_list(struct ruby_segment *head) {
         struct ruby_segment *next = head->next;
         free(head->text);
         free(head->ruby);
+        free(head->translation);
         free(head);
         head = next;
     }
@@ -565,6 +566,7 @@ void free_ruby_segments(struct ruby_segment *segments) {
         struct ruby_segment *next = segments->next;
         free(segments->text);
         free(segments->ruby);
+        free(segments->translation);
         free(segments);
         segments = next;
     }

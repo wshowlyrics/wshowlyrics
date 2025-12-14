@@ -61,6 +61,7 @@ executable(
 		'src/provider/lyrics/lyrics_provider.c',
 		'src/provider/lrclib/lrclib_provider.c',
 		'src/provider/itunes/itunes_artwork.c',
+		'src/translator/deepl/deepl_translator.c',
 		'src/user_experience/system_tray/system_tray.c',
 		'src/user_experience/config/config.c',
 		'src/parser/utils/parser_utils.c',

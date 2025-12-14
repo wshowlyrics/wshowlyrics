@@ -10,6 +10,7 @@
 struct ruby_segment {
     char *text; // The word/text segment (main text, base text for ruby)
     char *ruby; // Ruby text (furigana) to display above main text (NULL if none)
+    char *translation; // Translated text to display below main text (NULL if none)
     struct ruby_segment *next;
 };
 
@@ -28,6 +29,7 @@ struct lyrics_line {
     int64_t timestamp_us; // Timestamp in microseconds
     int64_t end_timestamp_us; // End timestamp in microseconds (0 if not specified, e.g., LRC format)
     char *text; // Full line text (for display)
+    char *translation; // Translated line text (NULL if not translated)
 
     // Format-specific segment data (only one will be set)
     struct ruby_segment *ruby_segments; // Ruby text segments for LRC/SRT (NULL if not used)

@@ -1,6 +1,7 @@
 #include "render_helpers.h"
 #include "../mpris/mpris.h"
 #include "../../constants.h"
+#include "../../user_experience/config/config.h"
 #include <string.h>
 #include <ctype.h>
 
@@ -120,6 +121,13 @@ double calculate_fill_progress(int64_t current_time, int64_t start_time,
 uint32_t create_dimmed_color(uint32_t color) {
     uint8_t alpha = COLOR_EXTRACT_A(color);
     return (color & 0xFFFFFF00) | (alpha / 2);
+}
+
+// Create color with custom opacity (0.0 - 1.0)
+uint32_t create_color_with_opacity(uint32_t color, double opacity) {
+    uint8_t alpha = COLOR_EXTRACT_A(color);
+    uint8_t new_alpha = (uint8_t)(alpha * opacity);
+    return (color & 0xFFFFFF00) | new_alpha;
 }
 
 void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
@@ -381,4 +389,120 @@ void render_plain_text(cairo_t *cairo, const char *font, int scale,
 
     *width = w;
     *height = h;
+}
+
+void render_ruby_segments_with_translation(cairo_t *cairo, const char *font, int scale,
+                                          struct ruby_segment *segments, uint32_t foreground,
+                                          const char *translation_mode, const char *translation,
+                                          int *width, int *height) {
+    if (!segments) {
+        *width = 0;
+        *height = 0;
+        return;
+    }
+
+    // Determine what to render
+    bool show_original = strcmp(translation_mode, "translation_only") != 0;
+    bool show_translation = (strcmp(translation_mode, "both") == 0 ||
+                            strcmp(translation_mode, "translation_only") == 0) &&
+                            translation && translation[0] != '\0';
+
+    cairo_set_source_u32(cairo, foreground);
+
+    // Calculate maximum ruby height for original text
+    int max_ruby_height = calculate_max_ruby_height_ruby(cairo, font, segments, scale);
+    
+    // Get base text height
+    int base_text_h;
+    get_text_size(cairo, font, NULL, &base_text_h, NULL, scale, "A");
+
+    // Calculate translation text height (smaller, 70% of original)
+    double translation_scale = scale * 0.7;
+    int translation_h = 0;
+    if (show_translation) {
+        get_text_size(cairo, font, NULL, &translation_h, NULL, translation_scale, "A");
+    }
+
+    int x_offset = 0;
+    int y_offset = 0;
+    int total_width = 0;
+    int line_width = 0;
+    int line_count = 1;
+
+    // Render original text if needed
+    if (show_original) {
+        struct ruby_segment *seg = segments;
+        while (seg) {
+            if (seg->text && strchr(seg->text, '\n')) {
+                if (line_width > total_width) {
+                    total_width = line_width;
+                }
+                y_offset += base_text_h + max_ruby_height;
+                x_offset = 0;
+                line_width = 0;
+                line_count++;
+                seg = seg->next;
+                continue;
+            }
+
+            int seg_w, seg_h;
+            if (seg->ruby) {
+                get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg->text, seg->ruby);
+            } else {
+                get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", seg->text);
+            }
+
+            cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
+            pango_printf_ruby(cairo, font, scale, seg->text, seg->ruby);
+
+            x_offset += seg_w;
+            line_width += seg_w;
+            seg = seg->next;
+        }
+
+        if (line_width > total_width) {
+            total_width = line_width;
+        }
+
+        // Add spacing before translation
+        if (show_translation) {
+            y_offset += base_text_h + max_ruby_height + 8;  // 8px spacing
+            x_offset = 0;
+            line_width = 0;
+        }
+    }
+
+    // Render translation text if needed
+    if (show_translation) {
+        // Use custom opacity from config
+        struct config *cfg = config_get();
+        uint32_t dimmed = create_color_with_opacity(foreground, cfg->deepl.translation_opacity);
+        cairo_set_source_u32(cairo, dimmed);
+
+        int trans_w, trans_h;
+        get_text_size(cairo, font, &trans_w, &trans_h, NULL, translation_scale,
+                    "%s", translation);
+
+        cairo_move_to(cairo, x_offset, y_offset);
+        pango_printf(cairo, font, translation_scale, "%s", translation);
+
+        line_width += trans_w;
+
+        if (line_width > total_width) {
+            total_width = line_width;
+        }
+    }
+
+    // Calculate total height
+    int total_height;
+    if (show_original && show_translation) {
+        total_height = line_count * (base_text_h + max_ruby_height) + translation_h + 8;
+    } else if (show_original) {
+        total_height = line_count * (base_text_h + max_ruby_height);
+    } else {
+        total_height = translation_h;
+    }
+
+    *width = total_width;
+    *height = total_height;
 }
