@@ -91,46 +91,6 @@ struct lyrics_state {
     int32_t margin;
 };
 
-/* Function prototypes */
-static cairo_subpixel_order_t to_cairo_subpixel_order(enum wl_output_subpixel subpixel);
-static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
-        int scale, uint32_t *width, uint32_t *height);
-static void render_transparent_frame(struct lyrics_state *state);
-static void render_frame(struct lyrics_state *state);
-static void set_dirty(struct lyrics_state *state);
-
-/* Wayland listener callbacks */
-static void layer_surface_configure(void *data,
-        struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1,
-        uint32_t serial, uint32_t width, uint32_t height);
-static void layer_surface_closed(void *data,
-        struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1);
-static void surface_enter(void *data,
-        struct wl_surface *wl_surface, struct wl_output *output);
-static void surface_leave(void *data,
-        struct wl_surface *wl_surface, struct wl_output *output);
-
-/* Output event callbacks */
-static void output_geometry(void *data, struct wl_output *wl_output,
-        int32_t x, int32_t y, int32_t physical_width, int32_t physical_height,
-        int32_t subpixel, const char *make, const char *model,
-        int32_t transform);
-static void output_mode(void *data, struct wl_output *wl_output,
-        uint32_t flags, int32_t width, int32_t height, int32_t refresh);
-static void output_done(void *data, struct wl_output *wl_output);
-static void output_scale(void *data, struct wl_output *wl_output, int32_t factor);
-
-/* Registry event callbacks */
-static void registry_global(void *data, struct wl_registry *wl_registry,
-        uint32_t name, const char *interface, uint32_t version);
-static void registry_global_remove(void *data,
-        struct wl_registry *wl_registry, uint32_t name);
-
-/* Utility functions */
-static uint32_t parse_color(const char *color);
-static bool update_track_info(struct lyrics_state *state);
-static bool load_lyrics_for_track(struct lyrics_state *state);
-
 /* Main function */
 int main(int argc, char *argv[]);
 

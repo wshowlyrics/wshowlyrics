@@ -580,3 +580,70 @@ void config_validate_user_config(void) {
     free_config_keys(missing_head);
     free(user_path);
 }
+
+// Load configuration with automatic fallback (user -> system)
+char* config_load_with_fallback(struct config *cfg) {
+    if (!cfg) {
+        return NULL;
+    }
+
+    bool config_loaded = false;
+    char *config_loaded_path = NULL;
+
+    // Try user config first
+    char *user_config_path = config_get_path();
+    if (user_config_path) {
+        // Create config directory if it doesn't exist
+        char *dir_path = strdup(user_config_path);
+        char *last_slash = strrchr(dir_path, '/');
+        if (last_slash) {
+            *last_slash = '\0';
+            mkdir(dir_path, 0755);  // Create ~/.config/wshowlyrics/
+        }
+        free(dir_path);
+
+        // Check if user config exists
+        struct stat st;
+        if (stat(user_config_path, &st) != 0) {
+            // User config doesn't exist - try to copy from system config
+            const char *system_config = "/etc/wshowlyrics/settings.ini";
+            if (stat(system_config, &st) == 0) {
+                // System config exists - copy it
+                FILE *src = fopen(system_config, "r");
+                if (src) {
+                    FILE *dst = fopen(user_config_path, "w");
+                    if (dst) {
+                        char buf[4096];
+                        size_t n;
+                        while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+                            fwrite(buf, 1, n, dst);
+                        }
+                        fclose(dst);
+                        printf("Copied system config to user config: %s\n", user_config_path);
+                    }
+                    fclose(src);
+                }
+            }
+        }
+
+        // Try to load user config
+        if (config_load(cfg, user_config_path)) {
+            config_loaded = true;
+            config_loaded_path = user_config_path;
+        } else {
+            free(user_config_path);
+        }
+    }
+
+    // If user config not found, try system-wide config
+    if (!config_loaded) {
+        const char *system_config = "/etc/wshowlyrics/settings.ini";
+        if (config_load(cfg, system_config)) {
+            config_loaded_path = strdup(system_config);
+        }
+        // Note: config_load returns false if file doesn't exist, which is fine
+        // We'll just use the defaults initialized by caller
+    }
+
+    return config_loaded_path;
+}

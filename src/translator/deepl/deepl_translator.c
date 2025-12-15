@@ -139,6 +139,7 @@ static bool parse_and_populate_translations(struct curl_memory_buffer *response,
     // Iterate through lyrics lines and translation results in parallel
     struct lyrics_line *line = data->lines;
     const char *search_pos = translations_start;
+    int translation_count = 0;
 
     while (line) {
         // Only process lines with ruby_segments (LRC format)
@@ -149,7 +150,7 @@ static bool parse_and_populate_translations(struct curl_memory_buffer *response,
                                                          search_pos);
             if (translation) {
                 line->translation = translation;
-                log_info("Translation: \"%s\" -> \"%s\"", line->text, line->translation);
+                translation_count++;
 
                 // Move search position past the current translation
                 // Find where this translation was extracted from
@@ -180,6 +181,10 @@ static bool parse_and_populate_translations(struct curl_memory_buffer *response,
             }
         }
         line = line->next;
+    }
+
+    if (translation_count > 0) {
+        log_info("Received %d translations from DeepL API", translation_count);
     }
 
     return true;
@@ -273,6 +278,7 @@ static bool load_translation_from_cache(const char *cache_path, struct lyrics_da
     // Populate translation fields from cache
     struct lyrics_line *line = data->lines;
     char *search_pos = array_start + 1;  // Start after '['
+    int loaded_count = 0;
 
     while (line) {
         if (line->ruby_segments && line->text && line->text[0] != '\0') {
@@ -321,8 +327,7 @@ static bool load_translation_from_cache(const char *cache_path, struct lyrics_da
                 *dst = '\0';
 
                 line->translation = translation;
-                log_info("Loaded translation from cache: \"%s\" -> \"%s\"",
-                        line->text, line->translation);
+                loaded_count++;
             }
 
             search_pos = str_end + 1;
@@ -331,7 +336,9 @@ static bool load_translation_from_cache(const char *cache_path, struct lyrics_da
     }
 
     free(buffer);
-    log_info("Successfully loaded translations from cache");
+    if (loaded_count > 0) {
+        log_info("Loaded %d translations from cache", loaded_count);
+    }
     return true;
 }
 

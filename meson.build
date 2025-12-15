@@ -52,6 +52,11 @@ executable(
 	'lyrics',
 	files(
 		'src/main.c',
+		'src/core/state/state_helpers.c',
+		'src/core/rendering/rendering_manager.c',
+		'src/lyrics/lyrics_manager.c',
+		'src/monitor/file_monitor.c',
+		'src/events/wayland_events.c',
 		'src/utils/pango/pango_utils.c',
 		'src/utils/shm/shm.c',
 		'src/utils/mpris/mpris.c',
@@ -74,6 +79,7 @@ executable(
 		'src/utils/render/ruby_render.c',
 		'src/utils/render/word_render.c',
 		'src/utils/wayland/wayland_manager.c',
+		'src/utils/wayland/wayland_init.c',
 	),
 	include_directories: include_directories('src'),
 	dependencies: [

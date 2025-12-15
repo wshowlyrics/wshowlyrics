@@ -66,6 +66,10 @@ void config_free(struct config *cfg);
 // Get config file path (~/.config/wshowlyrics/settings.ini)
 char* config_get_path(void);
 
+// Load configuration with automatic fallback (user -> system)
+// Returns path to loaded config file (must be freed by caller), or NULL if only defaults used
+char* config_load_with_fallback(struct config *cfg);
+
 // Helper: Check if extension is enabled in config
 bool config_is_extension_enabled(const char *ext);
 
