@@ -790,7 +790,7 @@ int main(int argc, char *argv[]) {
                 curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buffer);
                 curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
                 curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);  // 5 second timeout
-                curl_easy_setopt(curl, CURLOPT_USERAGENT, "wshowlyrics/1.0");
+                curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
 
                 CURLcode res = curl_easy_perform(curl);
 
