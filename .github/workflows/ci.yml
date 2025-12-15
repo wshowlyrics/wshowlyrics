@@ -38,35 +38,16 @@ jobs:
         # Use makepkg to replicate exact AUR build process
         # This catches all compiler warnings that would fail in AUR
 
-        # Create a temporary PKGBUILD that matches AUR build process
-        cat > PKGBUILD << 'EOF'
-        pkgname=wshowlyrics-ci
-        pkgver=0.0.0
-        pkgrel=1
-        pkgdesc="CI build test"
-        arch=('x86_64')
-        license=('GPL-3.0-or-later')
-        depends=('cairo' 'curl' 'fontconfig' 'openssl' 'pango' 'wayland' 'playerctl' 'libappindicator-gtk3' 'gdk-pixbuf2')
-        makedepends=('meson' 'ninja' 'wayland-protocols')
+        # Download actual PKGBUILD from AUR repository
+        git clone --depth=1 https://aur.archlinux.org/wshowlyrics-git.git /tmp/aur-pkg
+        cp /tmp/aur-pkg/PKGBUILD .
 
-        build() {
-            cd "$srcdir"
-            arch-meson . build
-            meson compile -C build
-        }
-
-        check() {
-            cd "$srcdir"
-            test -f build/lyrics
-        }
-
-        package() {
-            cd "$srcdir"
-            install -Dm755 build/lyrics "$pkgdir/usr/bin/wshowlyrics"
-            install -Dm644 settings.ini.example "$pkgdir/etc/wshowlyrics/settings.ini"
-            install -Dm644 wshowlyrics.service "$pkgdir/usr/lib/systemd/user/wshowlyrics.service"
-        }
-        EOF
+        # Modify PKGBUILD for CI environment:
+        # - Remove source (files already checked out)
+        # - Change srcdir/lyrics to startdir (current checkout)
+        sed -i 's|source=.*|source=()|' PKGBUILD
+        sed -i 's|sha256sums=.*|sha256sums=()|' PKGBUILD
+        sed -i 's|cd "$srcdir/lyrics"|cd "$startdir"|g' PKGBUILD
 
         # Create non-root user for makepkg
         useradd -m builder
@@ -80,25 +61,25 @@ jobs:
 
     - name: Verify binary exists
       run: |
-        if [ ! -f src/build/lyrics ]; then
+        if [ ! -f build/lyrics ]; then
           echo "Error: lyrics binary not found"
-          ls -la src/build/ || echo "src/build/ directory not found"
+          ls -la build/ || echo "build/ directory not found"
           exit 1
         fi
         echo "Build successful: lyrics binary created"
-        ls -lh src/build/lyrics
+        ls -lh build/lyrics
 
     - name: Test help output
       run: |
         # Test that the binary can display help without crashing
         # This doesn't require a Wayland compositor
-        ./src/build/lyrics -h || true
+        ./build/lyrics -h || true
         echo "Help output test completed"
 
     - name: Test version check
       run: |
         # Simple smoke test to ensure binary runs
-        if file src/build/lyrics | grep -q "ELF.*executable"; then
+        if file build/lyrics | grep -q "ELF.*executable"; then
           echo "Binary format verified: ELF executable"
         else
           echo "Error: Invalid binary format"
