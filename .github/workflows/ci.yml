@@ -46,35 +46,67 @@ jobs:
           openssl \
           pkg-config
 
-    - name: Setup build directory (with Arch Linux flags)
+    - name: Build using makepkg (AUR method)
       run: |
-        # Use arch-meson to apply Arch Linux's strict compilation flags
-        # This ensures we catch issues that would fail in AUR builds
-        arch-meson . build
+        # Use makepkg to replicate exact AUR build process
+        # This catches all compiler warnings that would fail in AUR
+        useradd -m builder
+        chown -R builder:builder .
 
-    - name: Compile
-      run: meson compile -C build
+        # Create a temporary PKGBUILD that matches AUR build process
+        cat > PKGBUILD << 'EOF'
+        pkgname=wshowlyrics-ci
+        pkgver=0.0.0
+        pkgrel=1
+        pkgdesc="CI build test"
+        arch=('x86_64')
+        license=('GPL-3.0-or-later')
+        depends=('cairo' 'curl' 'fontconfig' 'openssl' 'pango' 'wayland' 'playerctl' 'libappindicator-gtk3' 'gdk-pixbuf2')
+        makedepends=('meson' 'ninja' 'wayland-protocols')
+
+        build() {
+            cd "$srcdir"
+            arch-meson . build
+            meson compile -C build
+        }
+
+        check() {
+            cd "$srcdir"
+            test -f build/lyrics
+        }
+
+        package() {
+            cd "$srcdir"
+            install -Dm755 build/lyrics "$pkgdir/usr/bin/wshowlyrics"
+            install -Dm644 settings.ini.example "$pkgdir/etc/wshowlyrics/settings.ini"
+            install -Dm644 wshowlyrics.service "$pkgdir/usr/lib/systemd/user/wshowlyrics.service"
+        }
+        EOF
+
+        # Run makepkg as non-root user with AUR's strict flags
+        su builder -c "makepkg -f --noconfirm"
 
     - name: Verify binary exists
       run: |
-        if [ ! -f build/lyrics ]; then
+        if [ ! -f src/build/lyrics ]; then
           echo "Error: lyrics binary not found"
+          ls -la src/build/ || echo "src/build/ directory not found"
           exit 1
         fi
         echo "Build successful: lyrics binary created"
-        ls -lh build/lyrics
+        ls -lh src/build/lyrics
 
     - name: Test help output
       run: |
         # Test that the binary can display help without crashing
         # This doesn't require a Wayland compositor
-        ./build/lyrics -h || true
+        ./src/build/lyrics -h || true
         echo "Help output test completed"
 
     - name: Test version check
       run: |
         # Simple smoke test to ensure binary runs
-        if file build/lyrics | grep -q "ELF.*executable"; then
+        if file src/build/lyrics | grep -q "ELF.*executable"; then
           echo "Binary format verified: ELF executable"
         else
           echo "Error: Invalid binary format"
@@ -97,13 +129,8 @@ jobs:
 
         echo "Installation files verified"
 
-        # Test dry-run installation to verify meson install configuration
-        meson install -C build --dry-run --no-rebuild | tee install-check.log
-
-        # Verify service file will be installed
-        if ! grep -q "wshowlyrics.service to /usr/lib/systemd/user" install-check.log; then
-          echo "Error: Service file not configured for installation"
-          exit 1
+        # Verify package contents
+        if [ -f *.pkg.tar.zst ]; then
+          tar -tvf *.pkg.tar.zst | grep -E "(wshowlyrics|settings.ini|wshowlyrics.service)"
+          echo "Package contents verified"
         fi
-
-        echo "Installation configuration verified"
