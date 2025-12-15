@@ -543,6 +543,75 @@ static uint32_t parse_color(const char *color) {
     return res;
 }
 
+// Callback function for reloading lyrics file
+static void reload_lyrics_file(struct lyrics_state *state, const char *path) {
+    render_transparent_frame(state);
+    load_lyrics_for_track(state);
+}
+
+// Callback function for reloading config file
+static void reload_config_file(struct lyrics_state *state, const char *path) {
+    config_free(&g_config);
+    config_init_defaults(&g_config);
+    if (config_load(&g_config, path)) {
+        // Update state colors from new config
+        state->background =
+            ((uint32_t)(g_config.display.color_background[0] * 255) << 24) |
+            ((uint32_t)(g_config.display.color_background[1] * 255) << 16) |
+            ((uint32_t)(g_config.display.color_background[2] * 255) << 8) |
+            ((uint32_t)(g_config.display.color_background[3] * 255));
+
+        state->foreground =
+            ((uint32_t)(g_config.display.color_active[0] * 255) << 24) |
+            ((uint32_t)(g_config.display.color_active[1] * 255) << 16) |
+            ((uint32_t)(g_config.display.color_active[2] * 255) << 8) |
+            ((uint32_t)(g_config.display.color_active[3] * 255));
+
+        // Note: Font changes require restarting the application
+        // as the font is set during initialization and used in rendering
+        log_info("Config reloaded successfully");
+    } else {
+        log_warn("Failed to reload config, keeping old settings");
+    }
+}
+
+// Generic file change detection and reload
+typedef void (*file_reload_callback_t)(struct lyrics_state *state, const char *path);
+
+static bool check_and_reload_file(
+    const char *file_path,
+    char *stored_checksum,
+    size_t checksum_size,
+    const char *file_type_name,
+    file_reload_callback_t reload_callback,
+    struct lyrics_state *state
+) {
+    if (!file_path || !stored_checksum || stored_checksum[0] == '\0') {
+        return false;
+    }
+
+    char current_checksum[MD5_DIGEST_STRING_LENGTH];
+    if (!calculate_file_md5(file_path, current_checksum)) {
+        return false;
+    }
+
+    if (strcmp(current_checksum, stored_checksum) != 0) {
+        log_info("%s file changed, reloading: %s", file_type_name, file_path);
+
+        // Call the reload callback
+        reload_callback(state, file_path);
+
+        // Update stored checksum
+        strncpy(stored_checksum, current_checksum, checksum_size - 1);
+        stored_checksum[checksum_size - 1] = '\0';
+
+        set_dirty(state);
+        return true;
+    }
+
+    return false;
+}
+
 static bool update_track_info(struct lyrics_state *state) {
 
     struct track_metadata new_track = {0};
@@ -848,6 +917,7 @@ int main(int argc, char *argv[]) {
     // 2. /etc/wshowlyrics/settings.ini (system-wide config)
 
     bool config_loaded = false;
+    char *config_loaded_path = NULL;
 
     // Try user config first
     char *user_config_path = config_get_path();
@@ -888,13 +958,18 @@ int main(int argc, char *argv[]) {
         // Try to load user config
         if (config_load(&g_config, user_config_path)) {
             config_loaded = true;
+            config_loaded_path = user_config_path;
+        } else {
+            free(user_config_path);
         }
-        free(user_config_path);
     }
 
     // If user config not found, try system-wide config
     if (!config_loaded) {
-        config_load(&g_config, "/etc/wshowlyrics/settings.ini");
+        const char *system_config = "/etc/wshowlyrics/settings.ini";
+        if (config_load(&g_config, system_config)) {
+            config_loaded_path = strdup(system_config);
+        }
         // Note: config_load returns false if file doesn't exist, which is fine
         // We'll just use the defaults initialized above
     }
@@ -918,6 +993,15 @@ int main(int argc, char *argv[]) {
 
     int margin = g_config.display.margin;
     struct lyrics_state state = { 0 };
+
+    // Store config file path and checksum for hot reload
+    state.config_file_path = config_loaded_path;  // Transfer ownership
+    state.config_md5_checksum[0] = '\0';
+    if (config_loaded_path) {
+        if (!calculate_file_md5(config_loaded_path, state.config_md5_checksum)) {
+            log_warn("Failed to calculate MD5 for config file: %s", config_loaded_path);
+        }
+    }
 
     // Convert hex colors to uint32 format
     state.background =
@@ -1174,19 +1258,24 @@ int main(int argc, char *argv[]) {
                 load_lyrics_for_track(&state);
                 set_dirty(&state);
             } else {
-                // Check if current lyrics file has changed (every 2 seconds)
-                if (state.lyrics.source_file_path && state.lyrics.md5_checksum[0] != '\0') {
-                    char current_checksum[MD5_DIGEST_STRING_LENGTH];
-                    if (calculate_file_md5(state.lyrics.source_file_path, current_checksum)) {
-                        if (strcmp(current_checksum, state.lyrics.md5_checksum) != 0) {
-                            log_info("Lyrics file changed, reloading: %s", state.lyrics.source_file_path);
-                            // Hide overlay during reload to prevent flickering
-                            render_transparent_frame(&state);
-                            load_lyrics_for_track(&state);
-                            set_dirty(&state);
-                        }
-                    }
-                }
+                // Check if lyrics or config files have changed (every 2 seconds)
+                check_and_reload_file(
+                    state.lyrics.source_file_path,
+                    state.lyrics.md5_checksum,
+                    sizeof(state.lyrics.md5_checksum),
+                    "Lyrics",
+                    reload_lyrics_file,
+                    &state
+                );
+
+                check_and_reload_file(
+                    state.config_file_path,
+                    state.config_md5_checksum,
+                    sizeof(state.config_md5_checksum),
+                    "Config",
+                    reload_config_file,
+                    &state
+                );
             }
         }
 
@@ -1270,6 +1359,12 @@ exit:
     if (font_from_config_alloc) {
         free(font_from_config_alloc);
     }
+
+    // Free config file path
+    free(state.config_file_path);
+
+    // Free configuration
+    config_free(&g_config);
 
     free(argv0_copy);
     return ret;

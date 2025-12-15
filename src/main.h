@@ -75,6 +75,10 @@ struct lyrics_state {
     bool in_instrumental_break; // True when in instrumental break (no lyrics)
     bool need_lyrics_search; // True when lyrics file was missing and needs re-search
 
+    // Config file hot reload tracking
+    char *config_file_path; // Path to loaded config file
+    char config_md5_checksum[33]; // MD5 checksum of config file (32 hex chars + null)
+
     bool run;
     bool needs_reconnect; // Set when layer surface is closed
     bool reconnecting; // Set during reconnection to ignore layer_surface_closed

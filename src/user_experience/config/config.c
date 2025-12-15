@@ -125,6 +125,64 @@ char* config_get_path(void) {
     return config_get_user_path();
 }
 
+// Check config file permissions and fix them if they're too permissive
+static void check_and_fix_config_permissions(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        return;  // Can't stat file, skip validation
+    }
+
+    // Get file permissions (last 9 bits)
+    mode_t mode = st.st_mode & 0777;
+
+    // Check if file is readable/writable by group or others (unsafe)
+    bool group_readable = (mode & S_IRGRP) != 0;
+    bool group_writable = (mode & S_IWGRP) != 0;
+    bool other_readable = (mode & S_IROTH) != 0;
+    bool other_writable = (mode & S_IWOTH) != 0;
+
+    if (group_readable || group_writable || other_readable || other_writable) {
+        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        log_warn("⚠️  Config file has insecure permissions: %04o", mode);
+        log_warn("File: %s", path);
+
+        // Try to automatically fix permissions
+        if (chmod(path, 0600) == 0) {
+            log_info("✓ Automatically fixed permissions to 0600");
+            log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        } else {
+            log_warn("Failed to automatically fix permissions: %s", strerror(errno));
+            log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            log_warn("");
+            log_warn("Your config file may contain sensitive information (e.g., DeepL API key)");
+            log_warn("and should only be readable by you.");
+            log_warn("");
+            log_warn("Recommended permissions: 0600 or 0400");
+            log_warn("");
+            log_warn("Please manually run:");
+            log_warn("  chmod 600 %s", path);
+            log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+            // Send error notification only on failure
+            struct config *cfg = config_get();
+            if (cfg->lyrics.enable_notifications) {
+                char cmd[2048];
+                snprintf(cmd, sizeof(cmd),
+                    "notify-send -a wshowlyrics -u critical -t %d "
+                    "\"🔒 Security Warning\" "
+                    "\"Config file has insecure permissions (%04o)\\n\\n"
+                    "File: %s\\n\\n"
+                    "Please run: chmod 600 %s\" 2>/dev/null",
+                    cfg->lyrics.notification_timeout,
+                    mode,
+                    path,
+                    path);
+                system(cmd);
+            }
+        }
+    }
+}
+
 // Simple INI parser
 bool config_load(struct config *cfg, const char *path) {
     FILE *f = fopen(path, "r");
@@ -132,6 +190,9 @@ bool config_load(struct config *cfg, const char *path) {
         log_warn("Config file not found: %s (using defaults)", path);
         return false;
     }
+
+    // Check and fix file permissions for security
+    check_and_fix_config_permissions(path);
 
     char line[CONFIG_LINE_SIZE];
     char section[SMALL_BUFFER_SIZE] = {0};
