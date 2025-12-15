@@ -29,7 +29,7 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
   - Smart caching system - translates once, uses forever
   - Configurable display modes (both original + translation, or translation only)
   - Adjustable translation text opacity
-  - Only applies to LRC format (SRT/VTT/LRCX excluded)
+  - Supports LRC and SRT formats (VTT/LRCX excluded)
 - **Karaoke Mode**: LRCX format with word-level timing and progressive fill effect
   - Past words: normal color (already sung)
   - Current word: progressively fills from left to right (currently singing)
@@ -286,6 +286,27 @@ First line of lyrics
 Second line of lyrics
 ```
 
+**Inline Translation Support**
+
+SRT files support inline translation using the `{translation}` syntax:
+
+```srt
+1
+00:00:12,000 --> 00:00:17,500
+心の中で　響く
+{Echoing in my heart}
+
+2
+00:00:17,500 --> 00:00:23,000
+君の声が　聞こえる
+{I can hear your voice}
+```
+
+- Syntax: `{translation text}` on a separate line within the subtitle block
+- Translation appears below the original text in smaller, dimmed font
+- Works independently of DeepL API translation (no API key required)
+- Ruby text (`main{ruby}`) can be combined with inline translation
+
 ### Lyrics Search Process
 
 The program uses a two-stage approach to find lyrics:
@@ -376,7 +397,7 @@ translation_opacity = 0.7
 
 - **Auto-endpoint detection**: Automatically uses Free or Pro API endpoint based on your API key format
 - **Smart caching**: Translations are cached in `/tmp/wshowlyrics/translated/` and reused on subsequent playbacks
-- **LRC-only**: Translation only applies to LRC format files (SRT, VTT, and LRCX are excluded)
+- **Format support**: DeepL API translation applies to LRC format files. SRT files support inline translation using `{translation}` syntax (no API required). VTT and LRCX formats are excluded.
 - **Cost-effective**: Translations are only performed once per song and cached until system restart
 - **Configurable display**: Choose between showing both original + translation, or translation only
 - **Adjustable opacity**: Control how visible the translation text appears
