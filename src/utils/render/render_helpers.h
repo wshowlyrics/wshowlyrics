@@ -36,6 +36,7 @@ double calculate_fill_progress(int64_t current_time, int64_t start_time,
 uint32_t create_dimmed_color(uint32_t color);
 
 // Render karaoke-style lyrics with word segments
+// NOTE: For LRCX format, prefer render_karaoke_multiline() for better UX
 void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
                              struct word_segment *segments, uint32_t foreground,
                              int64_t position_us, int *width, int *height);
@@ -65,5 +66,18 @@ void render_plain_text(cairo_t *cairo, const char *font, int scale,
 
 // Check if any segment has translation (for SRT <sub> tags)
 bool has_segment_translation(struct ruby_segment *segments);
+
+// Strip ruby notation from text (removes {ruby} syntax)
+// Returns newly allocated string, caller must free
+// Example: "心{こころ}音{ね}" -> "心音"
+char* strip_ruby_notation(const char *text);
+
+// Render multi-line LRCX display (prev, current, next)
+void render_karaoke_multiline(cairo_t *cairo, const char *font, int scale,
+                              struct lyrics_line *prev_line,
+                              struct lyrics_line *current_line,
+                              struct lyrics_line *next_line,
+                              uint32_t foreground, int64_t position_us,
+                              int *width, int *height);
 
 #endif // RENDER_HELPERS_H

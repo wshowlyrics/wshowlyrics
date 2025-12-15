@@ -131,6 +131,11 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
     bool is_empty_line = false; // Track if current line is empty (instrumental break)
     bool is_karaoke = false; // Track if this is karaoke-style LRCX
 
+    // Check for LRCX multiline context (for instrumental breaks)
+    bool is_lrcx = is_lyrics_format(state, ".lrcx");
+    bool has_multiline_context = (is_lrcx && g_config.display.enable_multiline_lrcx &&
+                                  (state->prev_line || state->next_line));
+
     if (has_lyrics) {
         // Check if the text is empty or only whitespace
         const char *text = state->current_line->text;
@@ -141,12 +146,17 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
         } else {
             text_to_display = text;
             // Karaoke mode is only enabled for LRCX format
-            is_karaoke = is_lyrics_format(state, ".lrcx");
+            is_karaoke = is_lrcx;
         }
+    } else if (has_multiline_context) {
+        // During instrumental breaks in LRCX, we still render prev/next lines
+        is_karaoke = true;
     }
 
     // Use transparent background when no lyrics or during instrumental breaks
-    uint32_t background_color = (has_lyrics && !is_empty_line) ? state->background : 0x00000000;
+    // Exception: For LRCX multiline, show background if we have context lines (prev/next)
+    bool show_background = (has_lyrics && !is_empty_line) || has_multiline_context;
+    uint32_t background_color = show_background ? state->background : 0x00000000;
 
     cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
     cairo_set_source_u32(cairo, background_color);
@@ -156,9 +166,21 @@ static void render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
         // Karaoke-style rendering with progressive word fill (wipe effect)
         int64_t position_us = mpris_get_position();
         int w, h;
-        render_karaoke_segments(cairo, state->font, scale,
-                               state->current_line->segments,
-                               state->foreground, position_us, &w, &h);
+
+        // Use multi-line rendering if enabled and context lines are available
+        if (g_config.display.enable_multiline_lrcx &&
+            (state->prev_line || state->next_line)) {
+            render_karaoke_multiline(cairo, state->font, scale,
+                                    state->prev_line, state->current_line,
+                                    state->next_line, state->foreground,
+                                    position_us, &w, &h);
+        } else {
+            // Fallback to single-line karaoke
+            render_karaoke_segments(cairo, state->font, scale,
+                                   state->current_line->segments,
+                                   state->foreground, position_us, &w, &h);
+        }
+
         *width = w;
         *height = h;
     } else {
@@ -626,6 +648,8 @@ static bool update_track_info(struct lyrics_state *state) {
             // Free lyrics
             lrc_free_data(&state->lyrics);
             state->current_line = NULL;
+            state->prev_line = NULL;
+            state->next_line = NULL;
 
             // Reset tray icon to default
             system_tray_reset_icon();
@@ -677,6 +701,8 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
     // Free previous lyrics
     lrc_free_data(&state->lyrics);
     state->current_line = NULL;
+    state->prev_line = NULL;
+    state->next_line = NULL;
 
     // Try to find lyrics
     if (!lyrics_find_for_track(&state->current_track, &state->lyrics)) {
@@ -704,8 +730,9 @@ static bool load_lyrics_for_track(struct lyrics_state *state) {
 
     log_info("Loaded %d lines of lyrics", state->lyrics.line_count);
 
-    // Set initial line
-    state->current_line = state->lyrics.lines;
+    // Set initial line to NULL so first update will trigger line_changed
+    // This ensures prev/next lines are set for multiline display
+    state->current_line = NULL;
     state->track_changed = false;
 
     // Update album art with best available metadata
@@ -785,6 +812,18 @@ static void update_current_line(struct lyrics_state *state) {
     if (line_changed) {
         state->current_line = display_line;
         state->current_segment = NULL; // Reset word segment when line changes
+
+        // Update prev/next lines for multi-line display (LRCX only)
+        if (is_lyrics_format(state, ".lrcx") && g_config.display.enable_multiline_lrcx) {
+            // For instrumental breaks (empty lines), use new_line instead of display_line
+            // to maintain context display
+            struct lyrics_line *context_line = display_line ? display_line : new_line;
+            lrcx_find_context_lines(&state->lyrics, context_line,
+                                   &state->prev_line, &state->next_line);
+        } else {
+            state->prev_line = NULL;
+            state->next_line = NULL;
+        }
 
         if (display_line && display_line->text) {
             int index = lrc_get_line_index(&state->lyrics, display_line);
@@ -1290,6 +1329,8 @@ int main(int argc, char *argv[]) {
             // Clear lyrics when not playing (paused or stopped)
             if (state.current_line != NULL) {
                 state.current_line = NULL;
+                state.prev_line = NULL;
+                state.next_line = NULL;
                 set_dirty(&state);
                 log_info("Playback stopped/paused - clearing lyrics");
             }
@@ -1328,6 +1369,8 @@ int main(int argc, char *argv[]) {
                         lrc_free_data(&state.lyrics);
                         state.lyrics = new_lyrics;
                         state.current_line = NULL;
+                        state.prev_line = NULL;
+                        state.next_line = NULL;
                         set_dirty(&state);
                     } else {
                         log_info("No lyrics found, keeping existing lyrics displayed");

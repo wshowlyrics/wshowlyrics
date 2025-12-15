@@ -41,6 +41,15 @@ anchor = bottom
 margin = 32
 line_spacing = 10
 
+# Multi-line display for LRCX format
+# When enabled, LRCX files display 3 lines: previous, current (with karaoke), and next
+# Previous line: 70% scale, no ruby text, 75% opacity
+# Current line: Full scale, ruby text + karaoke timing effect
+# Next line: 70% scale, no ruby text, 50% opacity
+# This only affects LRCX format - LRC/SRT remain single-line
+# Set to false to show only the current line (default: true)
+enable_multiline_lrcx = true
+
 [lyrics]
 # Search directories (colon-separated paths)
 # Empty string or not set = use default search locations

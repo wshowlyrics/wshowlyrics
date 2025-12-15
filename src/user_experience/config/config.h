@@ -17,6 +17,8 @@ struct display_config {
     char *anchor;       // Anchor position: "top", "bottom", "left", "right"
     int margin;         // Margin from edge in pixels
     int line_spacing;
+
+    bool enable_multiline_lrcx;  // Enable multi-line display for LRCX format (prev, current, next)
 };
 
 // Lyrics settings

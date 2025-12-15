@@ -15,4 +15,10 @@ bool lrcx_parse_string(const char *content, struct lyrics_data *data);
 // Returns the segment and sets *segment_index if not NULL
 struct word_segment* lrcx_find_segment_at_time(struct lyrics_line *line, int64_t timestamp_us, int *segment_index);
 
+// Find previous and next lines relative to current line
+void lrcx_find_context_lines(struct lyrics_data *data,
+                             struct lyrics_line *current,
+                             struct lyrics_line **prev_out,
+                             struct lyrics_line **next_out);
+
 #endif

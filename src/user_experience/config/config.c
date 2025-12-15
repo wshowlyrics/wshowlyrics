@@ -62,6 +62,7 @@ void config_init_defaults(struct config *cfg) {
     cfg->display.anchor = strdup("bottom");
     cfg->display.margin = 32;
     cfg->display.line_spacing = 10;
+    cfg->display.enable_multiline_lrcx = true;  // Enabled by default
 
     // Lyrics defaults
     cfg->lyrics.search_dirs = strdup("");  // Empty = use hardcoded defaults
@@ -247,6 +248,8 @@ bool config_load(struct config *cfg, const char *path) {
                 cfg->display.margin = atoi(value);
             } else if (strcmp(key, "line_spacing") == 0) {
                 cfg->display.line_spacing = atoi(value);
+            } else if (strcmp(key, "enable_multiline_lrcx") == 0) {
+                cfg->display.enable_multiline_lrcx = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
             }
         } else if (strcmp(section, "lyrics") == 0) {
             if (strcmp(key, "search_dirs") == 0) {

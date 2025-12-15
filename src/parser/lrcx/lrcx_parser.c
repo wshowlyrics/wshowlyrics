@@ -423,3 +423,35 @@ struct word_segment* lrcx_find_segment_at_time(struct lyrics_line *line, int64_t
 
     return current;
 }
+
+void lrcx_find_context_lines(struct lyrics_data *data,
+                             struct lyrics_line *current,
+                             struct lyrics_line **prev_out,
+                             struct lyrics_line **next_out) {
+    *prev_out = NULL;
+    *next_out = NULL;
+
+    if (!data || !data->lines || !current) {
+        return;
+    }
+
+    // Find previous line by traversing from start
+    // Skip empty lines (instrumental breaks)
+    struct lyrics_line *prev = NULL;
+    struct lyrics_line *iter = data->lines;
+    while (iter && iter != current) {
+        // Only consider non-empty lines as context
+        if (iter->text && iter->text[0] != '\0') {
+            prev = iter;
+        }
+        iter = iter->next;
+    }
+    *prev_out = prev;
+
+    // Find next non-empty line
+    struct lyrics_line *next = current->next;
+    while (next && next->text && next->text[0] == '\0') {
+        next = next->next;
+    }
+    *next_out = next;
+}

@@ -70,6 +70,8 @@ struct lyrics_state {
     struct track_metadata current_track;
     struct lyrics_line *current_line;
     struct word_segment *current_segment; // For karaoke highlighting (LRCX)
+    struct lyrics_line *prev_line;  // Previous line for multi-line display
+    struct lyrics_line *next_line;  // Next line for multi-line display
     int64_t track_start_time_us; // When the track started (monotonic clock)
     bool track_changed;
     bool in_instrumental_break; // True when in instrumental break (no lyrics)

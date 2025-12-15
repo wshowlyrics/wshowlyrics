@@ -614,3 +614,130 @@ void render_ruby_segments_with_translation(cairo_t *cairo, const char *font, int
     *width = total_width;
     *height = total_height;
 }
+
+char* strip_ruby_notation(const char *text) {
+    if (!text) {
+        return NULL;
+    }
+
+    size_t len = strlen(text);
+    char *result = malloc(len + 1);
+    if (!result) {
+        return NULL;
+    }
+
+    const char *src = text;
+    char *dst = result;
+    int brace_depth = 0;
+
+    while (*src) {
+        if (*src == '{') {
+            brace_depth++;
+            src++;
+        } else if (*src == '}') {
+            if (brace_depth > 0) {
+                brace_depth--;
+            }
+            src++;
+        } else if (brace_depth == 0) {
+            *dst++ = *src++;
+        } else {
+            src++;
+        }
+    }
+
+    *dst = '\0';
+    return result;
+}
+
+void render_karaoke_multiline(cairo_t *cairo, const char *font, int scale,
+                              struct lyrics_line *prev_line,
+                              struct lyrics_line *current_line,
+                              struct lyrics_line *next_line,
+                              uint32_t foreground, int64_t position_us,
+                              int *width, int *height) {
+    // For LRCX, we render prev/next lines even during instrumental breaks (current_line = NULL)
+    // This provides context during silent sections
+    if (!prev_line && !current_line && !next_line) {
+        *width = 0;
+        *height = 0;
+        return;
+    }
+
+    const double context_scale = 0.7;  // 70% for prev/next (matches translation scale)
+    int total_width = 0;
+    int total_height = 0;
+    int y_offset = 0;
+
+    // Calculate base text height for line spacing
+    // Minimal spacing to fit all 3 lines without clipping
+    const int context_spacing = 2;  // Minimal spacing for prev/next lines
+    const int main_spacing = 4;     // Small spacing before/after main line
+
+    // --- Line 1: Previous line (small, no ruby, 75% opacity) ---
+    if (prev_line && prev_line->text && prev_line->text[0] != '\0') {
+        char *stripped = strip_ruby_notation(prev_line->text);
+        if (stripped && stripped[0] != '\0') {
+            uint32_t dimmed = create_color_with_opacity(foreground, 0.75);
+            cairo_set_source_u32(cairo, dimmed);
+
+            int w, h;
+            get_text_size(cairo, font, &w, &h, NULL, scale * context_scale,
+                         "%s", stripped);
+
+            cairo_save(cairo);
+            cairo_translate(cairo, 0, y_offset);
+            cairo_move_to(cairo, 0, 0);  // Set explicit starting position
+            pango_printf(cairo, font, scale * context_scale, "%s", stripped);
+            cairo_restore(cairo);
+
+            if (w > total_width) total_width = w;
+            total_height += h;
+            y_offset += h + main_spacing;  // Larger spacing before main line
+        }
+        free(stripped);
+    }
+
+    // --- Line 2: Current line (normal size, ruby + karaoke) ---
+    // During instrumental breaks, current_line may be NULL, so we skip this section
+    if (current_line && current_line->segments) {
+        int w, h;
+
+        cairo_save(cairo);
+        cairo_translate(cairo, 0, y_offset);
+        render_karaoke_segments(cairo, font, scale, current_line->segments,
+                               foreground, position_us, &w, &h);
+        cairo_restore(cairo);
+
+        if (w > total_width) total_width = w;
+        total_height += h;
+        y_offset += h + context_spacing;  // Smaller spacing after main line
+    }
+
+    // --- Line 3: Next line (small, no ruby, 50% opacity) ---
+    if (next_line && next_line->text && next_line->text[0] != '\0') {
+        char *stripped = strip_ruby_notation(next_line->text);
+        if (stripped && stripped[0] != '\0') {
+            uint32_t dimmed = create_color_with_opacity(foreground, 0.5);
+            cairo_set_source_u32(cairo, dimmed);
+
+            int w, h;
+            get_text_size(cairo, font, &w, &h, NULL, scale * context_scale,
+                         "%s", stripped);
+
+            cairo_save(cairo);
+            cairo_translate(cairo, 0, y_offset);
+            cairo_move_to(cairo, 0, 0);  // Set explicit starting position
+            pango_printf(cairo, font, scale * context_scale, "%s", stripped);
+            cairo_restore(cairo);
+
+            if (w > total_width) total_width = w;
+            total_height += h;
+            // No spacing after last line
+        }
+        free(stripped);
+    }
+
+    *width = total_width;
+    *height = total_height;
+}
