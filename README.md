@@ -29,12 +29,12 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
   - Smart caching system - translates once, uses forever
   - Configurable display modes (both original + translation, or translation only)
   - Adjustable translation text opacity
-  - Supports LRC and SRT formats (VTT/LRCX excluded)
+  - Supports LRC, SRT, and VTT formats (LRCX excluded)
 - **Karaoke Mode**: LRCX format with word-level timing and progressive fill effect
   - Past words: normal color (already sung)
   - Current word: progressively fills from left to right (currently singing)
   - Future words: dimmed (not yet sung)
-- **Synchronized Lyrics**: Supports LRC, LRCX, and SRT formats
+- **Synchronized Lyrics**: Supports LRC, LRCX, SRT, and VTT formats
 - **Real-time Sync**: Automatically displays lyrics based on music playback position
 - Uses Wayland protocol (wlr-layer-shell)
 - Transparent background support
@@ -239,7 +239,7 @@ For special vocal patterns where a character needs to blink/oscillate, use the `
 
 **Ruby Text (Furigana) Support**
 
-All lyrics file formats (LRCX, LRC, SRT) support ruby text annotations:
+All lyrics file formats (LRCX, LRC, SRT, VTT) support ruby text annotations:
 
 ```lrcx
 [00:12.00][00:12.34]心{こころ}[00:13.50]の[00:13.80]中{なか}
@@ -270,12 +270,13 @@ Synchronized lyrics file format:
 [00:23.00]Third line of lyrics
 ```
 
-### SRT Format
+### SRT/VTT Format
 <img width="361" height="131" alt="4cfd477" src="https://github.com/user-attachments/assets/664a2f52-c186-42dc-8f1b-c5e98c186b38" />
 
 
-Subtitle format is also supported:
+Subtitle formats are also supported:
 
+**SRT Format:**
 ```srt
 1
 00:00:12,000 --> 00:00:17,500
@@ -286,9 +287,20 @@ First line of lyrics
 Second line of lyrics
 ```
 
+**VTT (WebVTT) Format:**
+```vtt
+WEBVTT
+
+00:00:12.000 --> 00:00:17.500
+First line of lyrics
+
+00:00:17.500 --> 00:00:23.000
+Second line of lyrics
+```
+
 **Inline Translation Support**
 
-SRT files support inline translation using the `{translation}` syntax:
+Both SRT and VTT files support inline translation using the `{translation}` syntax at the beginning of a line:
 
 ```srt
 1
@@ -302,10 +314,11 @@ SRT files support inline translation using the `{translation}` syntax:
 {I can hear your voice}
 ```
 
-- Syntax: `{translation text}` on a separate line within the subtitle block
+- Syntax: `{translation text}` at the **beginning of a line** within the subtitle block
 - Translation appears below the original text in smaller, dimmed font
 - Works independently of DeepL API translation (no API key required)
 - Ruby text (`main{ruby}`) can be combined with inline translation
+- Supported in both SRT and VTT formats
 
 ### Lyrics Search Process
 
@@ -324,10 +337,10 @@ Automatically searches for lyrics files in the following **priority order**:
 5. `$HOME`
 
 Filename formats (searched in order):
-- `filename.lrcx` / `filename.lrc` / `filename.srt` (recommended! same name as music file)
-- `title.lrcx` / `title.lrc` / `title.srt`
-- `artist - title.lrcx` / `artist - title.lrc` / `artist - title.srt`
-- `artist/title.lrcx` / `artist/title.lrc`
+- `filename.lrcx` / `filename.lrc` / `filename.srt` / `filename.vtt` (recommended! same name as music file)
+- `title.lrcx` / `title.lrc` / `title.srt` / `title.vtt`
+- `artist - title.lrcx` / `artist - title.lrc` / `artist - title.srt` / `artist - title.vtt`
+- `artist/title.lrcx` / `artist/title.lrc` / `artist/title.vtt`
 
 **Tips:**
 - Place lyrics files with the **same name in the same directory** as your music files!
@@ -397,7 +410,7 @@ translation_opacity = 0.7
 
 - **Auto-endpoint detection**: Automatically uses Free or Pro API endpoint based on your API key format
 - **Smart caching**: Translations are cached in `/tmp/wshowlyrics/translated/` and reused on subsequent playbacks
-- **Format support**: DeepL API translation applies to LRC format files. SRT files support inline translation using `{translation}` syntax (no API required). VTT and LRCX formats are excluded.
+- **Format support**: DeepL API translation applies to LRC format files. SRT and VTT files support inline translation using `{translation}` syntax at line start (no API required). LRCX format is excluded.
 - **Cost-effective**: Translations are only performed once per song and cached until system restart
 - **Configurable display**: Choose between showing both original + translation, or translation only
 - **Adjustable opacity**: Control how visible the translation text appears
