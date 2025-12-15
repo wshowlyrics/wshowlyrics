@@ -177,7 +177,8 @@ static void check_and_fix_config_permissions(const char *path) {
                     mode,
                     path,
                     path);
-                system(cmd);
+                // Explicitly ignore return value - notification failure is not critical
+                (void)system(cmd);
             }
         }
     }
