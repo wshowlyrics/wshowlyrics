@@ -1,7 +1,9 @@
 #include "main.h"
 #include "user_experience/config/config.h"
 #include "constants.h"
-#include "utils/render/render_helpers.h"
+#include "utils/render/render_common.h"
+#include "utils/render/ruby_render.h"
+#include "utils/render/word_render.h"
 #include "utils/wayland/wayland_manager.h"
 #include "utils/curl/curl_utils.h"
 #include <ctype.h>

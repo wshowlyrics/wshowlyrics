@@ -1,7 +1,8 @@
 #ifndef _LYRICS_LRCX_PARSER_H
 #define _LYRICS_LRCX_PARSER_H
 
-#include "../lrc/lrc_parser.h"
+#include "../../lyrics_types.h"
+#include "lrc_common.h"
 #include <stdbool.h>
 
 // Parse LRCX file (karaoke-style with word-level timing)
