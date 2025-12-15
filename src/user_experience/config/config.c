@@ -177,8 +177,10 @@ static void check_and_fix_config_permissions(const char *path) {
                     mode,
                     path,
                     path);
-                // Explicitly ignore return value - notification failure is not critical
-                (void)system(cmd);
+                // Notification failure is not critical, but check return value to satisfy compiler
+                if (system(cmd) != 0) {
+                    // Notification failed, but we continue anyway
+                }
             }
         }
     }
