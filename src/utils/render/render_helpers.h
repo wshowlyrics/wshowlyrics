@@ -63,4 +63,7 @@ void render_plain_text(cairo_t *cairo, const char *font, int scale,
                       const char *text, uint32_t foreground,
                       int *width, int *height);
 
+// Check if any segment has translation (for SRT <sub> tags)
+bool has_segment_translation(struct ruby_segment *segments);
+
 #endif // RENDER_HELPERS_H

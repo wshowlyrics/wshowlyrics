@@ -403,23 +403,25 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
 
     *segments = NULL;
 
-    // Check if text contains ruby notation or newlines
+    // Check if text contains ruby notation, translation tags, or newlines
     bool has_ruby = (strchr(text, '{') != NULL);
+    bool has_translation = (strstr(text, "<sub>") != NULL);
     bool has_newline = (strchr(text, '\n') != NULL);
 
-    if (!has_ruby && !has_newline) {
-        // No ruby text and no newlines - create single segment with entire line
+    if (!has_ruby && !has_translation && !has_newline) {
+        // No ruby text, translation, or newlines - create single segment with entire line
         struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
         if (!seg) {
             return 0;
         }
         seg->text = strdup(text);
         seg->ruby = NULL;
+        seg->translation = NULL;
         *segments = seg;
         return 1;
     }
 
-    // Parse text with ruby annotations
+    // Parse text with ruby annotations and translation tags
     struct ruby_segment *head = NULL;
     struct ruby_segment **next_seg = &head;
     int count = 0;
@@ -429,7 +431,47 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
     const char *text_end = text + strlen(text);
 
     while (*pos) {
-        if (*pos == '\n') {
+        // Check for translation at line start: {translation text}
+        if (*pos == '{' && pos == seg_start) {
+            // Find closing brace
+            const char *close_brace = strchr(pos, '}');
+            if (!close_brace) {
+                // Malformed - treat as regular text
+                pos++;
+                continue;
+            }
+
+            // Extract translation text and create translation-only segment
+            const char *trans_start = pos + 1;  // Skip "{"
+            size_t trans_len = close_brace - trans_start;
+
+            struct ruby_segment *trans_seg = calloc(1, sizeof(struct ruby_segment));
+            if (!trans_seg) {
+                free_ruby_segments_list(head);
+                return 0;
+            }
+            trans_seg->text = strdup("");  // Empty text for translation-only segment
+            if (!trans_seg->text) {
+                free(trans_seg);
+                free_ruby_segments_list(head);
+                return 0;
+            }
+            trans_seg->ruby = NULL;
+            trans_seg->translation = strndup(trans_start, trans_len);
+            if (!trans_seg->translation) {
+                free(trans_seg->text);
+                free(trans_seg);
+                free_ruby_segments_list(head);
+                return 0;
+            }
+            *next_seg = trans_seg;
+            next_seg = &trans_seg->next;
+            count++;
+
+            // Move past the translation
+            pos = close_brace + 1;  // Skip "}"
+            seg_start = pos;
+        } else if (*pos == '\n') {
             // Found newline - create segment for text before it
             if (pos > seg_start) {
                 struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
@@ -439,6 +481,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
                 }
                 seg->text = strndup(seg_start, pos - seg_start);
                 seg->ruby = NULL;
+                seg->translation = NULL;
                 *next_seg = seg;
                 next_seg = &seg->next;
                 count++;
@@ -452,6 +495,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             }
             nl_seg->text = strdup("\n");
             nl_seg->ruby = NULL;
+            nl_seg->translation = NULL;
             *next_seg = nl_seg;
             next_seg = &nl_seg->next;
             count++;
@@ -485,6 +529,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
                 }
                 seg->text = strndup(seg_start, word_start - seg_start);
                 seg->ruby = NULL;
+                seg->translation = NULL;
                 *next_seg = seg;
                 next_seg = &seg->next;
                 count++;
@@ -499,6 +544,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             }
             seg->text = strndup(word_start, word_end - word_start);
             seg->ruby = ruby;
+            seg->translation = NULL;
             *next_seg = seg;
             next_seg = &seg->next;
             count++;
@@ -520,6 +566,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
         }
         seg->text = strdup(seg_start);
         seg->ruby = NULL;
+        seg->translation = NULL;
         *next_seg = seg;
         next_seg = &seg->next;
         count++;
@@ -533,6 +580,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
         }
         seg->text = strdup(text);
         seg->ruby = NULL;
+        seg->translation = NULL;
         head = seg;
         count = 1;
     }
