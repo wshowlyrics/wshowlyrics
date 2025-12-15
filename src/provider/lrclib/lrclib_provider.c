@@ -27,7 +27,8 @@ static int64_t extract_json_int(const char *json, const char *key, const char *s
 
 // Try search API when we have incomplete metadata (missing artist or album)
 // or when exact match fails. Select best match by duration.
-static bool lrclib_search_fallback(const char *title, const char *artist, const char *album,
+// Note: Album is intentionally excluded to avoid issues with incorrect album metadata.
+static bool lrclib_search_fallback(const char *title, const char *artist,
                                     int64_t duration_ms, struct lyrics_data *data) {
     CURL *curl = curl_easy_init();
     if (!curl) {
@@ -63,21 +64,13 @@ static bool lrclib_search_fallback(const char *title, const char *artist, const 
     if (artist && strlen(artist) > 0) {
         char *artist_encoded = url_encode(curl, artist);
         if (artist_encoded) {
-            offset += snprintf(request_url + offset, sizeof(request_url) - offset,
+            snprintf(request_url + offset, sizeof(request_url) - offset,
                              "&artist_name=%s", artist_encoded);
             curl_free(artist_encoded);
         }
     }
 
-    // Add album if available
-    if (album && strlen(album) > 0) {
-        char *album_encoded = url_encode(curl, album);
-        if (album_encoded) {
-            snprintf(request_url + offset, sizeof(request_url) - offset,
-                    "&album_name=%s", album_encoded);
-            curl_free(album_encoded);
-        }
-    }
+    // Album is intentionally excluded to avoid issues with incorrect album metadata
 
     log_info("lrclib search API request: %s", request_url);
 
@@ -229,7 +222,7 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     if (!has_artist || !has_album) {
         log_info("Missing metadata (artist: %s, album: %s), using search API",
                artist ? artist : "none", album ? album : "none");
-        return lrclib_search_fallback(title, artist, album, duration_ms, data);
+        return lrclib_search_fallback(title, artist, duration_ms, data);
     }
 
     CURL *curl = curl_easy_init();
@@ -292,7 +285,7 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
         curl_memory_buffer_free(&response);
         // Try search API as fallback
         log_info("Trying search API as fallback");
-        return lrclib_search_fallback(title, artist, album, duration_ms, data);
+        return lrclib_search_fallback(title, artist, duration_ms, data);
     }
 
     if (http_code != HTTP_OK) {
@@ -300,14 +293,14 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
         curl_memory_buffer_free(&response);
         // Try search API as fallback
         log_info("Trying search API as fallback");
-        return lrclib_search_fallback(title, artist, album, duration_ms, data);
+        return lrclib_search_fallback(title, artist, duration_ms, data);
     }
 
     // Parse JSON response
     if (!response.data) {
         log_info("Empty response, trying search API as fallback");
         curl_memory_buffer_free(&response);
-        return lrclib_search_fallback(title, artist, album, duration_ms, data);
+        return lrclib_search_fallback(title, artist, duration_ms, data);
     }
 
     // Extract syncedLyrics or plainLyrics
@@ -331,7 +324,7 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     // If exact match didn't return synced lyrics, try search API
     if (!success) {
         log_info("No synced lyrics in exact match, trying search API");
-        return lrclib_search_fallback(title, artist, album, duration_ms, data);
+        return lrclib_search_fallback(title, artist, duration_ms, data);
     }
 
     return success;
