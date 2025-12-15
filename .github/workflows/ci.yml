@@ -28,30 +28,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install dependencies
+    - name: Install base dependencies
       run: |
         pacman -Syu --noconfirm
-        pacman -S --noconfirm \
-          base-devel \
-          meson \
-          ninja \
-          wayland \
-          wayland-protocols \
-          cairo \
-          pango \
-          fontconfig \
-          curl \
-          libappindicator-gtk3 \
-          gdk-pixbuf2 \
-          openssl \
-          pkg-config
+        pacman -S --noconfirm base-devel git sudo
 
     - name: Build using makepkg (AUR method)
       run: |
         # Use makepkg to replicate exact AUR build process
         # This catches all compiler warnings that would fail in AUR
-        useradd -m builder
-        chown -R builder:builder .
 
         # Create a temporary PKGBUILD that matches AUR build process
         cat > PKGBUILD << 'EOF'
@@ -83,8 +68,15 @@ jobs:
         }
         EOF
 
-        # Run makepkg as non-root user with AUR's strict flags
-        su builder -c "makepkg -f --noconfirm"
+        # Create non-root user for makepkg
+        useradd -m builder
+        chown -R builder:builder .
+
+        # Allow builder to run pacman without password (for makepkg -s)
+        echo "builder ALL=(ALL) NOPASSWD: /usr/bin/pacman" >> /etc/sudoers
+
+        # Run makepkg with automatic dependency resolution
+        su builder -c "makepkg -sf --noconfirm"
 
     - name: Verify binary exists
       run: |
