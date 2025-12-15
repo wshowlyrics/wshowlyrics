@@ -10,7 +10,7 @@ on:
       - '**.c'
       - '**.h'
       - 'meson.build'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/*.yml'
   pull_request:
     branches:
       - master
