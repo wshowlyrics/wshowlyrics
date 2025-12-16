@@ -172,6 +172,12 @@ rate_limit = 10m
 # Default: 3
 max_retries = 3
 
+# Number of last translations to re-validate when resuming from partial cache
+# When a song changes before translation completes, the last N translations are
+# re-validated on next resume to ensure they were fully completed
+# Recommended range: 1-10, Default: 2
+revalidate_count = 2
+
 [behavior]
 # Reserved for future behavior settings
 # This section is currently not used but may be expanded in future releases

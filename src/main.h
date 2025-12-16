@@ -69,6 +69,7 @@ struct lyrics_state {
     struct lyrics_data lyrics;
     struct track_metadata current_track;
     struct lyrics_line *current_line;
+    int current_line_index; // 0-based index of current_line in lyrics.lines (-1 if no current line)
     struct word_segment *current_segment; // For karaoke highlighting (LRCX)
     struct lyrics_line *prev_line;  // Previous line for multi-line display
     struct lyrics_line *next_line;  // Next line for multi-line display

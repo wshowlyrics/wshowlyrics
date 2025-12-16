@@ -1,8 +1,10 @@
 #include "gemini_translator.h"
+#include "../common/translator_common.h"
 #include "../../constants.h"
 #include "../../user_experience/config/config.h"
 #include "../../utils/file/file_utils.h"
 #include "../../utils/lang_detect/lang_detect.h"
+#include "../../utils/render/render_common.h"
 #include <curl/curl.h>
 #include <json-c/json.h>
 #include <pthread.h>
@@ -84,61 +86,6 @@ static char* build_request_json(const char *text, const char *target_lang) {
 }
 
 /**
- * Extract the last non-empty line from text
- * This handles cases where AI includes the original text before the translation
- */
-static char* extract_last_line(const char *text) {
-    if (!text || !*text) {
-        return NULL;
-    }
-
-    // Find the last non-empty line
-    const char *last_line_start = text;
-    const char *p = text;
-
-    while (*p) {
-        if (*p == '\n') {
-            // Move to next character
-            const char *next = p + 1;
-            // Skip whitespace
-            while (*next && (*next == ' ' || *next == '\t' || *next == '\r')) {
-                next++;
-            }
-            // If we found non-whitespace and it's not another newline, this is a new line
-            if (*next && *next != '\n') {
-                last_line_start = next;
-            }
-        }
-        p++;
-    }
-
-    // Find end of last line
-    const char *end = last_line_start;
-    while (*end && *end != '\n' && *end != '\r') {
-        end++;
-    }
-
-    // Trim trailing whitespace
-    while (end > last_line_start && (*(end-1) == ' ' || *(end-1) == '\t')) {
-        end--;
-    }
-
-    size_t len = end - last_line_start;
-    if (len == 0) {
-        // No valid line found, return original text
-        return strdup(text);
-    }
-
-    char *result = malloc(len + 1);
-    if (!result) {
-        return NULL;
-    }
-    memcpy(result, last_line_start, len);
-    result[len] = '\0';
-    return result;
-}
-
-/**
  * Parse Gemini API response JSON
  * Response format: {"candidates": [{"content": {"parts": [{"text": "..."}]}}]}
  */
@@ -194,7 +141,7 @@ static char* parse_response_json(const char *json_str) {
 
     const char *text = json_object_get_string(text_obj);
     // Extract last line to handle cases where AI includes original text
-    char *result = extract_last_line(text);
+    char *result = translator_extract_last_line(text);
     json_object_put(root);
 
     return result;
@@ -323,140 +270,52 @@ static char* translate_single_line(const char *text, const char *target_lang,
 }
 
 /**
- * Save translation to cache
- */
-static bool save_translation_to_cache(const char *cache_path, struct lyrics_data *data,
-                                     const char *target_lang) {
-    json_object *root = json_object_new_object();
-    json_object *translations_array = json_object_new_array();
-
-    json_object_object_add(root, "target_language", json_object_new_string(target_lang));
-
-    struct lyrics_line *line = data->lines;
-    while (line) {
-        if (line->translation) {
-            json_object_array_add(translations_array, json_object_new_string(line->translation));
-        } else {
-            json_object_array_add(translations_array, json_object_new_string(""));
-        }
-        line = line->next;
-    }
-
-    json_object_object_add(root, "translations", translations_array);
-
-    const char *json_str = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
-
-    // Write to file
-    FILE *f = fopen(cache_path, "w");
-    bool success = false;
-    if (f) {
-        fprintf(f, "%s", json_str);
-        fclose(f);
-        success = true;
-    }
-
-    json_object_put(root);
-    return success;
-}
-
-/**
- * Load translation from cache
- */
-static bool load_translation_from_cache(const char *cache_path, struct lyrics_data *data) {
-    // Check if file exists
-    FILE *f = fopen(cache_path, "r");
-    if (!f) {
-        return false;
-    }
-
-    // Read file contents
-    fseek(f, 0, SEEK_END);
-    long file_size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    char *json_str = malloc(file_size + 1);
-    if (!json_str) {
-        fclose(f);
-        return false;
-    }
-
-    size_t read_size = fread(json_str, 1, file_size, f);
-    json_str[read_size] = '\0';
-    fclose(f);
-
-    // Parse JSON
-    json_object *root = json_tokener_parse(json_str);
-    free(json_str);
-
-    if (!root) {
-        return false;
-    }
-
-    json_object *translations_array;
-    if (!json_object_object_get_ex(root, "translations", &translations_array)) {
-        json_object_put(root);
-        return false;
-    }
-
-    int translation_count = json_object_array_length(translations_array);
-    struct lyrics_line *line = data->lines;
-    int index = 0;
-
-    while (line && index < translation_count) {
-        json_object *translation_obj = json_object_array_get_idx(translations_array, index);
-        const char *translation = json_object_get_string(translation_obj);
-
-        if (translation && strlen(translation) > 0) {
-            free(line->translation);
-            line->translation = strdup(translation);
-        }
-
-        line = line->next;
-        index++;
-    }
-
-    json_object_put(root);
-    return true;
-}
-
-/**
  * Async translation thread function
  */
 static void* translate_lyrics_async(void *arg) {
     struct translation_thread_args *args = (struct translation_thread_args *)arg;
     struct lyrics_data *data = args->data;
 
-    // Try loading from cache first
-    if (load_translation_from_cache(args->cache_path, data)) {
-        log_success("gemini_translator: Loaded translation from cache");
-        data->translation_in_progress = false;
-        free(args->target_lang);
-        free(args->api_key);
-        free(args->model_name);
-        free(args->cache_path);
-        free(args);
-        return NULL;
-    }
-
     // Count translatable lines
-    int translatable_count = 0;
-    struct lyrics_line *line = data->lines;
-    while (line) {
-        if (line->text && strlen(line->text) > 0) {
-            translatable_count++;
-        }
-        line = line->next;
-    }
-
+    int translatable_count = translator_count_translatable_lines(data);
     data->translation_total = translatable_count;
-    data->translation_current = 0;
     data->translation_in_progress = true;
 
-    log_info("gemini_translator: Starting translation of %d lines", translatable_count);
+    // Try loading from cache first
+    int already_translated = 0;
+    bool cache_loaded = translator_load_from_cache(args->cache_path, data);
 
-    // Translate each line
-    line = data->lines;
-    int current = 0;
+    if (cache_loaded) {
+        if (translator_check_cache_complete(data, translatable_count, &already_translated)) {
+            // Cache is complete
+            log_success("gemini_translator: Loaded complete translation from cache (%d lines)",
+                       already_translated);
+            data->translation_current = already_translated;
+            data->translation_in_progress = false;
+            free(args->target_lang);
+            free(args->api_key);
+            free(args->model_name);
+            free(args->cache_path);
+            free(args);
+            return NULL;
+        } else {
+            // Partial cache - continue translation
+            // Re-validate last N lines to ensure they were fully translated
+            struct config *cfg = config_get();
+            int revalidate_count = cfg->translation.revalidate_count;
+            translator_prepare_cache_resume(data, &already_translated, revalidate_count);
+            log_info("gemini_translator: Loaded partial cache (%d/%d), re-validating last %d lines",
+                    already_translated, translatable_count, revalidate_count);
+            data->translation_current = already_translated;
+        }
+    } else {
+        data->translation_current = 0;
+        log_info("gemini_translator: Starting translation of %d lines", translatable_count);
+    }
+
+    // Translate each line (skip already translated lines from cache)
+    struct lyrics_line *line = data->lines;
+    int current = already_translated;
     while (line) {
         // Check if translation should be cancelled
         if (data->translation_should_cancel) {
@@ -466,17 +325,31 @@ static void* translate_lyrics_async(void *arg) {
         }
 
         if (line->text && strlen(line->text) > 0) {
+            // Skip if already translated from cache
+            if (line->translation && strlen(line->translation) > 0) {
+                line = line->next;
+                continue;
+            }
+
             current++;
             data->translation_current = current;
 
-            char *translation = translate_single_line(line->text, args->target_lang,
+            // Strip ruby notation to reduce token usage
+            char *stripped = strip_ruby_notation(line->text);
+            if (!stripped || stripped[0] == '\0') {
+                if (stripped) free(stripped);
+                line = line->next;
+                continue;
+            }
+
+            char *translation = translate_single_line(stripped, args->target_lang,
                                                      args->api_key, args->model_name);
             if (translation) {
                 // Language validation: warn if original and translation are in same language
-                if (is_same_language(line->text, translation)) {
+                if (is_same_language(stripped, translation)) {
                     log_warn("gemini_translator: Possible translation failure - same language detected");
                     log_warn("  Original: [%.30s...] → Translation: [%.30s...]",
-                             line->text, translation);
+                             stripped, translation);
                     // Translation is still displayed - user decides
                 }
 
@@ -488,6 +361,8 @@ static void* translate_lyrics_async(void *arg) {
                 log_warn("gemini_translator: [%d/%d] Translation failed",
                        current, translatable_count);
             }
+
+            free(stripped);
 
             // Rate limiting
             if (line->next) {
@@ -503,13 +378,18 @@ static void* translate_lyrics_async(void *arg) {
         line = line->next;
     }
 
-    // Save to cache only if translation is complete
+    // Save to cache if translation is complete or at least 75% done
+    float completion_ratio = (float)data->translation_current / (float)data->translation_total;
     if (data->translation_current == data->translation_total) {
-        save_translation_to_cache(args->cache_path, data, args->target_lang);
+        translator_save_to_cache(args->cache_path, data, args->target_lang);
         log_success("gemini_translator: Translation completed");
+    } else if (completion_ratio >= 0.75f) {
+        translator_save_to_cache(args->cache_path, data, args->target_lang);
+        log_warn("gemini_translator: Translation incomplete but cached (%d/%d, %.0f%%)",
+                 data->translation_current, data->translation_total, completion_ratio * 100);
     } else {
-        log_warn("gemini_translator: Translation incomplete (%d/%d), deleting partial cache",
-                 data->translation_current, data->translation_total);
+        log_warn("gemini_translator: Translation incomplete (%d/%d, %.0f%%), not cached (threshold: 75%%)",
+                 data->translation_current, data->translation_total, completion_ratio * 100);
         // Delete incomplete cache file if it exists
         unlink(args->cache_path);
     }
@@ -547,6 +427,11 @@ void gemini_translator_cleanup(void) {
 
 bool gemini_translate_lyrics(struct lyrics_data *data) {
     if (!data || !curl_handle) {
+        return false;
+    }
+
+    // Check if lyrics should be translated (LRC only)
+    if (!translator_should_translate(data)) {
         return false;
     }
 

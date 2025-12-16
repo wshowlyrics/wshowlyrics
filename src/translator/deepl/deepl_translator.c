@@ -1,4 +1,5 @@
 #include "deepl_translator.h"
+#include "../common/translator_common.h"
 #include "../../constants.h"
 #include "../../user_experience/config/config.h"
 #include "../../utils/curl/curl_utils.h"
@@ -238,221 +239,6 @@ static bool parse_and_populate_translations(struct curl_memory_buffer *response,
 }
 #endif
 
-// Save translations to cache file (JSON format)
-static bool save_translation_to_cache(const char *cache_path, struct lyrics_data *data,
-                                       const char *target_lang) {
-    if (!cache_path || !data || !target_lang) return false;
-
-    FILE *f = fopen(cache_path, "w");
-    if (!f) {
-        log_warn("Failed to create cache file: %s", cache_path);
-        return false;
-    }
-
-    // Write JSON header
-    fprintf(f, "{\"target_language\":\"%s\",\"translations\":[", target_lang);
-
-    // Write all line translations
-    struct lyrics_line *line = data->lines;
-    bool first = true;
-
-    while (line) {
-        if (line->ruby_segments && line->translation) {
-            if (!first) fprintf(f, ",");
-
-            // Escape translation text for JSON
-            char *escaped = json_escape_string(line->translation);
-            if (escaped) {
-                fprintf(f, "\"%s\"", escaped);
-                free(escaped);
-                first = false;
-            }
-        }
-        line = line->next;
-    }
-
-    fprintf(f, "]}\n");
-    fclose(f);
-
-    log_info("Saved translation cache: %s", cache_path);
-    return true;
-}
-
-// Load translations from cache file (JSON format)
-static bool load_translation_from_cache(const char *cache_path, struct lyrics_data *data) {
-    if (!cache_path || !data) return false;
-
-    // Check if cache file exists
-    struct stat st;
-    if (stat(cache_path, &st) != 0) {
-        return false;  // Cache doesn't exist
-    }
-
-    FILE *f = fopen(cache_path, "r");
-    if (!f) return false;
-
-    // Read entire file into buffer
-    char *buffer = malloc(st.st_size + 1);
-    if (!buffer) {
-        fclose(f);
-        return false;
-    }
-
-    size_t read_size = fread(buffer, 1, st.st_size, f);
-    fclose(f);
-
-    if (read_size != (size_t)st.st_size) {
-        free(buffer);
-        return false;
-    }
-    buffer[read_size] = '\0';
-
-    // Find translations array start
-    char *translations_start = strstr(buffer, "\"translations\":");
-    if (!translations_start) {
-        log_warn("Invalid cache file format: %s", cache_path);
-        free(buffer);
-        return false;
-    }
-
-    // Find the opening bracket of the translations array
-    char *array_start = strchr(translations_start, '[');
-    if (!array_start) {
-        log_warn("Invalid cache file format: no array found");
-        free(buffer);
-        return false;
-    }
-
-    // Populate translation fields from cache
-    struct lyrics_line *line = data->lines;
-    char *search_pos = array_start + 1;  // Start after '['
-    int loaded_count = 0;
-
-    while (line) {
-        if (line->ruby_segments && line->text && line->text[0] != '\0') {
-            // Check if line would be included in translation request
-            // (same logic as build_json_request)
-            char *stripped = strip_ruby_notation(line->text);
-            bool should_load = stripped && stripped[0] != '\0';
-            if (stripped) free(stripped);
-
-            if (should_load) {
-                // Find next string in array
-                char *str_start = strchr(search_pos, '"');
-                if (!str_start) break;
-                str_start++;  // Skip opening quote
-
-                char *str_end = str_start;
-                while (*str_end && *str_end != '"') {
-                    if (*str_end == '\\' && *(str_end + 1)) {
-                        str_end += 2;  // Skip escaped character
-                    } else {
-                        str_end++;
-                    }
-                }
-
-                if (*str_end != '"') break;
-
-                size_t len = str_end - str_start;
-                char *translation = malloc(len + 1);
-                if (translation) {
-                    strncpy(translation, str_start, len);
-                    translation[len] = '\0';
-
-                    /* Unescape JSON string (simple version) */
-                    /* Handle: \n, \t, \r, \", \\ */
-                    char *src = translation;
-                    char *dst = translation;
-                    while (*src) {
-                        if (*src == '\\' && *(src + 1)) {
-                            src++;
-                            switch (*src) {
-                                case 'n': *dst++ = '\n'; break;
-                                case 't': *dst++ = '\t'; break;
-                                case 'r': *dst++ = '\r'; break;
-                                case '"': *dst++ = '"'; break;
-                                case '\\': *dst++ = '\\'; break;
-                                default: *dst++ = *src; break;
-                            }
-                            src++;
-                        } else {
-                            *dst++ = *src++;
-                        }
-                    }
-                    *dst = '\0';
-
-                    line->translation = translation;
-                    loaded_count++;
-                }
-
-                search_pos = str_end + 1;
-            }
-        }
-        line = line->next;
-    }
-
-    free(buffer);
-    if (loaded_count > 0) {
-        log_info("Loaded %d translations from cache", loaded_count);
-    }
-    return true;
-}
-
-/**
- * Extract the last non-empty line from text
- * This handles cases where AI includes the original text before the translation
- */
-static char* extract_last_line(const char *text) {
-    if (!text || !*text) {
-        return NULL;
-    }
-
-    // Find the last non-empty line
-    const char *last_line_start = text;
-    const char *p = text;
-
-    while (*p) {
-        if (*p == '\n') {
-            // Move to next character
-            const char *next = p + 1;
-            // Skip whitespace
-            while (*next && (*next == ' ' || *next == '\t' || *next == '\r')) {
-                next++;
-            }
-            // If we found non-whitespace and it's not another newline, this is a new line
-            if (*next && *next != '\n') {
-                last_line_start = next;
-            }
-        }
-        p++;
-    }
-
-    // Find end of last line
-    const char *end = last_line_start;
-    while (*end && *end != '\n' && *end != '\r') {
-        end++;
-    }
-
-    // Trim trailing whitespace
-    while (end > last_line_start && (*(end-1) == ' ' || *(end-1) == '\t')) {
-        end--;
-    }
-
-    size_t len = end - last_line_start;
-    if (len == 0) {
-        // No valid line found, return original text
-        return strdup(text);
-    }
-
-    char *result = malloc(len + 1);
-    if (!result) {
-        return NULL;
-    }
-    memcpy(result, last_line_start, len);
-    result[len] = '\0';
-    return result;
-}
-
 // Translate a single line (for individual requests)
 static char* translate_single_line(const char *text, const char *target_lang, const char *api_key) {
     if (!text || !target_lang || !api_key) return NULL;
@@ -514,7 +300,7 @@ static char* translate_single_line(const char *text, const char *target_lang, co
             // Success - parse response
             char *raw_translation = json_extract_string_from(response.data, "text", response.data);
             if (raw_translation) {
-                translation = extract_last_line(raw_translation);
+                translation = translator_extract_last_line(raw_translation);
                 free(raw_translation);
             }
             curl_memory_buffer_free(&response);
@@ -555,34 +341,59 @@ static void* translate_lyrics_async(void *arg) {
     const char *cache_path = args->cache_path;
 
     // Count translatable lines
-    int total = 0;
-    struct lyrics_line *line = data->lines;
-    while (line) {
-        if (line->ruby_segments && line->text && line->text[0] != '\0') {
-            char *stripped = strip_ruby_notation(line->text);
-            if (stripped && stripped[0] != '\0') {
-                total++;
-            }
-            if (stripped) free(stripped);
-        }
-        line = line->next;
-    }
-
-    data->translation_total = total;
+    int translatable_count = translator_count_translatable_lines(data);
+    data->translation_total = translatable_count;
     data->translation_in_progress = true;
 
-    // Translate each line individually
-    int current = 0;
-    line = data->lines;
+    // Try loading from cache first
+    int already_translated = 0;
+    bool cache_loaded = translator_load_from_cache(cache_path, data);
+
+    if (cache_loaded) {
+        if (translator_check_cache_complete(data, translatable_count, &already_translated)) {
+            // Cache is complete
+            log_success("deepl_translator: Loaded complete translation from cache (%d lines)",
+                       already_translated);
+            data->translation_current = already_translated;
+            data->translation_in_progress = false;
+            free(args->target_lang);
+            free(args->api_key);
+            free(args->cache_path);
+            free(args);
+            return NULL;
+        } else {
+            // Partial cache - continue translation
+            // Re-validate last N lines to ensure they were fully translated
+            struct config *cfg = config_get();
+            int revalidate_count = cfg->translation.revalidate_count;
+            translator_prepare_cache_resume(data, &already_translated, revalidate_count);
+            log_info("deepl_translator: Loaded partial cache (%d/%d), re-validating last %d lines",
+                    already_translated, translatable_count, revalidate_count);
+            data->translation_current = already_translated;
+        }
+    } else {
+        data->translation_current = 0;
+        log_info("deepl_translator: Starting translation of %d lines", translatable_count);
+    }
+
+    // Translate each line (skip already translated lines from cache)
+    struct lyrics_line *line = data->lines;
+    int current = already_translated;
     while (line) {
         // Check if translation should be cancelled
         if (data->translation_should_cancel) {
-            log_info("Translation cancelled (%d/%d completed)",
-                     current, total);
+            log_info("deepl_translator: Translation cancelled (%d/%d completed)",
+                     current, translatable_count);
             break;
         }
 
-        if (line->ruby_segments && line->text && line->text[0] != '\0') {
+        if (line->text && strlen(line->text) > 0) {
+            // Skip if already translated from cache
+            if (line->translation && strlen(line->translation) > 0) {
+                line = line->next;
+                continue;
+            }
+
             // Strip ruby notation
             char *stripped = strip_ruby_notation(line->text);
             if (!stripped || stripped[0] == '\0') {
@@ -607,12 +418,17 @@ static void* translate_lyrics_async(void *arg) {
                 }
 
                 line->translation = translation;
+                log_info("deepl_translator: [%d/%d] Translated: %s",
+                       current, translatable_count, translation);
+            } else {
+                log_warn("deepl_translator: [%d/%d] Translation failed",
+                       current, translatable_count);
             }
 
             free(stripped);
 
             // Rate limit delay
-            if (current < total) {
+            if (line->next) {
                 struct timespec delay = {
                     .tv_sec = 0,
                     .tv_nsec = RATE_LIMIT_DELAY_MS * 1000000L
@@ -623,13 +439,18 @@ static void* translate_lyrics_async(void *arg) {
         line = line->next;
     }
 
-    // Save to cache only if translation is complete
+    // Save to cache if translation is complete or at least 75% done
+    float completion_ratio = (float)data->translation_current / (float)data->translation_total;
     if (data->translation_current == data->translation_total) {
-        save_translation_to_cache(cache_path, data, target_lang);
-        log_success("Translation completed");
+        translator_save_to_cache(cache_path, data, target_lang);
+        log_success("deepl_translator: Translation completed");
+    } else if (completion_ratio >= 0.75f) {
+        translator_save_to_cache(cache_path, data, target_lang);
+        log_warn("deepl_translator: Translation incomplete but cached (%d/%d, %.0f%%)",
+                 data->translation_current, data->translation_total, completion_ratio * 100);
     } else {
-        log_warn("Translation incomplete (%d/%d), deleting partial cache",
-                 data->translation_current, data->translation_total);
+        log_warn("deepl_translator: Translation incomplete (%d/%d, %.0f%%), not cached (threshold: 75%%)",
+                 data->translation_current, data->translation_total, completion_ratio * 100);
         // Delete incomplete cache file if it exists
         unlink(cache_path);
     }
@@ -768,42 +589,19 @@ bool deepl_translate_lyrics(struct lyrics_data *data) {
         return false;
     }
 
-    // Check if lyrics format is LRC (only translate LRC files)
-    // ruby_segments are used by LRC and SRT, but we need to exclude SRT/VTT
-    if (!data->lines->ruby_segments) {
-        return false;  // Not LRC format
+    // Check if lyrics should be translated (LRC only)
+    if (!translator_should_translate(data)) {
+        return false;
     }
 
-    // Check for SRT/VTT by file extension (exclude them)
-    if (data->source_file_path) {
-        const char *ext = strrchr(data->source_file_path, '.');
-        if (ext && (strcasecmp(ext, ".srt") == 0 ||
-                    strcasecmp(ext, ".vtt") == 0 ||
-                    strcasecmp(ext, ".lrcx") == 0)) {
-            return false;  // SRT/VTT/LRCX not supported
-        }
-    }
-
-    // Initialize translation progress
-    data->translation_in_progress = false;
-    data->translation_current = 0;
-    data->translation_total = 0;
-
-    // Check cache first
+    // Build cache path
     char cache_path[PATH_BUFFER_SIZE];
     if (build_translation_cache_path(cache_path, sizeof(cache_path),
                                       data->md5_checksum,
-                                      cfg->translation.target_language) > 0) {
-        if (load_translation_from_cache(cache_path, data)) {
-            log_info("Loaded translation from cache: %s", cache_path);
-            return true;
-        }
-    } else {
+                                      cfg->translation.target_language) <= 0) {
+        log_warn("deepl_translator: Failed to build cache path");
         cache_path[0] = '\0';  // Mark as invalid
     }
-
-    // Cache miss - start async translation
-    log_info("Starting async translation to %s...", cfg->translation.target_language);
 
     // Prepare thread args
     struct translation_thread_args *args = malloc(sizeof(struct translation_thread_args));

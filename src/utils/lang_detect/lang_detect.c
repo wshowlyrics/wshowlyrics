@@ -109,6 +109,63 @@ static char* detect_via_exttextcat(const char *text, int max_len) {
 }
 #endif
 
+/**
+ * Remove common punctuation and special characters that might confuse language detection
+ * Returns newly allocated string that must be freed by caller
+ */
+static char* strip_punctuation(const char *text) {
+	if (!text) {
+		return NULL;
+	}
+
+	size_t len = strlen(text);
+	char *result = malloc(len + 1);
+	if (!result) {
+		return NULL;
+	}
+
+	size_t j = 0;
+	for (size_t i = 0; i < len; i++) {
+		unsigned char c = (unsigned char)text[i];
+
+		// Skip ASCII punctuation: !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
+		if ((c >= '!' && c <= '/') || (c >= ':' && c <= '@') ||
+		    (c >= '[' && c <= '`') || (c >= '{' && c <= '~')) {
+			continue;
+		}
+
+		// Skip CJK punctuation (U+3000-U+303F)
+		// UTF-8: E3 80 [80-BF] (3 bytes)
+		if (i + 2 < len &&
+		    (unsigned char)text[i] == 0xE3 &&
+		    (unsigned char)text[i+1] == 0x80) {
+			i += 2; // Skip all 3 bytes
+			continue;
+		}
+
+		// Skip CJK punctuation (U+FF00-U+FFEF) - Fullwidth forms
+		// UTF-8: EF BC [80-BF] or EF BD [80-AF] (3 bytes)
+		if (i + 2 < len &&
+		    (unsigned char)text[i] == 0xEF &&
+		    ((unsigned char)text[i+1] == 0xBC || (unsigned char)text[i+1] == 0xBD)) {
+			i += 2; // Skip all 3 bytes
+			continue;
+		}
+
+		// Keep everything else (alphanumeric, spaces, and CJK characters)
+		result[j++] = text[i];
+	}
+	result[j] = '\0';
+
+	// If result is empty or too short, return NULL
+	if (j < 3) {
+		free(result);
+		return NULL;
+	}
+
+	return result;
+}
+
 char* detect_language(const char *text, int max_len) {
 	if (!text || strlen(text) == 0) {
 		return NULL;
@@ -119,8 +176,16 @@ char* detect_language(const char *text, int max_len) {
 	}
 
 #ifdef HAVE_LIBEXTTEXTCAT
+	// Strip punctuation to improve detection accuracy
+	char *stripped = strip_punctuation(text);
+	if (!stripped) {
+		return NULL;
+	}
+
 	// Use libexttextcat for language detection
-	return detect_via_exttextcat(text, max_len);
+	char *result = detect_via_exttextcat(stripped, max_len);
+	free(stripped);
+	return result;
 #else
 	return NULL;
 #endif

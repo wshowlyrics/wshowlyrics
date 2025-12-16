@@ -276,6 +276,19 @@ void lyrics_manager_update_current_line(struct lyrics_state *state) {
         state->current_line = display_line;
         state->current_segment = NULL; // Reset word segment when line changes
 
+        // Calculate current line index
+        if (display_line) {
+            int index = 0;
+            struct lyrics_line *line = state->lyrics.lines;
+            while (line && line != display_line) {
+                index++;
+                line = line->next;
+            }
+            state->current_line_index = line ? index : -1;
+        } else {
+            state->current_line_index = -1;
+        }
+
         // Update prev/next lines for multi-line display (LRCX only)
         if (lyrics_manager_is_format(state, ".lrcx") && g_config.display.enable_multiline_lrcx) {
             // For instrumental breaks (empty lines), use new_line instead of display_line

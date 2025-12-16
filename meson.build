@@ -80,6 +80,7 @@ executable(
 		'src/provider/lyrics/lyrics_provider.c',
 		'src/provider/lrclib/lrclib_provider.c',
 		'src/provider/itunes/itunes_artwork.c',
+		'src/translator/common/translator_common.c',
 		'src/translator/deepl/deepl_translator.c',
 		'src/translator/gemini/gemini_translator.c',
 		'src/translator/claude/claude_translator.c',

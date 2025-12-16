@@ -117,6 +117,7 @@ int main(int argc, char *argv[]) {
 
     int margin = g_config.display.margin;
     struct lyrics_state state = { 0 };
+    state.current_line_index = -1; // No current line initially
 
     // Store config file path and checksum for hot reload
     state.config_file_path = config_loaded_path;  // Transfer ownership

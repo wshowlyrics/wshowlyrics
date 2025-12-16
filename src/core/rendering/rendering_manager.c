@@ -115,12 +115,12 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                                                      state->current_line->translation,
                                                      &w, &h);
             } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->lyrics.translation_in_progress) {
-                // Translation in progress - show progress
+                // Translation in progress - show progress (N/M where M = current line index)
                 char progress_text[128];
                 snprintf(progress_text, sizeof(progress_text),
                         "⏳ Translating... %d/%d",
                         state->lyrics.translation_current,
-                        state->lyrics.translation_total);
+                        state->current_line_index + 1); // 1-based index
                 render_ruby_segments_with_translation(cairo, state->font, scale,
                                                      state->current_line->ruby_segments,
                                                      state->foreground,

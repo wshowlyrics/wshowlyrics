@@ -41,6 +41,7 @@ struct translation_config {
     double translation_opacity;  // Translation text opacity (0.0 - 1.0, default: 0.7)
     int rate_limit_ms;           // Rate limit delay in milliseconds (default: 6000 for Gemini, 500 for Claude, 200 for DeepL)
     int max_retries;             // Maximum retry attempts for rate limit errors (default: 3)
+    int revalidate_count;        // Number of last translations to re-validate on partial cache resume (1-10, default: 2)
 };
 
 // Main configuration
