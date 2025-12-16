@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: aur-release
+  cancel-in-progress: false
+
 jobs:
   aur-release:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
