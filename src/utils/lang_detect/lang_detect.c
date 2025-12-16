@@ -109,6 +109,7 @@ static char* detect_via_exttextcat(const char *text, int max_len) {
 }
 #endif
 
+#ifdef HAVE_LIBEXTTEXTCAT
 /**
  * Remove common punctuation and special characters that might confuse language detection
  * Returns newly allocated string that must be freed by caller
@@ -165,6 +166,7 @@ static char* strip_punctuation(const char *text) {
 
 	return result;
 }
+#endif
 
 char* detect_language(const char *text, int max_len) {
 	if (!text || strlen(text) == 0) {
