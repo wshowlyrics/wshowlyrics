@@ -87,6 +87,61 @@ static char* build_request_json(const char *text, const char *target_lang, const
 }
 
 /**
+ * Extract the last non-empty line from text
+ * This handles cases where AI includes the original text before the translation
+ */
+static char* extract_last_line(const char *text) {
+    if (!text || !*text) {
+        return NULL;
+    }
+
+    // Find the last non-empty line
+    const char *last_line_start = text;
+    const char *p = text;
+
+    while (*p) {
+        if (*p == '\n') {
+            // Move to next character
+            const char *next = p + 1;
+            // Skip whitespace
+            while (*next && (*next == ' ' || *next == '\t' || *next == '\r')) {
+                next++;
+            }
+            // If we found non-whitespace and it's not another newline, this is a new line
+            if (*next && *next != '\n') {
+                last_line_start = next;
+            }
+        }
+        p++;
+    }
+
+    // Find end of last line
+    const char *end = last_line_start;
+    while (*end && *end != '\n' && *end != '\r') {
+        end++;
+    }
+
+    // Trim trailing whitespace
+    while (end > last_line_start && (*(end-1) == ' ' || *(end-1) == '\t')) {
+        end--;
+    }
+
+    size_t len = end - last_line_start;
+    if (len == 0) {
+        // No valid line found, return original text
+        return strdup(text);
+    }
+
+    char *result = malloc(len + 1);
+    if (!result) {
+        return NULL;
+    }
+    memcpy(result, last_line_start, len);
+    result[len] = '\0';
+    return result;
+}
+
+/**
  * Parse Claude API response JSON
  * Response format: {"content": [{"text": "..."}]}
  */
@@ -120,7 +175,8 @@ static char* parse_response_json(const char *json_str) {
     }
 
     const char *text = json_object_get_string(text_obj);
-    char *result = strdup(text);
+    // Extract last line to handle cases where AI includes original text
+    char *result = extract_last_line(text);
     json_object_put(root);
 
     return result;
