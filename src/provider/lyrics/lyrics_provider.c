@@ -5,6 +5,8 @@
 #include "../../parser/srt/srt_parser.h"
 #include "../../user_experience/config/config.h"
 #include "../../translator/deepl/deepl_translator.h"
+#include "../../translator/gemini/gemini_translator.h"
+#include "../../translator/claude/claude_translator.h"
 #include "../../constants.h"
 #include "../../utils/file/file_utils.h"
 #include <stdio.h>
@@ -15,6 +17,35 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <libgen.h>
+
+// ============================================================================
+// Translation helper
+// ============================================================================
+
+// Translate lyrics using the configured translation provider
+static void translate_lyrics_with_provider(struct lyrics_data *data) {
+    if (!data || !g_config.translation.provider) {
+        return;
+    }
+
+    const char *provider = g_config.translation.provider;
+
+    // Skip if translation is disabled
+    if (strcmp(provider, "false") == 0) {
+        return;
+    }
+
+    // Call appropriate translator based on provider
+    if (strcmp(provider, "deepl") == 0) {
+        deepl_translate_lyrics(data);
+    } else if (strncmp(provider, "gemini-", 7) == 0 || strncmp(provider, "gemini", 6) == 0) {
+        gemini_translate_lyrics(data);
+    } else if (strncmp(provider, "claude-", 7) == 0 || strncmp(provider, "claude", 6) == 0) {
+        claude_translate_lyrics(data);
+    } else {
+        log_warn("Unknown translation provider: %s", provider);
+    }
+}
 
 // ============================================================================
 // Local file provider
@@ -551,8 +582,8 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                                  track->url, duration_ms, data)) {
             log_success("Found lyrics via %s provider", providers[i]->name);
 
-            // Try to translate lyrics if DeepL is enabled
-            deepl_translate_lyrics(data);
+            // Try to translate lyrics with configured provider
+            translate_lyrics_with_provider(data);
 
             // If lyrics came from lrclib, cache them
             if (strcmp(providers[i]->name, "lrclib") == 0 && has_hash) {
@@ -598,8 +629,8 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                     if (lrc_parse_file(cache_path, data)) {
                         log_success("Found lyrics via cache");
 
-                        // Try to translate lyrics if DeepL is enabled
-                        deepl_translate_lyrics(data);
+                        // Try to translate lyrics with configured provider
+                        translate_lyrics_with_provider(data);
 
                         return true;
                     } else {

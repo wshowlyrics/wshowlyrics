@@ -546,7 +546,7 @@ static bool perform_api_translation(struct lyrics_data *data, const char *target
     }
 
     // Get API endpoint
-    const char *endpoint = get_deepl_endpoint(cfg->deepl.api_key);
+    const char *endpoint = get_deepl_endpoint(cfg->translation.api_key);
     if (!endpoint) {
         log_error("Invalid API key format");
         free(request_body);
@@ -571,7 +571,7 @@ static bool perform_api_translation(struct lyrics_data *data, const char *target
     // Build Authorization header
     char auth_header[512];
     snprintf(auth_header, sizeof(auth_header),
-             "Authorization: DeepL-Auth-Key %s", cfg->deepl.api_key);
+             "Authorization: DeepL-Auth-Key %s", cfg->translation.api_key);
 
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Content-Type: application/json");
@@ -642,14 +642,9 @@ static bool perform_api_translation(struct lyrics_data *data, const char *target
 bool deepl_translate_lyrics(struct lyrics_data *data) {
     struct config *cfg = config_get();
 
-    // Check if translation is enabled
-    if (!cfg->deepl.enable_deepl) {
-        return false;
-    }
-
     // Check if API key is configured
-    if (!cfg->deepl.api_key || cfg->deepl.api_key[0] == '\0') {
-        log_warn("DeepL translation enabled but API key not configured");
+    if (!cfg->translation.api_key || cfg->translation.api_key[0] == '\0') {
+        log_warn("DeepL translation: API key not configured");
         return false;
     }
 
@@ -683,7 +678,7 @@ bool deepl_translate_lyrics(struct lyrics_data *data) {
     char cache_path[PATH_BUFFER_SIZE];
     if (build_translation_cache_path(cache_path, sizeof(cache_path),
                                       data->md5_checksum,
-                                      cfg->deepl.target_language) > 0) {
+                                      cfg->translation.target_language) > 0) {
         if (load_translation_from_cache(cache_path, data)) {
             log_info("Loaded translation from cache: %s", cache_path);
             return true;
@@ -693,7 +688,7 @@ bool deepl_translate_lyrics(struct lyrics_data *data) {
     }
 
     // Cache miss - start async translation
-    log_info("Starting async translation to %s...", cfg->deepl.target_language);
+    log_info("Starting async translation to %s...", cfg->translation.target_language);
 
     // Prepare thread args
     struct translation_thread_args *args = malloc(sizeof(struct translation_thread_args));
@@ -703,8 +698,8 @@ bool deepl_translate_lyrics(struct lyrics_data *data) {
     }
 
     args->data = data;
-    args->target_lang = strdup(cfg->deepl.target_language);
-    args->api_key = strdup(cfg->deepl.api_key);
+    args->target_lang = strdup(cfg->translation.target_language);
+    args->api_key = strdup(cfg->translation.api_key);
     args->cache_path = cache_path[0] != '\0' ? strdup(cache_path) : strdup("");
 
     if (!args->target_lang || !args->api_key || !args->cache_path) {

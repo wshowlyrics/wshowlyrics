@@ -32,20 +32,22 @@ struct lyrics_config {
     int notification_timeout;   // Notification timeout in milliseconds (default: 5000)
 };
 
-// DeepL translation settings
-struct deepl_config {
-    bool enable_deepl;           // Enable DeepL translation feature
-    char *api_key;               // DeepL API key (Free keys end with :fx)
+// Translation settings (multi-provider support)
+struct translation_config {
+    char *provider;              // Provider and model: "deepl", "gemini-2.5-flash", "claude-sonnet-4-5", "false"
+    char *api_key;               // API key for the selected provider
     char *target_language;       // Target language code (e.g., EN, KO, JA, ZH)
     char *translation_display;   // Display mode: "both" or "translation_only"
     double translation_opacity;  // Translation text opacity (0.0 - 1.0, default: 0.7)
+    int rate_limit_ms;           // Rate limit delay in milliseconds (default: 6000 for Gemini, 500 for Claude, 200 for DeepL)
+    int max_retries;             // Maximum retry attempts for rate limit errors (default: 3)
 };
 
 // Main configuration
 struct config {
     struct display_config display;
     struct lyrics_config lyrics;
-    struct deepl_config deepl;
+    struct translation_config translation;
 };
 
 // Global configuration instance (prefer using config_get() instead of direct access)

@@ -73,12 +73,14 @@ void config_init_defaults(struct config *cfg) {
     cfg->lyrics.enable_notifications = true;  // Enabled by default
     cfg->lyrics.notification_timeout = 5000;  // 5 seconds by default
 
-    // DeepL translation defaults
-    cfg->deepl.enable_deepl = false;  // Disabled by default
-    cfg->deepl.api_key = strdup("");  // No API key by default
-    cfg->deepl.target_language = strdup("EN");  // English by default
-    cfg->deepl.translation_display = strdup("both");  // Show both original and translation
-    cfg->deepl.translation_opacity = 0.7;  // 70% opacity by default
+    // Translation defaults (multi-provider support)
+    cfg->translation.provider = strdup("false");  // Disabled by default
+    cfg->translation.api_key = strdup("");  // No API key by default
+    cfg->translation.target_language = strdup("EN");  // English by default
+    cfg->translation.translation_display = strdup("both");  // Show both original and translation
+    cfg->translation.translation_opacity = 0.7;  // 70% opacity by default
+    cfg->translation.rate_limit_ms = 6000;  // 6 seconds by default (suitable for Gemini free tier)
+    cfg->translation.max_retries = 3;  // Maximum 3 retry attempts
 }
 
 void config_free(struct config *cfg) {
@@ -88,9 +90,10 @@ void config_free(struct config *cfg) {
     free(cfg->lyrics.search_dirs);
     free(cfg->lyrics.extensions);
     free(cfg->lyrics.preferred_players);
-    free(cfg->deepl.api_key);
-    free(cfg->deepl.target_language);
-    free(cfg->deepl.translation_display);
+    free(cfg->translation.provider);
+    free(cfg->translation.api_key);
+    free(cfg->translation.target_language);
+    free(cfg->translation.translation_display);
     memset(cfg, 0, sizeof(*cfg));
 }
 
@@ -227,6 +230,13 @@ bool config_load(struct config *cfg, const char *path) {
         char *key = config_trim_whitespace(trimmed);
         char *value = config_trim_whitespace(equals + 1);
 
+        // Remove inline comments (# after value)
+        char *comment = strchr(value, '#');
+        if (comment) {
+            *comment = '\0';
+            value = config_trim_whitespace(value);
+        }
+
         // Parse based on section
         if (strcmp(section, "display") == 0) {
             if (strcmp(key, "font_family") == 0) {
@@ -270,23 +280,94 @@ bool config_load(struct config *cfg, const char *path) {
             } else if (strcmp(key, "notification_timeout") == 0) {
                 cfg->lyrics.notification_timeout = atoi(value);
             }
-        } else if (strcmp(section, "deepl") == 0) {
-            if (strcmp(key, "enable_deepl") == 0) {
-                cfg->deepl.enable_deepl = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(section, "translation") == 0) {
+            if (strcmp(key, "provider") == 0) {
+                free(cfg->translation.provider);
+                cfg->translation.provider = strdup(value);
             } else if (strcmp(key, "api_key") == 0) {
-                free(cfg->deepl.api_key);
-                cfg->deepl.api_key = strdup(value);
+                free(cfg->translation.api_key);
+                cfg->translation.api_key = strdup(value);
             } else if (strcmp(key, "target_language") == 0) {
-                free(cfg->deepl.target_language);
-                cfg->deepl.target_language = strdup(value);
+                free(cfg->translation.target_language);
+                cfg->translation.target_language = strdup(value);
             } else if (strcmp(key, "translation_display") == 0) {
-                free(cfg->deepl.translation_display);
-                cfg->deepl.translation_display = strdup(value);
+                free(cfg->translation.translation_display);
+                cfg->translation.translation_display = strdup(value);
             } else if (strcmp(key, "translation_opacity") == 0) {
-                cfg->deepl.translation_opacity = atof(value);
+                cfg->translation.translation_opacity = atof(value);
                 // Clamp to valid range [0.0, 1.0]
-                if (cfg->deepl.translation_opacity < 0.0) cfg->deepl.translation_opacity = 0.0;
-                if (cfg->deepl.translation_opacity > 1.0) cfg->deepl.translation_opacity = 1.0;
+                if (cfg->translation.translation_opacity < 0.0) cfg->translation.translation_opacity = 0.0;
+                if (cfg->translation.translation_opacity > 1.0) cfg->translation.translation_opacity = 1.0;
+            } else if (strcmp(key, "rate_limit_ms") == 0 || strcmp(key, "rate_limit") == 0) {
+                // Parse rate limit with support for intuitive formats:
+                // - "50m" = 50 requests per minute
+                // - "5s" = 5 requests per second
+                // - "1200" = 1200 milliseconds (raw)
+                char *endptr;
+                long number = strtol(value, &endptr, 10);
+
+                if (number <= 0) {
+                    log_warn("Invalid rate_limit value: %s (must be positive)", value);
+                    cfg->translation.rate_limit_ms = 6000; // Use default
+                } else if (*endptr == 'm' || *endptr == 'M') {
+                    // Requests per minute
+                    cfg->translation.rate_limit_ms = 60000 / number;
+                } else if (*endptr == 's' || *endptr == 'S') {
+                    // Requests per second
+                    cfg->translation.rate_limit_ms = 1000 / number;
+                } else if (*endptr == '\0') {
+                    // Raw milliseconds (backward compatible)
+                    cfg->translation.rate_limit_ms = number;
+                } else {
+                    log_warn("Invalid rate_limit format: %s (use: 50m, 5s, or 1200)", value);
+                    cfg->translation.rate_limit_ms = 6000; // Use default
+                }
+
+                // Clamp to reasonable range [0, 60000] (0-60 seconds)
+                if (cfg->translation.rate_limit_ms < 0) cfg->translation.rate_limit_ms = 0;
+                if (cfg->translation.rate_limit_ms > 60000) cfg->translation.rate_limit_ms = 60000;
+            } else if (strcmp(key, "max_retries") == 0) {
+                cfg->translation.max_retries = atoi(value);
+                // Clamp to reasonable range [0, 10]
+                if (cfg->translation.max_retries < 0) cfg->translation.max_retries = 0;
+                if (cfg->translation.max_retries > 10) cfg->translation.max_retries = 10;
+            }
+        } else if (strcmp(section, "deepl") == 0) {
+            // Deprecated [deepl] section - migrate to [translation] with warning
+            static bool deepl_warning_shown = false;
+            if (!deepl_warning_shown) {
+                log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                log_warn("⚠️  [deepl] section is deprecated");
+                log_warn("Please migrate to [translation] section in your config");
+                log_warn("See settings.ini.example for new format");
+                log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                deepl_warning_shown = true;
+            }
+
+            if (strcmp(key, "enable_deepl") == 0) {
+                // Migrate enable_deepl to provider
+                bool enable_deepl = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+                if (enable_deepl) {
+                    free(cfg->translation.provider);
+                    cfg->translation.provider = strdup("deepl");
+                } else {
+                    free(cfg->translation.provider);
+                    cfg->translation.provider = strdup("false");
+                }
+            } else if (strcmp(key, "api_key") == 0) {
+                free(cfg->translation.api_key);
+                cfg->translation.api_key = strdup(value);
+            } else if (strcmp(key, "target_language") == 0) {
+                free(cfg->translation.target_language);
+                cfg->translation.target_language = strdup(value);
+            } else if (strcmp(key, "translation_display") == 0) {
+                free(cfg->translation.translation_display);
+                cfg->translation.translation_display = strdup(value);
+            } else if (strcmp(key, "translation_opacity") == 0) {
+                cfg->translation.translation_opacity = atof(value);
+                // Clamp to valid range [0.0, 1.0]
+                if (cfg->translation.translation_opacity < 0.0) cfg->translation.translation_opacity = 0.0;
+                if (cfg->translation.translation_opacity > 1.0) cfg->translation.translation_opacity = 1.0;
             }
         }
     }

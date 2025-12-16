@@ -43,6 +43,7 @@ libcurl        = dependency('libcurl')
 appindicator   = dependency('appindicator3-0.1')
 gdkpixbuf      = dependency('gdk-pixbuf-2.0')
 openssl        = dependency('openssl')
+jsonc          = dependency('json-c')
 
 rt = cc.find_library('rt')
 
@@ -68,6 +69,8 @@ executable(
 		'src/provider/lrclib/lrclib_provider.c',
 		'src/provider/itunes/itunes_artwork.c',
 		'src/translator/deepl/deepl_translator.c',
+		'src/translator/gemini/gemini_translator.c',
+		'src/translator/claude/claude_translator.c',
 		'src/user_experience/system_tray/system_tray.c',
 		'src/user_experience/config/config.c',
 		'src/parser/utils/parser_utils.c',
@@ -88,6 +91,7 @@ executable(
 		client_protos,
 		fontconfig,
 		gdkpixbuf,
+		jsonc,
 		libcurl,
 		openssl,
 		pango,

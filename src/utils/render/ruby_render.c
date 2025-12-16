@@ -67,7 +67,7 @@ void render_ruby_segments(cairo_t *cairo, const char *font, int scale,
 
             // Use dimmed color with opacity
             struct config *cfg = config_get();
-            uint32_t dimmed = create_color_with_opacity(foreground, cfg->deepl.translation_opacity);
+            uint32_t dimmed = create_color_with_opacity(foreground, cfg->translation.translation_opacity);
             cairo_set_source_u32(cairo, dimmed);
 
             int trans_w, trans_h;
@@ -221,7 +221,7 @@ void render_ruby_segments_with_translation(cairo_t *cairo, const char *font, int
     if (show_translation) {
         // Use custom opacity from config
         struct config *cfg = config_get();
-        uint32_t dimmed = create_color_with_opacity(foreground, cfg->deepl.translation_opacity);
+        uint32_t dimmed = create_color_with_opacity(foreground, cfg->translation.translation_opacity);
         cairo_set_source_u32(cairo, dimmed);
 
         int trans_w, trans_h;

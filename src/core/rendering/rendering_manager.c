@@ -106,15 +106,15 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                 render_ruby_segments(cairo, state->font, scale,
                                     state->current_line->ruby_segments,
                                     state->foreground, &w, &h);
-            } else if (g_config.deepl.enable_deepl && state->current_line->translation) {
-                // LRC or SRT without <sub> - use DeepL line-level translation
+            } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->current_line->translation) {
+                // LRC or SRT without <sub> - use line-level translation
                 render_ruby_segments_with_translation(cairo, state->font, scale,
                                                      state->current_line->ruby_segments,
                                                      state->foreground,
-                                                     g_config.deepl.translation_display,
+                                                     g_config.translation.translation_display,
                                                      state->current_line->translation,
                                                      &w, &h);
-            } else if (g_config.deepl.enable_deepl && state->lyrics.translation_in_progress) {
+            } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->lyrics.translation_in_progress) {
                 // Translation in progress - show progress
                 char progress_text[128];
                 snprintf(progress_text, sizeof(progress_text),
@@ -124,7 +124,7 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                 render_ruby_segments_with_translation(cairo, state->font, scale,
                                                      state->current_line->ruby_segments,
                                                      state->foreground,
-                                                     g_config.deepl.translation_display,
+                                                     g_config.translation.translation_display,
                                                      progress_text,
                                                      &w, &h);
             } else {

@@ -9,6 +9,9 @@
 #include "utils/wayland/wayland_init.h"
 #include "utils/wayland/wayland_manager.h"
 #include "utils/curl/curl_utils.h"
+#include "translator/deepl/deepl_translator.h"
+#include "translator/gemini/gemini_translator.h"
+#include "translator/claude/claude_translator.h"
 #include <ctype.h>
 #include <strings.h>
 #include <curl/curl.h>
@@ -205,6 +208,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Initialize translation providers
+    deepl_translator_init();
+    gemini_translator_init();
+    claude_translator_init();
+
     // Initialize Wayland surface and connections
     if (!wayland_init_surface(&state, anchor, margin)) {
         ret = 1;
@@ -376,6 +384,9 @@ exit:
     mpris_free_metadata(&state.current_track);
     mpris_cleanup();
     lyrics_providers_cleanup();
+    deepl_translator_cleanup();
+    gemini_translator_cleanup();
+    claude_translator_cleanup();
 
     if (state.display) {
         wl_display_disconnect(state.display);

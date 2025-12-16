@@ -98,30 +98,37 @@ enable_notifications = true
 # Examples: 3000 (3 seconds), 5000 (5 seconds), 7000 (7 seconds)
 notification_timeout = 5000
 
-[deepl]
-# DeepL API translation settings
+[translation]
+# Multi-Provider Translation Settings
 # Automatic translation of LRC lyrics files (does not apply to SRT, VTT, or LRCX)
-# Note: This feature requires a DeepL API key (Free or Pro)
+# Supports DeepL, Google Gemini, and Anthropic Claude translation APIs
 
-# Enable DeepL translation feature
-# Set to true to enable automatic translation of LRC lyrics
-# Set to false to disable translation (show only original lyrics)
-enable_deepl = false
+# Translation provider and model
+# Format: provider or provider-model
+# Examples:
+#   provider = deepl                 (DeepL API)
+#   provider = gemini-2.5-flash      (Google Gemini API, free tier)
+#   provider = claude-sonnet-4-5     (Anthropic Claude API)
+#   provider = false                 (disable translation)
+# See more models:
+#   Gemini: https://ai.google.dev/gemini-api/docs/models
+#   Claude: https://claude.com/pricing#api
+# Default: false (disabled)
+provider = false
 
-# DeepL API key
-# Get your API key at: https://www.deepl.com/pro-api
-# Free API keys end with :fx (e.g., "abc123-def456:fx")
-# Pro API keys do not have this suffix
-# The correct API endpoint is automatically selected based on the key format
+# API key for the selected provider
+# Get your API key at:
+#   DeepL: https://www.deepl.com/pro-api (Free keys end with :fx)
+#   Gemini: https://aistudio.google.com/apikey (Free tier: 1500 requests/day)
+#   Claude: https://console.anthropic.com/
 api_key =
 
 # Target language for translation
-# For a complete list of supported language codes, see:
-#   https://developers.deepl.com/docs/getting-started/supported-languages
-# Common examples:
-#   EN (English), KO (Korean), JA (Japanese), ZH-HANS (Chinese Simplified)
-#   ZH-HANT (Chinese Traditional), ES (Spanish), FR (French), DE (German)
-# Note: Use specific variants (EN-US, EN-GB, ZH-HANS, ZH-HANT, PT-BR, PT-PT) when possible
+# Supported languages vary by provider. Common examples:
+#   DeepL: EN, KO, JA, ZH-HANS, ZH-HANT, ES, FR, DE
+#          (See: https://developers.deepl.com/docs/getting-started/supported-languages)
+#   Gemini: Full language names (e.g., "Korean", "English", "Japanese")
+#   Claude: Full language names (e.g., "Korean", "English", "Japanese")
 # Default: EN (English)
 target_language = EN
 
@@ -143,6 +150,27 @@ translation_display = both
 #   1.0 = 100% opacity (fully opaque, same as original text)
 # Default: 0.7
 translation_opacity = 0.7
+
+# Rate limit delay
+# Controls the delay between translation API requests to avoid rate limiting
+# Supports intuitive formats:
+#   50m = 50 requests per minute
+#   5s = 5 requests per second
+#   200 = 200 milliseconds (raw value, backward compatible)
+# Recommended values by provider:
+#   DeepL: 200 or 5s (300 requests/minute)
+#   Gemini free tier: 10m (10 requests/minute)
+#   Gemini paid tier: 60m or higher (depending on your quota)
+#   Claude: 50m or higher (depending on your tier)
+# Default: 10m (suitable for Gemini free tier)
+rate_limit = 10m
+
+# Maximum retry attempts for rate limit errors
+# When the API returns a rate limit error (HTTP 429) or overload error (HTTP 503),
+# the translator will automatically retry with exponential backoff
+# Set to 0 to disable retries
+# Default: 3
+max_retries = 3
 
 [behavior]
 # Reserved for future behavior settings
