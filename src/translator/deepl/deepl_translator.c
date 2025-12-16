@@ -6,6 +6,7 @@
 #include "../../utils/string/string_utils.h"
 #include "../../utils/file/file_utils.h"
 #include "../../utils/render/render_common.h"
+#include "../../utils/lang_detect/lang_detect.h"
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -456,61 +457,92 @@ static char* extract_last_line(const char *text) {
 static char* translate_single_line(const char *text, const char *target_lang, const char *api_key) {
     if (!text || !target_lang || !api_key) return NULL;
 
-    // Build JSON request for single line
-    char request_body[4096];
-    char *escaped = json_escape_string(text);
-    if (!escaped) return NULL;
+    // Get retry settings from config
+    struct config *cfg = config_get();
+    const int max_retries = cfg->translation.max_retries;
 
-    snprintf(request_body, sizeof(request_body),
-             "{\"text\":[\"%s\"],\"target_lang\":\"%s\"}",
-             escaped, target_lang);
-    free(escaped);
-
-    // Get API endpoint
-    const char *endpoint = get_deepl_endpoint(api_key);
-
-    // Perform CURL request
-    struct curl_memory_buffer response;
-    curl_memory_buffer_init(&response);
-
-    CURL *curl = curl_easy_init();
-    if (!curl) return NULL;
-
-    struct curl_slist *headers = NULL;
-    char auth_header[512];
-    snprintf(auth_header, sizeof(auth_header),
-             "Authorization: DeepL-Auth-Key %s", api_key);
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, auth_header);
-
-    curl_easy_setopt(curl, CURLOPT_URL, endpoint);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-    CURLcode res = curl_easy_perform(curl);
-    long http_code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-
-    // Parse response
     char *translation = NULL;
-    if (res == CURLE_OK && http_code == HTTP_OK && response.data) {
-        char *raw_translation = json_extract_string_from(response.data, "text", response.data);
-        if (raw_translation) {
-            // Extract last line to handle cases where AI includes original text
-            translation = extract_last_line(raw_translation);
-            free(raw_translation);
+    int attempt = 0;
+
+    while (attempt < max_retries && !translation) {
+        attempt++;
+
+        // Build JSON request for single line
+        char request_body[4096];
+        char *escaped = json_escape_string(text);
+        if (!escaped) return NULL;
+
+        snprintf(request_body, sizeof(request_body),
+                 "{\"text\":[\"%s\"],\"target_lang\":\"%s\"}",
+                 escaped, target_lang);
+        free(escaped);
+
+        // Get API endpoint
+        const char *endpoint = get_deepl_endpoint(api_key);
+
+        // Perform CURL request
+        struct curl_memory_buffer response;
+        curl_memory_buffer_init(&response);
+
+        CURL *curl = curl_easy_init();
+        if (!curl) return NULL;
+
+        struct curl_slist *headers = NULL;
+        char auth_header[512];
+        snprintf(auth_header, sizeof(auth_header),
+                 "Authorization: DeepL-Auth-Key %s", api_key);
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        headers = curl_slist_append(headers, auth_header);
+
+        curl_easy_setopt(curl, CURLOPT_URL, endpoint);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+        CURLcode res = curl_easy_perform(curl);
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+
+        if (res == CURLE_OK && http_code == HTTP_OK && response.data) {
+            // Success - parse response
+            char *raw_translation = json_extract_string_from(response.data, "text", response.data);
+            if (raw_translation) {
+                translation = extract_last_line(raw_translation);
+                free(raw_translation);
+            }
+            curl_memory_buffer_free(&response);
+            break;
+        } else if (http_code == HTTP_UNAUTHORIZED || http_code == 403) {
+            // Authentication/permission error - don't retry
+            log_error("deepl_translator: Authentication error (HTTP %ld)", http_code);
+            curl_memory_buffer_free(&response);
+            return NULL;
+        } else {
+            // Temporary error - retry with delay
+            int retry_delay_ms = 5000 * attempt; // Exponential backoff
+
+            log_warn("deepl_translator: HTTP error %ld, retrying in %dms (attempt %d/%d)",
+                    http_code, retry_delay_ms, attempt, max_retries);
+
+            curl_memory_buffer_free(&response);
+
+            if (attempt < max_retries) {
+                struct timespec delay = {
+                    .tv_sec = retry_delay_ms / 1000,
+                    .tv_nsec = (retry_delay_ms % 1000) * 1000000L
+                };
+                nanosleep(&delay, NULL);
+            }
         }
     }
 
-    curl_memory_buffer_free(&response);
     return translation;
 }
 
@@ -564,11 +596,20 @@ static void* translate_lyrics_async(void *arg) {
             data->translation_current = current;
 
             char *translation = translate_single_line(stripped, target_lang, api_key);
-            free(stripped);
 
             if (translation) {
+                // Language validation: warn if original and translation are in same language
+                if (is_same_language(stripped, translation)) {
+                    log_warn("deepl_translator: Possible translation failure - same language detected");
+                    log_warn("  Original: [%.30s...] → Translation: [%.30s...]",
+                             stripped, translation);
+                    // Translation is still displayed - user decides
+                }
+
                 line->translation = translation;
             }
+
+            free(stripped);
 
             // Rate limit delay
             if (current < total) {

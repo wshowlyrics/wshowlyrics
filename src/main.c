@@ -9,6 +9,7 @@
 #include "utils/wayland/wayland_init.h"
 #include "utils/wayland/wayland_manager.h"
 #include "utils/curl/curl_utils.h"
+#include "utils/lang_detect/lang_detect.h"
 #include "translator/deepl/deepl_translator.h"
 #include "translator/gemini/gemini_translator.h"
 #include "translator/claude/claude_translator.h"
@@ -213,6 +214,9 @@ int main(int argc, char *argv[]) {
     gemini_translator_init();
     claude_translator_init();
 
+    // Initialize language detection for translation validation
+    lang_detect_init();
+
     // Initialize Wayland surface and connections
     if (!wayland_init_surface(&state, anchor, margin)) {
         ret = 1;
@@ -387,6 +391,7 @@ exit:
     deepl_translator_cleanup();
     gemini_translator_cleanup();
     claude_translator_cleanup();
+    lang_detect_cleanup();
 
     if (state.display) {
         wl_display_disconnect(state.display);

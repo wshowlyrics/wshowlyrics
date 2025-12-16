@@ -2,6 +2,7 @@
 #include "../../constants.h"
 #include "../../user_experience/config/config.h"
 #include "../../utils/file/file_utils.h"
+#include "../../utils/lang_detect/lang_detect.h"
 #include <curl/curl.h>
 #include <json-c/json.h>
 #include <pthread.h>
@@ -279,14 +280,20 @@ static char* translate_single_line(const char *text, const char *target_lang,
             translation = parse_response_json(response.data);
             free(response.data);
             break;
-        } else if (http_code == 429 || http_code == 503) {
-            // Rate limit or overload - retry with delay
+        } else if (http_code == 401 || http_code == 403) {
+            // Authentication/permission error - don't retry
+            log_error("claude_translator: Authentication error (HTTP %ld)", http_code);
+            free(response.data);
+            curl_easy_cleanup(local_curl);
+            return NULL;
+        } else {
+            // Temporary error - retry with delay
             int retry_delay_ms = parse_retry_delay_claude(response.data);
             if (retry_delay_ms == 0) {
                 retry_delay_ms = 5000 * attempt; // Exponential backoff
             }
 
-            log_warn("claude_translator: Rate limit/overload (HTTP %ld), retrying in %dms (attempt %d/%d)",
+            log_warn("claude_translator: HTTP error %ld, retrying in %dms (attempt %d/%d)",
                     http_code, retry_delay_ms, attempt, max_retries);
 
             free(response.data);
@@ -298,12 +305,6 @@ static char* translate_single_line(const char *text, const char *target_lang,
                 };
                 nanosleep(&delay, NULL);
             }
-        } else {
-            // Other error - don't retry
-            log_error("claude_translator: HTTP error %ld", http_code);
-            free(response.data);
-            curl_easy_cleanup(local_curl);
-            return NULL;
         }
     }
 
@@ -461,6 +462,14 @@ static void* translate_lyrics_async(void *arg) {
             char *translation = translate_single_line(line->text, args->target_lang,
                                                      args->api_key, args->model_name);
             if (translation) {
+                // Language validation: warn if original and translation are in same language
+                if (is_same_language(line->text, translation)) {
+                    log_warn("claude_translator: Possible translation failure - same language detected");
+                    log_warn("  Original: [%.30s...] → Translation: [%.30s...]",
+                             line->text, translation);
+                    // Translation is still displayed - user decides
+                }
+
                 free(line->translation);
                 line->translation = translation;
                 log_info("claude_translator: [%d/%d] Translated: %s",

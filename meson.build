@@ -47,6 +47,18 @@ jsonc          = dependency('json-c')
 
 rt = cc.find_library('rt')
 
+# Optional language detection libraries
+exttextcat_dep = dependency('libexttextcat', required: false)
+
+# Configure config.h with optional features
+conf_data = configuration_data()
+conf_data.set('HAVE_LIBEXTTEXTCAT', exttextcat_dep.found())
+
+configure_file(
+	output: 'config.h',
+	configuration: conf_data
+)
+
 subdir('protocols')
 
 executable(
@@ -78,6 +90,7 @@ executable(
 		'src/utils/file/file_utils.c',
 		'src/utils/json/json_utils.c',
 		'src/utils/string/string_utils.c',
+		'src/utils/lang_detect/lang_detect.c',
 		'src/utils/render/render_common.c',
 		'src/utils/render/ruby_render.c',
 		'src/utils/render/word_render.c',
@@ -99,6 +112,7 @@ executable(
 		rt,
 		wayland_client,
 		wayland_protos,
+		exttextcat_dep,
 	],
 	install: true,
 )
