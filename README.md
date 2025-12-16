@@ -24,8 +24,8 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
   - **Online fallback**: Automatically fetches lyrics from [lrclib.net](https://lrclib.net) when local files are not found
   - URL decoding support for Unicode paths (Korean, Japanese, etc.)
   - Automatic filename-based matching
-- **Translation Support (NEW in 0.6.0)**: DeepL API integration for automatic lyrics translation
-  - Supports both Free and Pro API keys with auto-endpoint detection
+- **Translation Support**: Multi-provider API integration for automatic lyrics translation
+  - Multiple translation providers: DeepL, Google Gemini, Anthropic Claude
   - Smart caching system - translates once, uses forever
   - Configurable display modes (both original + translation, or translation only)
   - Adjustable translation text opacity
@@ -368,27 +368,35 @@ The program automatically displays album artwork in the system tray using a fall
 
 The iTunes API feature can be disabled in `settings.ini` by setting `enable_itunes = false`.
 
-## Translation Support (DeepL API)
+## Translation Support (Multi-Provider)
 
-wshowlyrics supports automatic lyrics translation using the DeepL API for LRC format files.
+wshowlyrics supports automatic lyrics translation using multiple AI provider APIs for LRC format files.
 
 ### Configuration
 
 Add the following settings to `~/.config/wshowlyrics/settings.ini`:
 
 ```ini
-[deepl]
-# Enable DeepL translation feature
-enable_deepl = true
+[translation]
+# Translation provider and model
+# Available providers:
+#   - deepl: DeepL API (https://www.deepl.com/docs-api)
+#   - gemini-2.5-flash: Google Gemini 2.5 Flash model
+#   - gemini-2.5-pro: Google Gemini 2.5 Pro model
+#   - claude-sonnet-4-5: Anthropic Claude Sonnet 4.5
+#   - claude-opus-4-5: Anthropic Claude Opus 4.5
+#   - claude-haiku-4-5: Anthropic Claude Haiku 4.5
+#   - false: Disable translation
+provider = gemini-2.5-flash
 
-# DeepL API key (get yours at https://www.deepl.com/pro-api)
-# Free API keys end with :fx (e.g., "abc123-def456:fx")
-# Pro API keys do not have this suffix
-# The correct API endpoint is automatically selected based on the key format
+# API key for the selected provider
 api_key = your-api-key-here
 
 # Target language for translation
-# For supported language codes, see: https://developers.deepl.com/docs/getting-started/supported-languages
+# For supported language codes, see:
+#   - DeepL: https://developers.deepl.com/docs/getting-started/supported-languages
+#   - Google Gemini: Use language codes (e.g., EN, KO, JA, ZH, ES, FR, DE)
+#   - Anthropic Claude: Use language codes (e.g., EN, KO, JA, ZH, ES, FR, DE)
 # Common examples: EN, KO, JA, ZH-HANS (Simplified Chinese), ZH-HANT (Traditional Chinese), ES, FR, DE
 target_language = EN
 
@@ -404,25 +412,92 @@ translation_display = both
 # 0.9 = 90% opacity (more visible)
 # 1.0 = 100% opacity (fully opaque, same as original text)
 translation_opacity = 0.7
+
+# Rate limit delay (intuitive format)
+# Controls the delay between translation requests to avoid hitting API rate limits
+# Examples:
+#   200: 200 milliseconds between requests
+#   5s: 5 seconds between requests (1000ms = 1s)
+#   10m: 10 requests per minute (60000ms / 10)
+# Recommended by provider:
+#   DeepL: 200 or 5s (supports 300 requests/minute)
+#   Gemini free tier: 10m (10 requests/minute limit)
+#   Claude: 50m or higher (depending on account tier)
+rate_limit = 10m
+
+# Maximum retry attempts for rate limit errors
+# Default: 3
+# Use higher values for rate-limited accounts
+max_retries = 3
 ```
+
+### Supported Providers
+
+**DeepL API**
+- Visit: https://www.deepl.com/pro-api
+- Supported languages: https://developers.deepl.com/docs/getting-started/supported-languages
+- Free tier: 500,000 characters/month
+- Pro tier: Higher character limits with more competitive pricing
+
+**Google Gemini**
+- Visit: https://aistudio.google.com/apikey
+- Available models:
+  - `gemini-2.5-flash`: Fastest, lower cost, ideal for real-time translation
+  - `gemini-2.5-pro`: Most capable, higher accuracy
+- Free tier: 15 requests per minute
+- Documentation: https://ai.google.dev/gemini-api/docs/models
+
+**Anthropic Claude**
+- Visit: https://console.anthropic.com/
+- Available models:
+  - `claude-haiku-4-5`: Fastest, most cost-effective
+  - `claude-sonnet-4-5`: Balanced performance and cost
+  - `claude-opus-4-5`: Most capable, highest accuracy
+- Free trial and paid options available
+- Documentation: https://claude.com/pricing#api
 
 ### Features
 
-- **Auto-endpoint detection**: Automatically uses Free or Pro API endpoint based on your API key format
+- **Multiple provider support**: Choose from DeepL, Google Gemini, or Anthropic Claude
 - **Smart caching**: Translations are cached in `/tmp/wshowlyrics/translated/` and reused on subsequent playbacks
-- **Format support**: DeepL API translation applies to LRC format files. SRT and VTT files support inline translation using `{translation}` syntax at line start (no API required). LRCX format is excluded.
+- **Format support**: Provider-based translation applies to LRC format files. SRT and VTT files support inline translation using `{translation}` syntax at line start (no API required). LRCX format is excluded.
+- **Rate limiting**: Configurable rate limiting to respect API quotas and avoid errors
+- **Auto-retry**: Automatic retry on rate limit errors (configurable attempts)
 - **Cost-effective**: Translations are only performed once per song and cached until system restart
 - **Configurable display**: Choose between showing both original + translation, or translation only
 - **Adjustable opacity**: Control how visible the translation text appears
 
-### Getting a DeepL API Key
+### Example Configuration
 
-1. Visit https://www.deepl.com/pro-api
-2. Sign up for a free or paid account
-3. Free tier includes 500,000 characters/month
-4. Copy your API key to the configuration file
+**DeepL Setup:**
+```ini
+[translation]
+provider = deepl
+api_key = your-deepl-api-key
+target_language = EN
+rate_limit = 200
+```
 
-### Example
+**Google Gemini Setup (Free Tier):**
+```ini
+[translation]
+provider = gemini-2.5-flash
+api_key = your-gemini-api-key
+target_language = EN
+rate_limit = 10m
+max_retries = 3
+```
+
+**Claude Setup:**
+```ini
+[translation]
+provider = claude-sonnet-4-5
+api_key = your-anthropic-api-key
+target_language = EN
+rate_limit = 50m
+```
+
+### Example Output
 
 With Japanese lyrics and `target_language = EN`:
 
