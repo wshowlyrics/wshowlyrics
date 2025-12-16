@@ -378,8 +378,8 @@ enable_deepl = true
 api_key = your-api-key-here
 
 # 번역 대상 언어
-# 지원 언어: BG, CS, DA, DE, EL, EN, ES, ET, FI, FR, HU, ID, IT, JA, KO,
-#            LT, LV, NL, PL, PT, RO, RU, SK, SL, SV, TR, UK, ZH
+# 지원 언어 목록: https://developers.deepl.com/docs/getting-started/supported-languages
+# 주요 예시: KO, EN, JA, ZH-HANS (중국어 간체), ZH-HANT (중국어 번체), ES, FR, DE
 target_language = KO
 
 # 번역 표시 모드

@@ -116,13 +116,12 @@ enable_deepl = false
 api_key =
 
 # Target language for translation
-# Supported language codes:
-#   BG (Bulgarian), CS (Czech), DA (Danish), DE (German), EL (Greek)
-#   EN (English), ES (Spanish), ET (Estonian), FI (Finnish), FR (French)
-#   HU (Hungarian), ID (Indonesian), IT (Italian), JA (Japanese), KO (Korean)
-#   LT (Lithuanian), LV (Latvian), NL (Dutch), PL (Polish), PT (Portuguese)
-#   RO (Romanian), RU (Russian), SK (Slovak), SL (Slovenian), SV (Swedish)
-#   TR (Turkish), UK (Ukrainian), ZH (Chinese)
+# For a complete list of supported language codes, see:
+#   https://developers.deepl.com/docs/getting-started/supported-languages
+# Common examples:
+#   EN (English), KO (Korean), JA (Japanese), ZH-HANS (Chinese Simplified)
+#   ZH-HANT (Chinese Traditional), ES (Spanish), FR (French), DE (German)
+# Note: Use specific variants (EN-US, EN-GB, ZH-HANS, ZH-HANT, PT-BR, PT-PT) when possible
 # Default: EN (English)
 target_language = EN
 

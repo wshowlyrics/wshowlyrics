@@ -388,8 +388,8 @@ enable_deepl = true
 api_key = your-api-key-here
 
 # Target language for translation
-# Supported: BG, CS, DA, DE, EL, EN, ES, ET, FI, FR, HU, ID, IT, JA, KO,
-#            LT, LV, NL, PL, PT, RO, RU, SK, SL, SV, TR, UK, ZH
+# For supported language codes, see: https://developers.deepl.com/docs/getting-started/supported-languages
+# Common examples: EN, KO, JA, ZH-HANS (Simplified Chinese), ZH-HANT (Traditional Chinese), ES, FR, DE
 target_language = EN
 
 # Translation display mode
