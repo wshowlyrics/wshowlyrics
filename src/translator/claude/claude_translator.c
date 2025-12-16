@@ -476,7 +476,9 @@ bool claude_translate_lyrics(struct lyrics_data *data) {
              data->md5_checksum, target_lang);
 
     // Create cache directory
-    system("mkdir -p /tmp/wshowlyrics/translated");
+    if (system("mkdir -p /tmp/wshowlyrics/translated") != 0) {
+        log_warn("claude_translator: Failed to create cache directory");
+    }
 
     // Prepare thread arguments
     struct translation_thread_args *args = malloc(sizeof(struct translation_thread_args));
