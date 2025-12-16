@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <pthread.h>
 #include "constants.h"
 
 // Ruby segment for furigana (ruby text) support in LRC/SRT formats
@@ -55,6 +56,8 @@ struct lyrics_data {
 
     // Translation progress (for async translation)
     bool translation_in_progress;
+    bool translation_should_cancel;  // Set to true to cancel ongoing translation
+    pthread_t translation_thread;    // Thread handle for cancellation
     int translation_current;
     int translation_total;
 };

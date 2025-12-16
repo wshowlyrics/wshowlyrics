@@ -35,6 +35,17 @@ static void translate_lyrics_with_provider(struct lyrics_data *data) {
         return;
     }
 
+    // Only translate LRC files
+    // SRT/VTT/LRCX already have ruby text {} support and don't need translation
+    if (data->source_file_path) {
+        const char *ext = strrchr(data->source_file_path, '.');
+        if (ext && (strcasecmp(ext, ".srt") == 0 ||
+                    strcasecmp(ext, ".vtt") == 0 ||
+                    strcasecmp(ext, ".lrcx") == 0)) {
+            return;  // Skip translation silently
+        }
+    }
+
     // Call appropriate translator based on provider
     if (strcmp(provider, "deepl") == 0) {
         deepl_translate_lyrics(data);

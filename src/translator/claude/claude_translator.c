@@ -65,9 +65,9 @@ static char* build_request_json(const char *text, const char *target_lang, const
     // Build prompt: clear instruction for translation only
     char prompt[8192];
     snprintf(prompt, sizeof(prompt),
+             "You are a professional translator. "
              "Translate the following text to %s. "
-             "Provide ONLY the direct translation without any explanations, "
-             "alternatives, or additional commentary:\n\n%s",
+             "Output ONLY the translated text with no additional explanations:\n\n%s",
              target_lang, text);
 
     json_object_object_add(root, "model", json_object_new_string(model_name));
@@ -154,7 +154,14 @@ static int parse_retry_delay_claude(const char *response_json) {
  */
 static char* translate_single_line(const char *text, const char *target_lang,
                                    const char *api_key, const char *model_name) {
-    if (!curl_handle || !text || !target_lang || !api_key || !model_name) {
+    if (!text || !target_lang || !api_key || !model_name) {
+        return NULL;
+    }
+
+    // Create thread-local CURL handle to avoid race conditions
+    CURL *local_curl = curl_easy_init();
+    if (!local_curl) {
+        log_error("claude_translator: Failed to initialize CURL for translation");
         return NULL;
     }
 
@@ -171,15 +178,16 @@ static char* translate_single_line(const char *text, const char *target_lang,
         // Build request JSON
         char *request_json = build_request_json(text, target_lang, model_name);
         if (!request_json) {
+            curl_easy_cleanup(local_curl);
             return NULL;
         }
 
         // Setup CURL
         struct curl_response response = {0};
-        curl_easy_setopt(curl_handle, CURLOPT_URL, CLAUDE_API_ENDPOINT);
-        curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, request_json);
-        curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, claude_curl_write_callback);
-        curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, &response);
+        curl_easy_setopt(local_curl, CURLOPT_URL, CLAUDE_API_ENDPOINT);
+        curl_easy_setopt(local_curl, CURLOPT_POSTFIELDS, request_json);
+        curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, claude_curl_write_callback);
+        curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, &response);
 
         // Setup headers
         char api_key_header[512];
@@ -192,22 +200,23 @@ static char* translate_single_line(const char *text, const char *target_lang,
         headers = curl_slist_append(headers, "Content-Type: application/json");
         headers = curl_slist_append(headers, api_key_header);
         headers = curl_slist_append(headers, version_header);
-        curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
 
         // Perform request
-        CURLcode res = curl_easy_perform(curl_handle);
+        CURLcode res = curl_easy_perform(local_curl);
         curl_slist_free_all(headers);
         free(request_json);
 
         if (res != CURLE_OK) {
             log_error("claude_translator: CURL error: %s", curl_easy_strerror(res));
             free(response.data);
+            curl_easy_cleanup(local_curl);
             return NULL;
         }
 
         // Check HTTP response code
         long http_code = 0;
-        curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
+        curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
 
         if (http_code == 200) {
             // Success - parse response
@@ -237,10 +246,12 @@ static char* translate_single_line(const char *text, const char *target_lang,
             // Other error - don't retry
             log_error("claude_translator: HTTP error %ld", http_code);
             free(response.data);
+            curl_easy_cleanup(local_curl);
             return NULL;
         }
     }
 
+    curl_easy_cleanup(local_curl);
     return translation;
 }
 
@@ -380,6 +391,13 @@ static void* translate_lyrics_async(void *arg) {
     line = data->lines;
     int current = 0;
     while (line) {
+        // Check if translation should be cancelled
+        if (data->translation_should_cancel) {
+            log_info("claude_translator: Translation cancelled (%d/%d completed)",
+                     current, translatable_count);
+            break;
+        }
+
         if (line->text && strlen(line->text) > 0) {
             current++;
             data->translation_current = current;
@@ -410,11 +428,18 @@ static void* translate_lyrics_async(void *arg) {
         line = line->next;
     }
 
-    // Save to cache
-    save_translation_to_cache(args->cache_path, data, args->target_lang);
+    // Save to cache only if translation is complete
+    if (data->translation_current == data->translation_total) {
+        save_translation_to_cache(args->cache_path, data, args->target_lang);
+        log_success("claude_translator: Translation completed");
+    } else {
+        log_warn("claude_translator: Translation incomplete (%d/%d), deleting partial cache",
+                 data->translation_current, data->translation_total);
+        // Delete incomplete cache file if it exists
+        unlink(args->cache_path);
+    }
 
     data->translation_in_progress = false;
-    log_success("claude_translator: Translation completed");
 
     free(args->target_lang);
     free(args->api_key);
@@ -493,8 +518,7 @@ bool claude_translate_lyrics(struct lyrics_data *data) {
     args->cache_path = strdup(cache_path);
 
     // Launch async translation thread
-    pthread_t thread;
-    if (pthread_create(&thread, NULL, translate_lyrics_async, args) != 0) {
+    if (pthread_create(&data->translation_thread, NULL, translate_lyrics_async, args) != 0) {
         log_error("claude_translator: Failed to create translation thread");
         free(args->target_lang);
         free(args->api_key);
@@ -504,6 +528,6 @@ bool claude_translate_lyrics(struct lyrics_data *data) {
         return false;
     }
 
-    pthread_detach(thread);
+    // Don't detach - we need the handle for cancellation
     return true;
 }

@@ -483,6 +483,13 @@ static void* translate_lyrics_async(void *arg) {
     int current = 0;
     line = data->lines;
     while (line) {
+        // Check if translation should be cancelled
+        if (data->translation_should_cancel) {
+            log_info("Translation cancelled (%d/%d completed)",
+                     current, total);
+            break;
+        }
+
         if (line->ruby_segments && line->text && line->text[0] != '\0') {
             // Strip ruby notation
             char *stripped = strip_ruby_notation(line->text);
@@ -515,12 +522,19 @@ static void* translate_lyrics_async(void *arg) {
         line = line->next;
     }
 
-    // Save to cache
-    save_translation_to_cache(cache_path, data, target_lang);
+    // Save to cache only if translation is complete
+    if (data->translation_current == data->translation_total) {
+        save_translation_to_cache(cache_path, data, target_lang);
+        log_success("Translation completed");
+    } else {
+        log_warn("Translation incomplete (%d/%d), deleting partial cache",
+                 data->translation_current, data->translation_total);
+        // Delete incomplete cache file if it exists
+        unlink(cache_path);
+    }
 
     // Mark translation complete
     data->translation_in_progress = false;
-    log_success("Translation completed");
 
     // Free thread args
     free(args->target_lang);
@@ -712,8 +726,7 @@ bool deepl_translate_lyrics(struct lyrics_data *data) {
     }
 
     // Start translation thread
-    pthread_t thread;
-    if (pthread_create(&thread, NULL, translate_lyrics_async, args) != 0) {
+    if (pthread_create(&data->translation_thread, NULL, translate_lyrics_async, args) != 0) {
         log_error("Failed to create translation thread");
         free(args->target_lang);
         free(args->api_key);
@@ -722,9 +735,7 @@ bool deepl_translate_lyrics(struct lyrics_data *data) {
         return false;
     }
 
-    // Detach thread so it runs independently
-    pthread_detach(thread);
-
+    // Don't detach - we need the handle for cancellation
     return true;
 }
 

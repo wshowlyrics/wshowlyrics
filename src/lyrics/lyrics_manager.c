@@ -11,6 +11,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
+#include <unistd.h>
 
 bool lyrics_manager_is_format(struct lyrics_state *state, const char *extension) {
     if (!state->lyrics.source_file_path) {
@@ -61,6 +62,26 @@ bool lyrics_manager_update_track_info(struct lyrics_state *state) {
         if (state->current_track.title) {
             log_info("=== No player found, clearing lyrics ===");
 
+            // Cancel ongoing translation
+            state->lyrics.translation_should_cancel = true;
+
+            // Wait for translation to finish before freeing lyrics data
+            // This prevents use-after-free errors
+            int wait_count = 0;
+            struct timespec wait_delay = {0, 50000000L}; // 50ms
+            while (state->lyrics.translation_in_progress && wait_count < 100) {
+                nanosleep(&wait_delay, NULL);
+                wait_count++;
+            }
+            if (wait_count >= 100) {
+                log_warn("Translation thread did not stop in time (waited 5s), force cancelling");
+                pthread_cancel(state->lyrics.translation_thread);
+                pthread_join(state->lyrics.translation_thread, NULL);
+            } else if (state->lyrics.translation_in_progress == false && wait_count > 0) {
+                // Thread finished gracefully, join it to clean up resources
+                pthread_join(state->lyrics.translation_thread, NULL);
+            }
+
             // Free track metadata
             mpris_free_metadata(&state->current_track);
 
@@ -94,6 +115,26 @@ bool lyrics_manager_update_track_info(struct lyrics_state *state) {
         log_info("Album: %s", new_track.album ? new_track.album : "Unknown");
         log_info("URL: %s", new_track.url ? new_track.url : "None");
         log_info("Art URL: %s", new_track.art_url ? new_track.art_url : "None");
+
+        // Cancel ongoing translation
+        state->lyrics.translation_should_cancel = true;
+
+        // Wait for translation to finish before freeing lyrics data
+        // This prevents use-after-free errors
+        int wait_count = 0;
+        struct timespec wait_delay = {0, 50000000L}; // 50ms
+        while (state->lyrics.translation_in_progress && wait_count < 100) {
+            nanosleep(&wait_delay, NULL);
+            wait_count++;
+        }
+        if (wait_count >= 100) {
+            log_warn("Translation thread did not stop in time (waited 5s), force cancelling");
+            pthread_cancel(state->lyrics.translation_thread);
+            pthread_join(state->lyrics.translation_thread, NULL);
+        } else if (state->lyrics.translation_in_progress == false && wait_count > 0) {
+            // Thread finished gracefully, join it to clean up resources
+            pthread_join(state->lyrics.translation_thread, NULL);
+        }
 
         mpris_free_metadata(&state->current_track);
         state->current_track = new_track;
@@ -146,6 +187,9 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
 
         return false;
     }
+
+    // Reset translation cancel flag for new lyrics
+    state->lyrics.translation_should_cancel = false;
 
     log_info("Loaded %d lines of lyrics", state->lyrics.line_count);
 
