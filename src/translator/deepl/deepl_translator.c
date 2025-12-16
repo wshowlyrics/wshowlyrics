@@ -5,12 +5,16 @@
 #include "../../utils/json/json_utils.h"
 #include "../../utils/string/string_utils.h"
 #include "../../utils/file/file_utils.h"
+#include "../../utils/render/render_common.h"
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <time.h>
 
 // Logging macros are defined in constants.h
 
@@ -26,6 +30,18 @@
 
 // Maximum request body size (for large lyrics files)
 #define MAX_REQUEST_SIZE (64 * 1024)  // 64KB
+
+// Rate limit delay between individual requests (milliseconds)
+#define RATE_LIMIT_DELAY_MS 200
+
+// Thread argument for async translation
+struct translation_thread_args {
+    struct lyrics_data *data;
+    char *target_lang;
+    char *api_key;
+    char *cache_path;
+};
+
 
 // Get DeepL API endpoint based on API key format
 // Free API keys end with ":fx"
@@ -83,7 +99,8 @@ static char* json_escape_string(const char *text) {
     return escaped;
 }
 
-// Build JSON request body with all lyrics lines
+// Build JSON request body with all lyrics lines (DEPRECATED - now using individual line translation)
+#if 0
 static char* build_json_request(struct lyrics_data *data, const char *target_lang) {
     if (!data || !data->lines || !target_lang) return NULL;
 
@@ -105,8 +122,27 @@ static char* build_json_request(struct lyrics_data *data, const char *target_lan
                 offset += snprintf(buffer + offset, MAX_REQUEST_SIZE - offset, ",");
             }
 
+            // Strip ruby notation before translation
+            // Example: "心{こころ}音{ね}" -> "心音"
+            char *stripped = strip_ruby_notation(line->text);
+            if (!stripped) {
+                log_warn("Failed to strip ruby from: %s", line->text);
+                line = line->next;
+                continue;
+            }
+
+            // Debug: Check if stripping resulted in empty text
+            if (stripped[0] == '\0') {
+                log_warn("Stripped text is empty, skipping: %s", line->text);
+                free(stripped);
+                line = line->next;
+                continue;
+            }
+
             // Escape quotes and special characters
-            char *escaped = json_escape_string(line->text);
+            char *escaped = json_escape_string(stripped);
+            free(stripped);
+
             if (escaped) {
                 offset += snprintf(buffer + offset, MAX_REQUEST_SIZE - offset,
                                  "\"%s\"", escaped);
@@ -122,8 +158,10 @@ static char* build_json_request(struct lyrics_data *data, const char *target_lan
 
     return buffer;
 }
+#endif
 
-// Parse DeepL API response and populate translation fields
+// Parse DeepL API response and populate translation fields (DEPRECATED - now using individual line translation)
+#if 0
 static bool parse_and_populate_translations(struct curl_memory_buffer *response,
                                              struct lyrics_data *data) {
     if (!response || !response->data || !data) return false;
@@ -144,40 +182,48 @@ static bool parse_and_populate_translations(struct curl_memory_buffer *response,
     while (line) {
         // Only process lines with ruby_segments (LRC format)
         if (line->ruby_segments && line->text && line->text[0] != '\0') {
-            // Extract next translation from JSON array
-            char *translation = json_extract_string_from(response->data,
-                                                         "text",
-                                                         search_pos);
-            if (translation) {
-                line->translation = translation;
-                translation_count++;
+            // Check if line would be included in translation request
+            // (same logic as build_json_request)
+            char *stripped = strip_ruby_notation(line->text);
+            bool should_translate = stripped && stripped[0] != '\0';
+            if (stripped) free(stripped);
 
-                // Move search position past the current translation
-                // Find where this translation was extracted from
-                const char *text_pos = strstr(search_pos, "\"text\":\"");
-                if (text_pos) {
-                    // Move past "text":"<translation>"
-                    // We need to skip the entire value, so find the closing quote
-                    const char *value_start = text_pos + strlen("\"text\":\"");
-                    const char *value_end = value_start;
-                    while (*value_end && *value_end != '"') {
-                        if (*value_end == '\\' && *(value_end + 1)) {
-                            value_end += 2; // Skip escaped character
-                        } else {
-                            value_end++;
+            if (should_translate) {
+                // Extract next translation from JSON array
+                char *translation = json_extract_string_from(response->data,
+                                                             "text",
+                                                             search_pos);
+                if (translation) {
+                    line->translation = translation;
+                    translation_count++;
+
+                    // Move search position past the current translation
+                    // Find where this translation was extracted from
+                    const char *text_pos = strstr(search_pos, "\"text\":\"");
+                    if (text_pos) {
+                        // Move past "text":"<translation>"
+                        // We need to skip the entire value, so find the closing quote
+                        const char *value_start = text_pos + strlen("\"text\":\"");
+                        const char *value_end = value_start;
+                        while (*value_end && *value_end != '"') {
+                            if (*value_end == '\\' && *(value_end + 1)) {
+                                value_end += 2; // Skip escaped character
+                            } else {
+                                value_end++;
+                            }
                         }
-                    }
-                    if (*value_end == '"') {
-                        search_pos = value_end + 1; // Move past closing quote
+                        if (*value_end == '"') {
+                            search_pos = value_end + 1; // Move past closing quote
+                        } else {
+                            break;
+                        }
                     } else {
                         break;
                     }
                 } else {
+                    log_warn("Missing translation for text: %s", line->text);
                     break;
                 }
-            } else {
-                log_warn("Missing translation for text: %s", line->text);
-                break;
             }
         }
         line = line->next;
@@ -189,6 +235,7 @@ static bool parse_and_populate_translations(struct curl_memory_buffer *response,
 
     return true;
 }
+#endif
 
 // Save translations to cache file (JSON format)
 static bool save_translation_to_cache(const char *cache_path, struct lyrics_data *data,
@@ -282,55 +329,63 @@ static bool load_translation_from_cache(const char *cache_path, struct lyrics_da
 
     while (line) {
         if (line->ruby_segments && line->text && line->text[0] != '\0') {
-            // Find next string in array
-            char *str_start = strchr(search_pos, '"');
-            if (!str_start) break;
-            str_start++;  // Skip opening quote
+            // Check if line would be included in translation request
+            // (same logic as build_json_request)
+            char *stripped = strip_ruby_notation(line->text);
+            bool should_load = stripped && stripped[0] != '\0';
+            if (stripped) free(stripped);
 
-            char *str_end = str_start;
-            while (*str_end && *str_end != '"') {
-                if (*str_end == '\\' && *(str_end + 1)) {
-                    str_end += 2;  // Skip escaped character
-                } else {
-                    str_end++;
-                }
-            }
+            if (should_load) {
+                // Find next string in array
+                char *str_start = strchr(search_pos, '"');
+                if (!str_start) break;
+                str_start++;  // Skip opening quote
 
-            if (*str_end != '"') break;
-
-            size_t len = str_end - str_start;
-            char *translation = malloc(len + 1);
-            if (translation) {
-                strncpy(translation, str_start, len);
-                translation[len] = '\0';
-
-                /* Unescape JSON string (simple version) */
-                /* Handle: \n, \t, \r, \", \\ */
-                char *src = translation;
-                char *dst = translation;
-                while (*src) {
-                    if (*src == '\\' && *(src + 1)) {
-                        src++;
-                        switch (*src) {
-                            case 'n': *dst++ = '\n'; break;
-                            case 't': *dst++ = '\t'; break;
-                            case 'r': *dst++ = '\r'; break;
-                            case '"': *dst++ = '"'; break;
-                            case '\\': *dst++ = '\\'; break;
-                            default: *dst++ = *src; break;
-                        }
-                        src++;
+                char *str_end = str_start;
+                while (*str_end && *str_end != '"') {
+                    if (*str_end == '\\' && *(str_end + 1)) {
+                        str_end += 2;  // Skip escaped character
                     } else {
-                        *dst++ = *src++;
+                        str_end++;
                     }
                 }
-                *dst = '\0';
 
-                line->translation = translation;
-                loaded_count++;
+                if (*str_end != '"') break;
+
+                size_t len = str_end - str_start;
+                char *translation = malloc(len + 1);
+                if (translation) {
+                    strncpy(translation, str_start, len);
+                    translation[len] = '\0';
+
+                    /* Unescape JSON string (simple version) */
+                    /* Handle: \n, \t, \r, \", \\ */
+                    char *src = translation;
+                    char *dst = translation;
+                    while (*src) {
+                        if (*src == '\\' && *(src + 1)) {
+                            src++;
+                            switch (*src) {
+                                case 'n': *dst++ = '\n'; break;
+                                case 't': *dst++ = '\t'; break;
+                                case 'r': *dst++ = '\r'; break;
+                                case '"': *dst++ = '"'; break;
+                                case '\\': *dst++ = '\\'; break;
+                                default: *dst++ = *src; break;
+                            }
+                            src++;
+                        } else {
+                            *dst++ = *src++;
+                        }
+                    }
+                    *dst = '\0';
+
+                    line->translation = translation;
+                    loaded_count++;
+                }
+
+                search_pos = str_end + 1;
             }
-
-            search_pos = str_end + 1;
         }
         line = line->next;
     }
@@ -342,9 +397,146 @@ static bool load_translation_from_cache(const char *cache_path, struct lyrics_da
     return true;
 }
 
-// Perform API translation request
+// Translate a single line (for individual requests)
+static char* translate_single_line(const char *text, const char *target_lang, const char *api_key) {
+    if (!text || !target_lang || !api_key) return NULL;
+
+    // Build JSON request for single line
+    char request_body[4096];
+    char *escaped = json_escape_string(text);
+    if (!escaped) return NULL;
+
+    snprintf(request_body, sizeof(request_body),
+             "{\"text\":[\"%s\"],\"target_lang\":\"%s\"}",
+             escaped, target_lang);
+    free(escaped);
+
+    // Get API endpoint
+    const char *endpoint = get_deepl_endpoint(api_key);
+
+    // Perform CURL request
+    struct curl_memory_buffer response;
+    curl_memory_buffer_init(&response);
+
+    CURL *curl = curl_easy_init();
+    if (!curl) return NULL;
+
+    struct curl_slist *headers = NULL;
+    char auth_header[512];
+    snprintf(auth_header, sizeof(auth_header),
+             "Authorization: DeepL-Auth-Key %s", api_key);
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, auth_header);
+
+    curl_easy_setopt(curl, CURLOPT_URL, endpoint);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    CURLcode res = curl_easy_perform(curl);
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    // Parse response
+    char *translation = NULL;
+    if (res == CURLE_OK && http_code == HTTP_OK && response.data) {
+        translation = json_extract_string_from(response.data, "text", response.data);
+    }
+
+    curl_memory_buffer_free(&response);
+    return translation;
+}
+
+// Async translation thread function
+static void* translate_lyrics_async(void *arg) {
+    struct translation_thread_args *args = (struct translation_thread_args*)arg;
+    struct lyrics_data *data = args->data;
+    const char *target_lang = args->target_lang;
+    const char *api_key = args->api_key;
+    const char *cache_path = args->cache_path;
+
+    // Count translatable lines
+    int total = 0;
+    struct lyrics_line *line = data->lines;
+    while (line) {
+        if (line->ruby_segments && line->text && line->text[0] != '\0') {
+            char *stripped = strip_ruby_notation(line->text);
+            if (stripped && stripped[0] != '\0') {
+                total++;
+            }
+            if (stripped) free(stripped);
+        }
+        line = line->next;
+    }
+
+    data->translation_total = total;
+    data->translation_in_progress = true;
+
+    // Translate each line individually
+    int current = 0;
+    line = data->lines;
+    while (line) {
+        if (line->ruby_segments && line->text && line->text[0] != '\0') {
+            // Strip ruby notation
+            char *stripped = strip_ruby_notation(line->text);
+            if (!stripped || stripped[0] == '\0') {
+                if (stripped) free(stripped);
+                line = line->next;
+                continue;
+            }
+
+            // Translate this line
+            current++;
+            data->translation_current = current;
+
+            char *translation = translate_single_line(stripped, target_lang, api_key);
+            free(stripped);
+
+            if (translation) {
+                line->translation = translation;
+            }
+
+            // Rate limit delay
+            if (current < total) {
+                struct timespec delay = {
+                    .tv_sec = 0,
+                    .tv_nsec = RATE_LIMIT_DELAY_MS * 1000000L
+                };
+                nanosleep(&delay, NULL);
+            }
+        }
+        line = line->next;
+    }
+
+    // Save to cache
+    save_translation_to_cache(cache_path, data, target_lang);
+
+    // Mark translation complete
+    data->translation_in_progress = false;
+    log_success("Translation completed");
+
+    // Free thread args
+    free(args->target_lang);
+    free(args->api_key);
+    free(args->cache_path);
+    free(args);
+
+    return NULL;
+}
+
+// Perform API translation request (DEPRECATED - now using individual line translation)
+#if 0
 static bool perform_api_translation(struct lyrics_data *data, const char *target_lang) {
     struct config *cfg = config_get();
+
+    log_info("Requesting translation from DeepL API...");
 
     // Build JSON request body
     char *request_body = build_json_request(data, target_lang);
@@ -437,12 +629,14 @@ static bool perform_api_translation(struct lyrics_data *data, const char *target
     bool success = parse_and_populate_translations(&response, data);
     curl_memory_buffer_free(&response);
 
-    if (success) {
-        log_success("Translation successful");
+    if (!success) {
+        return false;
     }
 
-    return success;
+    log_success("Translation successful");
+    return true;
 }
+#endif
 
 // Main translation function
 bool deepl_translate_lyrics(struct lyrics_data *data) {
@@ -480,6 +674,11 @@ bool deepl_translate_lyrics(struct lyrics_data *data) {
         }
     }
 
+    // Initialize translation progress
+    data->translation_in_progress = false;
+    data->translation_current = 0;
+    data->translation_total = 0;
+
     // Check cache first
     char cache_path[PATH_BUFFER_SIZE];
     if (build_translation_cache_path(cache_path, sizeof(cache_path),
@@ -493,16 +692,43 @@ bool deepl_translate_lyrics(struct lyrics_data *data) {
         cache_path[0] = '\0';  // Mark as invalid
     }
 
-    // Perform API translation
-    log_info("Translating lyrics to %s...", cfg->deepl.target_language);
-    if (!perform_api_translation(data, cfg->deepl.target_language)) {
+    // Cache miss - start async translation
+    log_info("Starting async translation to %s...", cfg->deepl.target_language);
+
+    // Prepare thread args
+    struct translation_thread_args *args = malloc(sizeof(struct translation_thread_args));
+    if (!args) {
+        log_error("Failed to allocate memory for translation thread args");
         return false;
     }
 
-    // Save to cache
-    if (cache_path[0] != '\0') {
-        save_translation_to_cache(cache_path, data, cfg->deepl.target_language);
+    args->data = data;
+    args->target_lang = strdup(cfg->deepl.target_language);
+    args->api_key = strdup(cfg->deepl.api_key);
+    args->cache_path = cache_path[0] != '\0' ? strdup(cache_path) : strdup("");
+
+    if (!args->target_lang || !args->api_key || !args->cache_path) {
+        log_error("Failed to allocate memory for translation thread args");
+        free(args->target_lang);
+        free(args->api_key);
+        free(args->cache_path);
+        free(args);
+        return false;
     }
+
+    // Start translation thread
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, translate_lyrics_async, args) != 0) {
+        log_error("Failed to create translation thread");
+        free(args->target_lang);
+        free(args->api_key);
+        free(args->cache_path);
+        free(args);
+        return false;
+    }
+
+    // Detach thread so it runs independently
+    pthread_detach(thread);
 
     return true;
 }

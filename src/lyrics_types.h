@@ -52,6 +52,11 @@ struct lyrics_data {
     int line_count;
     char *source_file_path; // Path to the loaded lyrics file (for reload detection)
     char md5_checksum[MD5_DIGEST_STRING_LENGTH]; // MD5 checksum of the file
+
+    // Translation progress (for async translation)
+    bool translation_in_progress;
+    int translation_current;
+    int translation_total;
 };
 
 #endif // _LYRICS_TYPES_H

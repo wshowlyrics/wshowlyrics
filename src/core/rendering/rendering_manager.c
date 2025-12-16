@@ -114,6 +114,19 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                                                      g_config.deepl.translation_display,
                                                      state->current_line->translation,
                                                      &w, &h);
+            } else if (g_config.deepl.enable_deepl && state->lyrics.translation_in_progress) {
+                // Translation in progress - show progress
+                char progress_text[128];
+                snprintf(progress_text, sizeof(progress_text),
+                        "⏳ Translating... %d/%d",
+                        state->lyrics.translation_current,
+                        state->lyrics.translation_total);
+                render_ruby_segments_with_translation(cairo, state->font, scale,
+                                                     state->current_line->ruby_segments,
+                                                     state->foreground,
+                                                     g_config.deepl.translation_display,
+                                                     progress_text,
+                                                     &w, &h);
             } else {
                 // No translation
                 render_ruby_segments(cairo, state->font, scale,
