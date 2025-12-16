@@ -6,12 +6,12 @@
 #include <strings.h>
 #include <stdlib.h>
 
+static bool detection_available = false;
+
 #ifdef HAVE_LIBEXTTEXTCAT
 #include <libexttextcat/textcat.h>
-#endif
 
 static void *textcat_handle = NULL;
-static bool detection_available = false;
 
 /**
  * Convert BCP-47 language code to ISO 639-1
@@ -47,6 +47,7 @@ static char* normalize_language_code(const char *bcp47_code) {
 
 	return (i > 0) ? result : NULL;
 }
+#endif
 
 bool lang_detect_init(void) {
 #ifdef HAVE_LIBEXTTEXTCAT
