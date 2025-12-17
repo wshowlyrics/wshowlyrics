@@ -547,6 +547,166 @@ static bool key_exists_in_file(const char *user_path, const char *section, const
     return found;
 }
 
+// Structure to hold section names
+struct section_list {
+    char section[64];
+    struct section_list *next;
+};
+
+// Free section list
+static void free_section_list(struct section_list *head) {
+    while (head) {
+        struct section_list *next = head->next;
+        free(head);
+        head = next;
+    }
+}
+
+// Parse user config to extract all sections (including empty ones)
+static struct section_list* parse_user_config_sections(const char *user_path) {
+    FILE *f = fopen(user_path, "r");
+    if (!f) {
+        return NULL;
+    }
+
+    struct section_list *head = NULL;
+    struct section_list *tail = NULL;
+    char line[CONFIG_LINE_SIZE];
+
+    while (fgets(line, sizeof(line), f)) {
+        char *trimmed = config_trim_whitespace(line);
+
+        // Skip empty lines and comments
+        if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
+            continue;
+        }
+
+        // Section header
+        if (trimmed[0] == '[') {
+            char *end = strchr(trimmed, ']');
+            if (end) {
+                *end = '\0';
+                char *section_name = config_trim_whitespace(trimmed + 1);
+
+                // Check if section already in list
+                bool exists = false;
+                for (struct section_list *node = head; node != NULL; node = node->next) {
+                    if (strcmp(node->section, section_name) == 0) {
+                        exists = true;
+                        break;
+                    }
+                }
+
+                // Add to list if not already present
+                if (!exists) {
+                    struct section_list *node = malloc(sizeof(struct section_list));
+                    if (node) {
+                        snprintf(node->section, sizeof(node->section), "%s", section_name);
+                        node->next = NULL;
+
+                        if (!head) {
+                            head = tail = node;
+                        } else {
+                            tail->next = node;
+                            tail = node;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fclose(f);
+    return head;
+}
+
+// Parse user config to extract all config keys
+static struct config_key* parse_user_config_keys(const char *user_path) {
+    FILE *f = fopen(user_path, "r");
+    if (!f) {
+        return NULL;
+    }
+
+    struct config_key *head = NULL;
+    struct config_key *tail = NULL;
+    char line[CONFIG_LINE_SIZE];
+    char section[64] = {0};
+
+    while (fgets(line, sizeof(line), f)) {
+        char *trimmed = config_trim_whitespace(line);
+
+        // Skip empty lines and comments
+        if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
+            continue;
+        }
+
+        // Section header
+        if (trimmed[0] == '[') {
+            char *end = strchr(trimmed, ']');
+            if (end) {
+                *end = '\0';
+                snprintf(section, sizeof(section), "%s", trimmed + 1);
+            }
+            continue;
+        }
+
+        // Key-value pair
+        char *equals = strchr(trimmed, '=');
+        if (!equals || section[0] == '\0') continue;
+
+        *equals = '\0';
+        char *key = config_trim_whitespace(trimmed);
+
+        // Add to list
+        struct config_key *node = malloc(sizeof(struct config_key));
+        if (!node) continue;
+
+        snprintf(node->section, sizeof(node->section), "%s", section);
+        snprintf(node->key, sizeof(node->key), "%s", key);
+        node->next = NULL;
+
+        if (!head) {
+            head = tail = node;
+        } else {
+            tail->next = node;
+            tail = node;
+        }
+    }
+
+    fclose(f);
+    return head;
+}
+
+// Check if a section exists in example config
+static bool section_exists_in_example(struct config_key *example_keys, const char *section) {
+    // Special handling for deprecated [deepl] section - it's known but deprecated
+    if (strcmp(section, "deepl") == 0) {
+        return true;  // Don't warn about deprecated section
+    }
+
+    for (struct config_key *node = example_keys; node != NULL; node = node->next) {
+        if (strcmp(node->section, section) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Check if a key exists in example config
+static bool key_exists_in_example(struct config_key *example_keys, const char *section, const char *key) {
+    // Special handling for deprecated [deepl] section - it's known but deprecated
+    if (strcmp(section, "deepl") == 0) {
+        return true;  // Don't warn about deprecated section
+    }
+
+    for (struct config_key *node = example_keys; node != NULL; node = node->next) {
+        if (strcmp(node->section, section) == 0 && strcmp(node->key, key) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Validate user config against settings.ini.example
 void config_validate_user_config(void) {
     // Get user config path
@@ -584,6 +744,80 @@ void config_validate_user_config(void) {
     if (!example_keys) {
         free(user_path);
         return;  // Could not find example config, skip validation
+    }
+
+    // Parse user config sections (including empty ones)
+    struct section_list *user_sections = parse_user_config_sections(user_path);
+
+    // Parse user config keys
+    struct config_key *user_keys = parse_user_config_keys(user_path);
+
+    // Check for unknown sections and keys
+    struct config_key *unknown_head = NULL;
+    struct config_key *unknown_tail = NULL;
+
+    // First check for unknown sections (including empty ones)
+    if (user_sections) {
+        for (struct section_list *sec = user_sections; sec != NULL; sec = sec->next) {
+            if (!section_exists_in_example(example_keys, sec->section)) {
+                // Unknown section - add it to unknown list with empty key to indicate section-level issue
+                struct config_key *unknown = malloc(sizeof(struct config_key));
+                if (unknown) {
+                    snprintf(unknown->section, sizeof(unknown->section), "%s", sec->section);
+                    snprintf(unknown->key, sizeof(unknown->key), "(entire section)");
+                    unknown->next = NULL;
+
+                    if (!unknown_head) {
+                        unknown_head = unknown_tail = unknown;
+                    } else {
+                        unknown_tail->next = unknown;
+                        unknown_tail = unknown;
+                    }
+                }
+            }
+        }
+    }
+
+    // Then check for unknown keys in known sections
+    if (user_keys) {
+        for (struct config_key *node = user_keys; node != NULL; node = node->next) {
+            // Only check keys in sections that exist in example
+            if (section_exists_in_example(example_keys, node->section)) {
+                if (!key_exists_in_example(example_keys, node->section, node->key)) {
+                    // Known section but unknown key
+                    struct config_key *unknown = malloc(sizeof(struct config_key));
+                    if (unknown) {
+                        snprintf(unknown->section, sizeof(unknown->section), "%s", node->section);
+                        snprintf(unknown->key, sizeof(unknown->key), "%s", node->key);
+                        unknown->next = NULL;
+
+                        if (!unknown_head) {
+                            unknown_head = unknown_tail = unknown;
+                        } else {
+                            unknown_tail->next = unknown;
+                            unknown_tail = unknown;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Display warnings for unknown keys
+    if (unknown_head) {
+        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        log_warn("⚠️  Unknown configuration fields detected:");
+        log_warn("These settings are not recognized and will be ignored:");
+        log_warn("");
+
+        for (struct config_key *node = unknown_head; node != NULL; node = node->next) {
+            log_warn("  [%s] %s", node->section, node->key);
+        }
+
+        log_warn("");
+        log_warn("These may be from an older version or typos.");
+        log_warn("Please check: %s", found_example_path);
+        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     }
 
     // Check for missing keys
@@ -684,6 +918,9 @@ void config_validate_user_config(void) {
 
     // Cleanup
     free_config_keys(example_keys);
+    free_section_list(user_sections);
+    free_config_keys(user_keys);
+    free_config_keys(unknown_head);
     free_config_keys(missing_head);
     free(user_path);
 }

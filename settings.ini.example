@@ -181,7 +181,3 @@ max_retries = 3
 # re-validated on next resume to ensure they were fully completed
 # Recommended range: 1-10, Default: 2
 revalidate_count = 2
-
-[behavior]
-# Reserved for future behavior settings
-# This section is currently not used but may be expanded in future releases
