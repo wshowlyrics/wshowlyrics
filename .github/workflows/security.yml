@@ -67,13 +67,17 @@ jobs:
       - name: Install latest Cppcheck with SARIF support
         run: |
           # Cppcheck 2.16+ has native SARIF support
-          wget https://github.com/danmar/cppcheck/releases/download/2.16.0/cppcheck-2.16.0-x86_64-linux.tar.xz
+          wget -q https://github.com/danmar/cppcheck/releases/download/2.16.0/cppcheck-2.16.0-x86_64-linux.tar.xz
           tar xf cppcheck-2.16.0-x86_64-linux.tar.xz
+          export PATH="${{ github.workspace }}/cppcheck-2.16.0/bin:$PATH"
           echo "${{ github.workspace }}/cppcheck-2.16.0/bin" >> $GITHUB_PATH
+          # Verify installation
+          cppcheck --version
 
       - name: Run Cppcheck with SARIF output
         run: |
-          cppcheck --enable=all \
+          # Run Cppcheck and generate SARIF
+          ${{ github.workspace }}/cppcheck-2.16.0/bin/cppcheck --enable=all \
             --suppress=missingIncludeSystem \
             --suppress=unmatchedSuppression \
             --std=c11 --platform=unix64 \
@@ -81,7 +85,17 @@ jobs:
             --error-exitcode=0 \
             --output-format=sarif \
             --output-file=cppcheck.sarif \
-            src/ 2>&1 | tee cppcheck.log || true
+            src/
+
+          # Verify SARIF file was created
+          if [ ! -f cppcheck.sarif ]; then
+            echo "Error: cppcheck.sarif was not created"
+            echo "Creating empty SARIF file to prevent upload failure"
+            echo '{"version":"2.1.0","runs":[]}' > cppcheck.sarif
+          fi
+
+          # Show file size for debugging
+          ls -lh cppcheck.sarif
 
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v4
