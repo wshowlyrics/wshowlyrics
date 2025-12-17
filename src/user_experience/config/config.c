@@ -138,7 +138,8 @@ static bool is_safe_path_for_shell(const char *path) {
     for (const char *p = path; *p; p++) {
         if (*p == ';' || *p == '|' || *p == '&' || *p == '`' ||
             *p == '$' || *p == '(' || *p == ')' || *p == '<' ||
-            *p == '>' || *p == '\n' || *p == '\r' || *p == '\\') {
+            *p == '>' || *p == '\n' || *p == '\r' || *p == '\\' ||
+            *p == '"' || *p == '\'') {
             return false;
         }
     }
