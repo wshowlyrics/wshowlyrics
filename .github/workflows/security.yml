@@ -69,6 +69,7 @@ jobs:
         with:
           languages: cpp
           queries: security-and-quality
+          config-file: .github/codeql/codeql-config.yml
 
       - name: Install build dependencies
         run: |

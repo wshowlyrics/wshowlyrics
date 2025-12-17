@@ -1,0 +1,7 @@
+name: "CodeQL Configuration"
+
+# Exclude build artifacts and temporary files
+paths-ignore:
+  - 'build/**'
+  - '**/build/**'
+  - '**/.meson-private/**'
