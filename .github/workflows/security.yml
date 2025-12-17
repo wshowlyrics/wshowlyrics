@@ -52,3 +52,43 @@ jobs:
         if: always()
         with:
           sarif_file: semgrep.sarif
+
+  sast-cppcheck:
+    name: SAST - Cppcheck
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # For uploading SARIF results
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+
+      - name: Run Cppcheck
+        run: |
+          cppcheck --enable=all \
+            --suppress=missingIncludeSystem \
+            --suppress=unmatchedSuppression \
+            --std=c11 --platform=unix64 \
+            --inline-suppr \
+            --error-exitcode=0 \
+            --xml --xml-version=2 \
+            --output-file=cppcheck.xml \
+            src/
+
+      - name: Convert to SARIF
+        run: |
+          pip install cppcheck-codequality
+          cppcheck-codequality \
+            --input-file=cppcheck.xml \
+            --output-file=cppcheck.sarif
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: cppcheck.sarif
+          category: cppcheck
