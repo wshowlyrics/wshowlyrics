@@ -5,6 +5,8 @@ on:
     workflows: ["CI"]
     types:
       - completed
+    branches:
+      - master
 
 jobs:
   secret-scan:
@@ -15,7 +17,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0  # Scan full git history for secrets
 
       - name: Run Gitleaks
@@ -34,22 +35,22 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: >-
-            p/security-audit
-            p/c
-            p/ci
-          generateSarif: true
+      - name: Install Semgrep
+        run: pip3 install semgrep
+
+      - name: Run Semgrep and generate SARIF
+        run: |
+          semgrep ci \
+            --config p/security-audit \
+            --config p/c \
+            --config p/ci \
+            --sarif > semgrep.sarif
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}  # Optional: for Semgrep Cloud
 
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: semgrep.sarif
