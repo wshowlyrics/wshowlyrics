@@ -38,4 +38,15 @@ char* detect_language(const char *text, int max_len);
  */
 bool is_same_language(const char *text1, const char *text2);
 
+/**
+ * Check if text is already in the target language.
+ * Useful for skipping unnecessary translation API calls.
+ *
+ * @param text The text to check
+ * @param target_lang Target language name (e.g., "Korean", "English", "Japanese")
+ * @return true if text is already in target language, false otherwise
+ *         Returns false if language detection is not available or detection fails.
+ */
+bool is_already_in_language(const char *text, const char *target_lang);
+
 #endif // _LANG_DETECT_H

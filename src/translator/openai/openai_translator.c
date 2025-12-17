@@ -1,4 +1,4 @@
-#include "claude_translator.h"
+#include "openai_translator.h"
 #include "../common/translator_common.h"
 #include "../../constants.h"
 #include "../../user_experience/config/config.h"
@@ -9,16 +9,14 @@
 #include <json-c/json.h>
 #include <pthread.h>
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
 
-// Claude API endpoint
-#define CLAUDE_API_ENDPOINT "https://api.anthropic.com/v1/messages"
-
-// API version
-#define CLAUDE_API_VERSION "2023-06-01"
+// OpenAI API endpoint
+#define OPENAI_API_ENDPOINT "https://api.openai.com/v1/chat/completions"
 
 // Global CURL handle
 static CURL *curl_handle = NULL;
@@ -38,13 +36,13 @@ struct curl_response {
     size_t size;
 };
 
-static size_t claude_curl_write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+static size_t openai_curl_write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     struct curl_response *response = (struct curl_response *)userp;
 
     char *ptr = realloc(response->data, response->size + realsize + 1);
     if (!ptr) {
-        log_error("claude_translator: Memory allocation failed");
+        log_error("openai_translator: Memory allocation failed");
         return 0;
     }
 
@@ -57,8 +55,8 @@ static size_t claude_curl_write_callback(void *contents, size_t size, size_t nme
 }
 
 /**
- * Build Claude API request JSON
- * Request format: {"model": "...", "max_tokens": 1024, "messages": [{"role": "user", "content": "..."}]}
+ * Build OpenAI API request JSON
+ * Request format: {"model": "...", "messages": [{"role": "user", "content": "..."}], "temperature": 0.3}
  */
 static char* build_request_json(const char *text, const char *target_lang, const char *model_name) {
     json_object *root = json_object_new_object();
@@ -74,7 +72,6 @@ static char* build_request_json(const char *text, const char *target_lang, const
              target_lang, text);
 
     json_object_object_add(root, "model", json_object_new_string(model_name));
-    json_object_object_add(root, "max_tokens", json_object_new_int(1024));
 
     json_object_object_add(message_obj, "role", json_object_new_string("user"));
     json_object_object_add(message_obj, "content", json_object_new_string(prompt));
@@ -90,39 +87,46 @@ static char* build_request_json(const char *text, const char *target_lang, const
 }
 
 /**
- * Parse Claude API response JSON
- * Response format: {"content": [{"text": "..."}]}
+ * Parse OpenAI API response JSON
+ * Response format: {"choices": [{"message": {"content": "..."}}]}
  */
 static char* parse_response_json(const char *json_str) {
     json_object *root = json_tokener_parse(json_str);
     if (!root) {
-        log_error("claude_translator: Failed to parse JSON response");
+        log_error("openai_translator: Failed to parse JSON response");
         return NULL;
     }
 
-    // Navigate: content[0].text
-    json_object *content;
-    if (!json_object_object_get_ex(root, "content", &content)) {
-        log_error("claude_translator: No 'content' in response");
+    // Navigate: choices[0].message.content
+    json_object *choices;
+    if (!json_object_object_get_ex(root, "choices", &choices)) {
+        log_error("openai_translator: No 'choices' in response");
         json_object_put(root);
         return NULL;
     }
 
-    json_object *content_item = json_object_array_get_idx(content, 0);
-    if (!content_item) {
-        log_error("claude_translator: Empty content array");
+    json_object *choice = json_object_array_get_idx(choices, 0);
+    if (!choice) {
+        log_error("openai_translator: Empty choices array");
         json_object_put(root);
         return NULL;
     }
 
-    json_object *text_obj;
-    if (!json_object_object_get_ex(content_item, "text", &text_obj)) {
-        log_error("claude_translator: No 'text' in content item");
+    json_object *message;
+    if (!json_object_object_get_ex(choice, "message", &message)) {
+        log_error("openai_translator: No 'message' in choice");
         json_object_put(root);
         return NULL;
     }
 
-    const char *text = json_object_get_string(text_obj);
+    json_object *content_obj;
+    if (!json_object_object_get_ex(message, "content", &content_obj)) {
+        log_error("openai_translator: No 'content' in message");
+        json_object_put(root);
+        return NULL;
+    }
+
+    const char *text = json_object_get_string(content_obj);
     // Extract last line to handle cases where AI includes original text
     char *result = translator_extract_last_line(text);
     json_object_put(root);
@@ -131,22 +135,33 @@ static char* parse_response_json(const char *json_str) {
 }
 
 /**
- * Parse retry delay from error response (similar to Gemini)
+ * Parse retry delay from error response or Retry-After header
+ * Returns delay in milliseconds, or 0 if not found
  */
-static int parse_retry_delay_claude(const char *response_json) {
-    if (!response_json) {
-        return 0;
+static int parse_retry_delay(const char *response_json, struct curl_slist *headers) {
+    // First try Retry-After header (OpenAI standard)
+    if (headers) {
+        struct curl_slist *header = headers;
+        while (header) {
+            if (strncasecmp(header->data, "Retry-After:", 12) == 0) {
+                int seconds = 0;
+                if (sscanf(header->data + 12, "%d", &seconds) == 1) {
+                    return seconds * 1000 + 1000; // Add 1 second buffer
+                }
+            }
+            header = header->next;
+        }
     }
 
-    // Look for retry-related patterns in Claude error responses
-    // Claude may return different error formats
-    const char *retry_str = strstr(response_json, "retry");
-    if (retry_str) {
-        // Try to find seconds value
-        float seconds = 0;
-        if (sscanf(retry_str, "retry in %fs", &seconds) == 1 ||
-            sscanf(retry_str, "retry after %fs", &seconds) == 1) {
-            return (int)(seconds * 1000) + 1000;
+    // Fallback: check response body for retry information
+    if (response_json) {
+        const char *retry_str = strstr(response_json, "retry");
+        if (retry_str) {
+            float seconds = 0;
+            if (sscanf(retry_str, "retry in %fs", &seconds) == 1 ||
+                sscanf(retry_str, "retry after %fs", &seconds) == 1) {
+                return (int)(seconds * 1000) + 1000;
+            }
         }
     }
 
@@ -154,7 +169,7 @@ static int parse_retry_delay_claude(const char *response_json) {
 }
 
 /**
- * Translate a single line using Claude API with retry logic
+ * Translate a single line using OpenAI API with retry logic
  */
 static char* translate_single_line(const char *text, const char *target_lang,
                                    const char *api_key, const char *model_name) {
@@ -165,7 +180,7 @@ static char* translate_single_line(const char *text, const char *target_lang,
     // Create thread-local CURL handle to avoid race conditions
     CURL *local_curl = curl_easy_init();
     if (!local_curl) {
-        log_error("claude_translator: Failed to initialize CURL for translation");
+        log_error("openai_translator: Failed to initialize CURL for translation");
         return NULL;
     }
 
@@ -188,22 +203,18 @@ static char* translate_single_line(const char *text, const char *target_lang,
 
         // Setup CURL
         struct curl_response response = {0};
-        curl_easy_setopt(local_curl, CURLOPT_URL, CLAUDE_API_ENDPOINT);
+        curl_easy_setopt(local_curl, CURLOPT_URL, OPENAI_API_ENDPOINT);
         curl_easy_setopt(local_curl, CURLOPT_POSTFIELDS, request_json);
-        curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, claude_curl_write_callback);
+        curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, openai_curl_write_callback);
         curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, &response);
 
         // Setup headers
-        char api_key_header[512];
-        snprintf(api_key_header, sizeof(api_key_header), "x-api-key: %s", api_key);
-
-        char version_header[128];
-        snprintf(version_header, sizeof(version_header), "anthropic-version: %s", CLAUDE_API_VERSION);
+        char auth_header[512];
+        snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
 
         struct curl_slist *headers = NULL;
         headers = curl_slist_append(headers, "Content-Type: application/json");
-        headers = curl_slist_append(headers, api_key_header);
-        headers = curl_slist_append(headers, version_header);
+        headers = curl_slist_append(headers, auth_header);
         curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
 
         // Perform request
@@ -212,7 +223,7 @@ static char* translate_single_line(const char *text, const char *target_lang,
         free(request_json);
 
         if (res != CURLE_OK) {
-            log_error("claude_translator: CURL error: %s", curl_easy_strerror(res));
+            log_error("openai_translator: CURL error: %s", curl_easy_strerror(res));
             free(response.data);
             curl_easy_cleanup(local_curl);
             return NULL;
@@ -229,18 +240,18 @@ static char* translate_single_line(const char *text, const char *target_lang,
             break;
         } else if (http_code == 401 || http_code == 403) {
             // Authentication/permission error - don't retry
-            log_error("claude_translator: Authentication error (HTTP %ld)", http_code);
+            log_error("openai_translator: Authentication error (HTTP %ld)", http_code);
             free(response.data);
             curl_easy_cleanup(local_curl);
             return NULL;
         } else {
             // Temporary error - retry with delay
-            int retry_delay_ms = parse_retry_delay_claude(response.data);
+            int retry_delay_ms = parse_retry_delay(response.data, NULL);
             if (retry_delay_ms == 0) {
                 retry_delay_ms = 5000 * attempt; // Exponential backoff
             }
 
-            log_warn("claude_translator: HTTP error %ld, retrying in %dms (attempt %d/%d)",
+            log_warn("openai_translator: HTTP error %ld, retrying in %dms (attempt %d/%d)",
                     http_code, retry_delay_ms, attempt, max_retries);
 
             free(response.data);
@@ -279,7 +290,7 @@ static void* translate_lyrics_async(void *arg) {
         if (translator_check_cache_complete(data, translatable_count, &already_translated)) {
             // Cache is complete
             log_success("Found cached translation: %s", args->cache_path);
-            log_success("claude_translator: Loaded complete translation from cache (%d lines)",
+            log_success("openai_translator: Loaded complete translation from cache (%d lines)",
                        already_translated);
             data->translation_current = already_translated;
             data->translation_in_progress = false;
@@ -296,13 +307,13 @@ static void* translate_lyrics_async(void *arg) {
             int revalidate_count = cfg->translation.revalidate_count;
             translator_prepare_cache_resume(data, &already_translated, revalidate_count);
             log_info("Found cached translation: %s", args->cache_path);
-            log_info("claude_translator: Loaded partial cache (%d/%d), re-validating last %d lines",
+            log_info("openai_translator: Loaded partial cache (%d/%d), re-validating last %d lines",
                     already_translated, translatable_count, revalidate_count);
             data->translation_current = already_translated;
         }
     } else {
         data->translation_current = 0;
-        log_info("claude_translator: Starting translation of %d lines", translatable_count);
+        log_info("openai_translator: Starting translation of %d lines", translatable_count);
     }
 
     // Translate each line (skip already translated lines from cache)
@@ -311,7 +322,7 @@ static void* translate_lyrics_async(void *arg) {
     while (line) {
         // Check if translation should be cancelled
         if (data->translation_should_cancel) {
-            log_info("claude_translator: Translation cancelled (%d/%d completed)",
+            log_info("openai_translator: Translation cancelled (%d/%d completed)",
                      current, translatable_count);
             break;
         }
@@ -336,7 +347,7 @@ static void* translate_lyrics_async(void *arg) {
 
             // Check if text is already in target language (skip API call)
             if (is_already_in_language(stripped, args->target_lang)) {
-                log_info("claude_translator: [%d/%d] Skipped (already in target language)",
+                log_info("openai_translator: [%d/%d] Skipped (already in target language)",
                        current, translatable_count);
                 free(stripped);
                 line = line->next;
@@ -349,18 +360,18 @@ static void* translate_lyrics_async(void *arg) {
                 // Language validation: verify translation is different language
                 // This is a fallback check in case pre-detection missed it
                 if (is_same_language(stripped, translation)) {
-                    log_info("claude_translator: [%d/%d] Skipped (same language after translation)",
+                    log_info("openai_translator: [%d/%d] Skipped (same language after translation)",
                            current, translatable_count);
                     free(translation);
                     // Don't set translation - original text will be displayed
                 } else {
                     free(line->translation);
                     line->translation = translation;
-                    log_info("claude_translator: [%d/%d] Translated: %s",
+                    log_info("openai_translator: [%d/%d] Translated: %s",
                            current, translatable_count, translation);
                 }
             } else {
-                log_warn("claude_translator: [%d/%d] Translation failed",
+                log_warn("openai_translator: [%d/%d] Translation failed",
                        current, translatable_count);
             }
 
@@ -384,13 +395,13 @@ static void* translate_lyrics_async(void *arg) {
     float completion_ratio = (float)data->translation_current / (float)data->translation_total;
     if (data->translation_current == data->translation_total) {
         translator_save_to_cache(args->cache_path, data, args->target_lang);
-        log_success("claude_translator: Translation completed");
+        log_success("openai_translator: Translation completed");
     } else if (completion_ratio >= 0.75f) {
         translator_save_to_cache(args->cache_path, data, args->target_lang);
-        log_warn("claude_translator: Translation incomplete but cached (%d/%d, %.0f%%)",
+        log_warn("openai_translator: Translation incomplete but cached (%d/%d, %.0f%%)",
                  data->translation_current, data->translation_total, completion_ratio * 100);
     } else {
-        log_warn("claude_translator: Translation incomplete (%d/%d, %.0f%%), not cached (threshold: 75%%)",
+        log_warn("openai_translator: Translation incomplete (%d/%d, %.0f%%), not cached (threshold: 75%%)",
                  data->translation_current, data->translation_total, completion_ratio * 100);
         // Delete incomplete cache file if it exists
         unlink(args->cache_path);
@@ -406,28 +417,28 @@ static void* translate_lyrics_async(void *arg) {
     return NULL;
 }
 
-bool claude_translator_init(void) {
+bool openai_translator_init(void) {
     if (curl_handle) {
         return true; // Already initialized
     }
 
     curl_handle = curl_easy_init();
     if (!curl_handle) {
-        log_error("claude_translator: Failed to initialize CURL");
+        log_error("openai_translator: Failed to initialize CURL");
         return false;
     }
 
     return true;
 }
 
-void claude_translator_cleanup(void) {
+void openai_translator_cleanup(void) {
     if (curl_handle) {
         curl_easy_cleanup(curl_handle);
         curl_handle = NULL;
     }
 }
 
-bool claude_translate_lyrics(struct lyrics_data *data) {
+bool openai_translate_lyrics(struct lyrics_data *data) {
     if (!data || !curl_handle) {
         return false;
     }
@@ -442,23 +453,23 @@ bool claude_translate_lyrics(struct lyrics_data *data) {
     const char *api_key = g_config.translation.api_key;
     const char *target_lang = g_config.translation.target_language;
 
-    // Extract model name from provider (e.g., "claude-sonnet-4-5" -> "claude-sonnet-4-5")
+    // Extract model name from provider (e.g., "gpt-4o-mini" -> "gpt-4o-mini")
     const char *model_name = provider;
 
     // Validate
     if (!api_key || strlen(api_key) == 0) {
-        log_error("claude_translator: API key not configured");
+        log_error("openai_translator: API key not configured");
         return false;
     }
 
     if (!model_name || strlen(model_name) == 0) {
-        log_error("claude_translator: Model name not configured");
+        log_error("openai_translator: Model name not configured");
         return false;
     }
 
     // Validate MD5 checksum
     if (strlen(data->md5_checksum) == 0) {
-        log_error("claude_translator: MD5 checksum is empty, cannot cache translation");
+        log_error("openai_translator: MD5 checksum is empty, cannot cache translation");
         return false;
     }
 
@@ -470,7 +481,7 @@ bool claude_translate_lyrics(struct lyrics_data *data) {
 
     // Create cache directory
     if (system("mkdir -p /tmp/wshowlyrics/translated") != 0) {
-        log_warn("claude_translator: Failed to create cache directory");
+        log_warn("openai_translator: Failed to create cache directory");
     }
 
     // Prepare thread arguments
@@ -487,7 +498,7 @@ bool claude_translate_lyrics(struct lyrics_data *data) {
 
     // Launch async translation thread
     if (pthread_create(&data->translation_thread, NULL, translate_lyrics_async, args) != 0) {
-        log_error("claude_translator: Failed to create translation thread");
+        log_error("openai_translator: Failed to create translation thread");
         free(args->target_lang);
         free(args->api_key);
         free(args->model_name);

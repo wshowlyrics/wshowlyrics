@@ -7,6 +7,7 @@
 #include "../../translator/deepl/deepl_translator.h"
 #include "../../translator/gemini/gemini_translator.h"
 #include "../../translator/claude/claude_translator.h"
+#include "../../translator/openai/openai_translator.h"
 #include "../../constants.h"
 #include "../../utils/file/file_utils.h"
 #include <stdio.h>
@@ -57,6 +58,8 @@ static void translate_lyrics_with_provider(struct lyrics_data *data) {
         gemini_translate_lyrics(data);
     } else if (strncmp(provider, "claude-", 7) == 0 || strncmp(provider, "claude", 6) == 0) {
         claude_translate_lyrics(data);
+    } else if (strncmp(provider, "gpt-", 4) == 0 || strncmp(provider, "openai", 6) == 0) {
+        openai_translate_lyrics(data);
     } else {
         log_warn("Unknown translation provider: %s", provider);
     }

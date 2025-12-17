@@ -25,8 +25,9 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
   - URL decoding support for Unicode paths (Korean, Japanese, etc.)
   - Automatic filename-based matching
 - **Translation Support**: Multi-provider API integration for automatic lyrics translation
-  - Multiple translation providers: DeepL, Google Gemini, Anthropic Claude
+  - Multiple translation providers: OpenAI, DeepL, Google Gemini, Anthropic Claude
   - Smart caching system - translates once, uses forever
+  - Language detection optimization - skips API calls for text already in target language
   - Configurable display modes (both original + translation, or translation only)
   - Adjustable translation text opacity
   - Supports LRC, SRT, and VTT formats (LRCX excluded)
@@ -380,6 +381,9 @@ Add the following settings to `~/.config/wshowlyrics/settings.ini`:
 [translation]
 # Translation provider and model
 # Available providers:
+#   - gpt-4o-mini: OpenAI GPT-4o Mini (recommended, fast and cost-effective)
+#   - gpt-4o: OpenAI GPT-4o (higher accuracy)
+#   - gpt-3.5-turbo: OpenAI GPT-3.5 Turbo (older model, not recommended)
 #   - deepl: DeepL API (https://www.deepl.com/docs-api)
 #   - gemini-2.5-flash: Google Gemini 2.5 Flash model
 #   - gemini-2.5-pro: Google Gemini 2.5 Pro model
@@ -387,9 +391,14 @@ Add the following settings to `~/.config/wshowlyrics/settings.ini`:
 #   - claude-opus-4-5: Anthropic Claude Opus 4.5
 #   - claude-haiku-4-5: Anthropic Claude Haiku 4.5
 #   - false: Disable translation
-provider = gemini-2.5-flash
+provider = gpt-4o-mini
 
 # API key for the selected provider
+# Format varies by provider (get at provider's website):
+#   - OpenAI: https://platform.openai.com/api-keys
+#   - DeepL: https://www.deepl.com/pro-api
+#   - Google Gemini: https://aistudio.google.com/apikey
+#   - Anthropic Claude: https://console.anthropic.com/
 api_key = your-api-key-here
 
 # Target language for translation
@@ -413,6 +422,13 @@ translation_display = both
 # 1.0 = 100% opacity (fully opaque, same as original text)
 translation_opacity = 0.7
 
+# Language detection optimization
+# When enabled, automatically skips translation for text already in target language
+# This saves API costs for mixed-language lyrics (e.g., English + Korean)
+# Uses libexttextcat for detection (optional dependency - gracefully degrades if unavailable)
+# Options: true (enabled, default) or false (disabled)
+detect_language = true
+
 # Rate limit delay (intuitive format)
 # Controls the delay between translation requests to avoid hitting API rate limits
 # Examples:
@@ -420,6 +436,7 @@ translation_opacity = 0.7
 #   5s: 5 seconds between requests (1000ms = 1s)
 #   10m: 10 requests per minute (60000ms / 10)
 # Recommended by provider:
+#   OpenAI: 1s (500 requests per minute for free tier)
 #   DeepL: 200 or 5s (supports 300 requests/minute)
 #   Gemini free tier: 10m (10 requests/minute limit)
 #   Claude: 50m or higher (depending on account tier)
@@ -432,6 +449,15 @@ max_retries = 3
 ```
 
 ### Supported Providers
+
+**OpenAI API**
+- Visit: https://platform.openai.com/api-keys
+- Supported models:
+  - `gpt-4o-mini`: Recommended - fast and cost-effective for translation
+  - `gpt-4o`: Higher accuracy, more capable
+  - `gpt-3.5-turbo`: Older model, not recommended
+- Pricing: Pay-as-you-go based on tokens used
+- Documentation: https://platform.openai.com/docs/guides/gpt
 
 **DeepL API**
 - Visit: https://www.deepl.com/pro-api
@@ -458,8 +484,9 @@ max_retries = 3
 
 ### Features
 
-- **Multiple provider support**: Choose from DeepL, Google Gemini, or Anthropic Claude
+- **Multiple provider support**: Choose from OpenAI, DeepL, Google Gemini, or Anthropic Claude
 - **Smart caching**: Translations are cached in `/tmp/wshowlyrics/translated/` and reused on subsequent playbacks
+- **Language detection optimization**: Automatically skips translation for text already in target language, saving API costs for mixed-language lyrics
 - **Format support**: Provider-based translation applies to LRC format files. SRT and VTT files support inline translation using `{translation}` syntax at line start (no API required). LRCX format is excluded.
 - **Rate limiting**: Configurable rate limiting to respect API quotas and avoid errors
 - **Auto-retry**: Automatic retry on rate limit errors (configurable attempts)
@@ -468,6 +495,16 @@ max_retries = 3
 - **Adjustable opacity**: Control how visible the translation text appears
 
 ### Example Configuration
+
+**OpenAI Setup:**
+```ini
+[translation]
+provider = gpt-4o-mini
+api_key = sk-proj-your-openai-api-key
+target_language = EN
+rate_limit = 1s
+detect_language = true
+```
 
 **DeepL Setup:**
 ```ini
@@ -529,6 +566,7 @@ The translation appears below the original lyrics in a smaller, slightly dimmed 
 - Wayland compositor with wlr-layer-shell support (Sway, Hyprland, etc.)
 
 ### Optional Dependencies
+- **libexttextcat**: For language detection optimization in translation (improves translation efficiency for mixed-language lyrics)
 - **Swaybar users**:
   - `snixembed` - SNI (StatusNotifierItem) bridge for Swaybar (optional, but recommended for tray icons)
   - Enable system tray in Swaybar config:

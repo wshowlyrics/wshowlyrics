@@ -101,7 +101,7 @@ notification_timeout = 5000
 [translation]
 # Multi-Provider Translation Settings
 # Automatic translation of LRC lyrics files (does not apply to SRT, VTT, or LRCX)
-# Supports DeepL, Google Gemini, and Anthropic Claude translation APIs
+# Supports DeepL, Google Gemini, Anthropic Claude, and OpenAI translation APIs
 
 # Translation provider and model
 # Format: provider or provider-model
@@ -109,10 +109,13 @@ notification_timeout = 5000
 #   provider = deepl                 (DeepL API)
 #   provider = gemini-2.5-flash      (Google Gemini API, free tier)
 #   provider = claude-sonnet-4-5     (Anthropic Claude API)
+#   provider = gpt-4o-mini           (OpenAI API, recommended)
+#   provider = gpt-4o                (OpenAI API, high quality)
 #   provider = false                 (disable translation)
 # See more models:
 #   Gemini: https://ai.google.dev/gemini-api/docs/models
 #   Claude: https://claude.com/pricing#api
+#   OpenAI: https://platform.openai.com/docs/models
 # Default: false (disabled)
 provider = false
 
@@ -121,6 +124,7 @@ provider = false
 #   DeepL: https://www.deepl.com/pro-api (Free keys end with :fx)
 #   Gemini: https://aistudio.google.com/apikey (Free tier: 1500 requests/day)
 #   Claude: https://console.anthropic.com/
+#   OpenAI: https://platform.openai.com/api-keys
 api_key =
 
 # Target language for translation

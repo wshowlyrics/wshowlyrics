@@ -13,6 +13,7 @@
 #include "translator/deepl/deepl_translator.h"
 #include "translator/gemini/gemini_translator.h"
 #include "translator/claude/claude_translator.h"
+#include "translator/openai/openai_translator.h"
 #include <ctype.h>
 #include <strings.h>
 #include <curl/curl.h>
@@ -214,6 +215,7 @@ int main(int argc, char *argv[]) {
     deepl_translator_init();
     gemini_translator_init();
     claude_translator_init();
+    openai_translator_init();
 
     // Initialize language detection for translation validation
     lang_detect_init();
@@ -392,6 +394,7 @@ exit:
     deepl_translator_cleanup();
     gemini_translator_cleanup();
     claude_translator_cleanup();
+    openai_translator_cleanup();
     lang_detect_cleanup();
 
     if (state.display) {

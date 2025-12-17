@@ -219,3 +219,74 @@ bool is_same_language(const char *text1, const char *text2) {
 
 	return same;
 }
+
+/**
+ * Convert language name to ISO 639-1 code
+ * Returns NULL if language name is not recognized
+ */
+static const char* language_name_to_iso_code(const char *lang_name) {
+	if (!lang_name) {
+		return NULL;
+	}
+
+	// Common language mappings
+	if (strcasecmp(lang_name, "Korean") == 0 || strcasecmp(lang_name, "ko") == 0) {
+		return "ko";
+	} else if (strcasecmp(lang_name, "English") == 0 || strcasecmp(lang_name, "en") == 0) {
+		return "en";
+	} else if (strcasecmp(lang_name, "Japanese") == 0 || strcasecmp(lang_name, "ja") == 0) {
+		return "ja";
+	} else if (strcasecmp(lang_name, "Chinese") == 0 || strcasecmp(lang_name, "zh") == 0) {
+		return "zh";
+	} else if (strcasecmp(lang_name, "Spanish") == 0 || strcasecmp(lang_name, "es") == 0) {
+		return "es";
+	} else if (strcasecmp(lang_name, "French") == 0 || strcasecmp(lang_name, "fr") == 0) {
+		return "fr";
+	} else if (strcasecmp(lang_name, "German") == 0 || strcasecmp(lang_name, "de") == 0) {
+		return "de";
+	} else if (strcasecmp(lang_name, "Portuguese") == 0 || strcasecmp(lang_name, "pt") == 0) {
+		return "pt";
+	} else if (strcasecmp(lang_name, "Russian") == 0 || strcasecmp(lang_name, "ru") == 0) {
+		return "ru";
+	} else if (strcasecmp(lang_name, "Italian") == 0 || strcasecmp(lang_name, "it") == 0) {
+		return "it";
+	}
+
+	// If already looks like ISO code (2-3 chars), return as-is
+	size_t len = strlen(lang_name);
+	if (len == 2 || len == 3) {
+		return lang_name;
+	}
+
+	return NULL;
+}
+
+bool is_already_in_language(const char *text, const char *target_lang) {
+	if (!text || !target_lang) {
+		return false;
+	}
+
+	if (!detection_available) {
+		// No detection available, cannot skip
+		return false;
+	}
+
+	// Convert target language name to ISO code
+	const char *target_code = language_name_to_iso_code(target_lang);
+	if (!target_code) {
+		// Unknown target language, cannot skip
+		return false;
+	}
+
+	// Detect language of text
+	char *detected = detect_language(text, -1);
+	if (!detected) {
+		// Detection failed (short text, etc.), cannot skip
+		return false;
+	}
+
+	// Compare codes (case-insensitive)
+	bool already_target = (strcasecmp(detected, target_code) == 0);
+
+	return already_target;
+}

@@ -288,6 +288,7 @@ static void* translate_lyrics_async(void *arg) {
     if (cache_loaded) {
         if (translator_check_cache_complete(data, translatable_count, &already_translated)) {
             // Cache is complete
+            log_success("Found cached translation: %s", args->cache_path);
             log_success("gemini_translator: Loaded complete translation from cache (%d lines)",
                        already_translated);
             data->translation_current = already_translated;
@@ -304,6 +305,7 @@ static void* translate_lyrics_async(void *arg) {
             struct config *cfg = config_get();
             int revalidate_count = cfg->translation.revalidate_count;
             translator_prepare_cache_resume(data, &already_translated, revalidate_count);
+            log_info("Found cached translation: %s", args->cache_path);
             log_info("gemini_translator: Loaded partial cache (%d/%d), re-validating last %d lines",
                     already_translated, translatable_count, revalidate_count);
             data->translation_current = already_translated;
@@ -342,21 +344,31 @@ static void* translate_lyrics_async(void *arg) {
                 continue;
             }
 
+            // Check if text is already in target language (skip API call)
+            if (is_already_in_language(stripped, args->target_lang)) {
+                log_info("gemini_translator: [%d/%d] Skipped (already in target language)",
+                       current, translatable_count);
+                free(stripped);
+                line = line->next;
+                continue;
+            }
+
             char *translation = translate_single_line(stripped, args->target_lang,
                                                      args->api_key, args->model_name);
             if (translation) {
-                // Language validation: warn if original and translation are in same language
+                // Language validation: verify translation is different language
+                // This is a fallback check in case pre-detection missed it
                 if (is_same_language(stripped, translation)) {
-                    log_warn("gemini_translator: Possible translation failure - same language detected");
-                    log_warn("  Original: [%.30s...] → Translation: [%.30s...]",
-                             stripped, translation);
-                    // Translation is still displayed - user decides
+                    log_info("gemini_translator: [%d/%d] Skipped (same language after translation)",
+                           current, translatable_count);
+                    free(translation);
+                    // Don't set translation - original text will be displayed
+                } else {
+                    free(line->translation);
+                    line->translation = translation;
+                    log_info("gemini_translator: [%d/%d] Translated: %s",
+                           current, translatable_count, translation);
                 }
-
-                free(line->translation);
-                line->translation = translation;
-                log_info("gemini_translator: [%d/%d] Translated: %s",
-                       current, translatable_count, translation);
             } else {
                 log_warn("gemini_translator: [%d/%d] Translation failed",
                        current, translatable_count);
