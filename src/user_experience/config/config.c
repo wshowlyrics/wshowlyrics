@@ -88,6 +88,7 @@ void config_init_defaults(struct config *cfg) {
     cfg->translation.rate_limit_ms = 6000;  // 6 seconds by default (suitable for Gemini free tier)
     cfg->translation.max_retries = 3;  // Maximum 3 retry attempts
     cfg->translation.revalidate_count = 2;  // Re-validate last 2 translations on resume
+    cfg->translation.cache_policy = CACHE_POLICY_BALANCED;  // 75% threshold by default
 }
 
 void config_free(struct config *cfg) {
@@ -365,6 +366,18 @@ bool config_load(struct config *cfg, const char *path) {
                 // Clamp to reasonable range [1, 10]
                 if (cfg->translation.revalidate_count < 1) cfg->translation.revalidate_count = 1;
                 if (cfg->translation.revalidate_count > 10) cfg->translation.revalidate_count = 10;
+            } else if (strcmp(key, "cache_policy") == 0) {
+                // Parse cache policy: comfort, balanced, aggressive
+                if (strcasecmp(value, "comfort") == 0) {
+                    cfg->translation.cache_policy = CACHE_POLICY_COMFORT;
+                } else if (strcasecmp(value, "balanced") == 0) {
+                    cfg->translation.cache_policy = CACHE_POLICY_BALANCED;
+                } else if (strcasecmp(value, "aggressive") == 0) {
+                    cfg->translation.cache_policy = CACHE_POLICY_AGGRESSIVE;
+                } else {
+                    log_warn("Unknown cache_policy '%s', using default 'balanced'", value);
+                    cfg->translation.cache_policy = CACHE_POLICY_BALANCED;
+                }
             }
         } else if (strcmp(section, "deepl") == 0) {
             // Deprecated [deepl] section - migrate to [translation] with warning
@@ -1106,4 +1119,17 @@ char* config_load_with_fallback(struct config *cfg) {
     }
 
     return config_loaded_path;
+}
+
+float config_get_cache_threshold(enum translation_cache_policy policy) {
+    switch (policy) {
+        case CACHE_POLICY_COMFORT:
+            return 0.50f;  // 50% - Early save, safe
+        case CACHE_POLICY_BALANCED:
+            return 0.75f;  // 75% - Default, balanced
+        case CACHE_POLICY_AGGRESSIVE:
+            return 0.90f;  // 90% - Late save, more complete
+        default:
+            return 0.75f;  // Default to balanced
+    }
 }

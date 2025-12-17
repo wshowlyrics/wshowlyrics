@@ -380,18 +380,21 @@ static void* translate_lyrics_async(void *arg) {
         line = line->next;
     }
 
-    // Save to cache if translation is complete or at least 75% done
+    // Save to cache if translation is complete or threshold reached
+    struct config *cfg = config_get();
+    float cache_threshold = config_get_cache_threshold(cfg->translation.cache_policy);
     float completion_ratio = (float)data->translation_current / (float)data->translation_total;
+
     if (data->translation_current == data->translation_total) {
         translator_save_to_cache(args->cache_path, data, args->target_lang);
         log_success("claude_translator: Translation completed");
-    } else if (completion_ratio >= 0.75f) {
+    } else if (completion_ratio >= cache_threshold) {
         translator_save_to_cache(args->cache_path, data, args->target_lang);
         log_warn("claude_translator: Translation incomplete but cached (%d/%d, %.0f%%)",
                  data->translation_current, data->translation_total, completion_ratio * 100);
     } else {
-        log_warn("claude_translator: Translation incomplete (%d/%d, %.0f%%), not cached (threshold: 75%%)",
-                 data->translation_current, data->translation_total, completion_ratio * 100);
+        log_warn("claude_translator: Translation incomplete (%d/%d, %.0f%%), not cached (threshold: %.0f%%)",
+                 data->translation_current, data->translation_total, completion_ratio * 100, cache_threshold * 100);
         // Delete incomplete cache file if it exists
         unlink(args->cache_path);
     }

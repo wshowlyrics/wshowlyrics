@@ -181,3 +181,11 @@ max_retries = 3
 # re-validated on next resume to ensure they were fully completed
 # Recommended range: 1-10, Default: 2
 revalidate_count = 2
+
+# Cache policy determines when partial translations are saved
+# Options:
+#   - comfort: Save at 50% completion (safe, early save, more interruption tolerance)
+#   - balanced: Save at 75% completion (default, good balance)
+#   - aggressive: Save at 90% completion (late save, more complete translations)
+# Default: balanced
+cache_policy = balanced

@@ -108,19 +108,49 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                                     state->foreground, &w, &h);
             } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->current_line->translation) {
                 // LRC or SRT without <sub> - use line-level translation
+                // If translation is still in progress, show hourglass icon
+                char translation_text[512];
+                if (state->lyrics.translation_in_progress) {
+                    // Translation ahead of current line - show hourglass with translated text
+                    snprintf(translation_text, sizeof(translation_text),
+                            "⏳ %s", state->current_line->translation);
+                } else {
+                    // Translation complete - just show translation
+                    snprintf(translation_text, sizeof(translation_text),
+                            "%s", state->current_line->translation);
+                }
+
                 render_ruby_segments_with_translation(cairo, state->font, scale,
                                                      state->current_line->ruby_segments,
                                                      state->foreground,
                                                      g_config.translation.translation_display,
-                                                     state->current_line->translation,
+                                                     translation_text,
                                                      &w, &h);
             } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->lyrics.translation_in_progress) {
-                // Translation in progress - show progress (N/M where M = current line index)
+                // Translation in progress - show enhanced progress
+                // T: translation_current, C: current line, A: translation_total
+                // Format: "⏳ Translating... R% (T/C) [💾]"
                 char progress_text[128];
-                snprintf(progress_text, sizeof(progress_text),
-                        "⏳ Translating... %d/%d",
-                        state->lyrics.translation_current,
-                        state->current_line_index + 1); // 1-based index
+                int T = state->lyrics.translation_current;
+                int C = state->current_line_index + 1; // 1-based current line
+                int A = state->lyrics.translation_total;
+                int R = (A > 0) ? (T * 100 / A) : 0; // Percentage
+
+                // Get threshold from config (comfort: 50%, balanced: 75%, aggressive: 90%)
+                float cache_threshold = config_get_cache_threshold(g_config.translation.cache_policy);
+                bool show_disk = (A > 0) && ((float)T / A >= cache_threshold);
+
+                // Build progress message
+                if (show_disk) {
+                    snprintf(progress_text, sizeof(progress_text),
+                            "⏳ Translating... %d%% (%d/%d) 💾",
+                            R, T, C);
+                } else {
+                    snprintf(progress_text, sizeof(progress_text),
+                            "⏳ Translating... %d%% (%d/%d)",
+                            R, T, C);
+                }
+
                 render_ruby_segments_with_translation(cairo, state->font, scale,
                                                      state->current_line->ruby_segments,
                                                      state->foreground,

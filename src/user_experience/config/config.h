@@ -32,6 +32,13 @@ struct lyrics_config {
     int notification_timeout;   // Notification timeout in milliseconds (default: 5000)
 };
 
+// Translation cache policy (save threshold presets)
+enum translation_cache_policy {
+    CACHE_POLICY_COMFORT,       // Save at 50% completion (safe, early save)
+    CACHE_POLICY_BALANCED,      // Save at 75% completion (default)
+    CACHE_POLICY_AGGRESSIVE     // Save at 90% completion (late save, more complete)
+};
+
 // Translation settings (multi-provider support)
 struct translation_config {
     char *provider;              // Provider and model: "deepl", "gemini-2.5-flash", "claude-sonnet-4-5", "false"
@@ -42,6 +49,7 @@ struct translation_config {
     int rate_limit_ms;           // Rate limit delay in milliseconds (default: 6000 for Gemini, 500 for Claude, 200 for DeepL)
     int max_retries;             // Maximum retry attempts for rate limit errors (default: 3)
     int revalidate_count;        // Number of last translations to re-validate on partial cache resume (1-10, default: 2)
+    enum translation_cache_policy cache_policy; // Cache save policy: comfort (50%), balanced (75%), aggressive (90%)
 };
 
 // Main configuration
@@ -81,5 +89,8 @@ char* config_trim_whitespace(char *str);
 
 // Validate user config against settings.ini.example
 void config_validate_user_config(void);
+
+// Get cache threshold value (0.0 - 1.0) from policy
+float config_get_cache_threshold(enum translation_cache_policy policy);
 
 #endif // CONFIG_H

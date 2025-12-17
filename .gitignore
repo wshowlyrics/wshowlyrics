@@ -65,8 +65,8 @@ builddir/
 .vscode/
 .idea/
 
-# Claude Code directory (contains local settings, keys, and user data)
-.claude/
+# Claude Code local settings (user preferences)
+.claude/settings.local.json
 
 # Lyrics cache/data files
 *.lrc
