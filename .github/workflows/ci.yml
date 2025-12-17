@@ -10,7 +10,7 @@ on:
       - '**.c'
       - '**.h'
       - 'meson.build'
-      - '.github/workflows/*.yml'
+      - '.github/**/*.yml'
   pull_request:
     branches:
       - master
@@ -18,7 +18,7 @@ on:
       - '**.c'
       - '**.h'
       - 'meson.build'
-      - '.github/workflows/ci.yml'
+      - '.github/**/*.yml'
 
 jobs:
   build-and-test:
