@@ -38,12 +38,15 @@ static struct lyrics_line* create_srt_line(int64_t start_us, int64_t end_us, con
 
         char *full_text = malloc(full_len + 1);
         if (full_text) {
-            full_text[0] = '\0';
+            char *pos = full_text;
             seg = segments;
             while (seg) {
-                strcat(full_text, seg->text);
+                size_t len = strlen(seg->text);
+                memcpy(pos, seg->text, len);
+                pos += len;
                 seg = seg->next;
             }
+            *pos = '\0';
             new_line->text = full_text;
         } else {
             new_line->text = strdup(text_buffer);

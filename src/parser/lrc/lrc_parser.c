@@ -15,7 +15,8 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
     }
 
     struct lyrics_line **next_line = &data->lines;
-    char *line = strtok(content_copy, "\n");
+    char *saveptr;
+    char *line = strtok_r(content_copy, "\n", &saveptr);
     int64_t last_timestamp_us = -1; // Track last timestamp for validation
 
     while (line) {
@@ -23,13 +24,13 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
         line = trim_whitespace(line);
 
         if (*line == '\0') {
-            line = strtok(NULL, "\n");
+            line = strtok_r(NULL, "\n", &saveptr);
             continue;
         }
 
         // Try to parse as metadata
         if (parse_lrc_metadata_tag(line, &data->metadata)) {
-            line = strtok(NULL, "\n");
+            line = strtok_r(NULL, "\n", &saveptr);
             continue;
         }
 
@@ -137,7 +138,7 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
             }
         }
 
-        line = strtok(NULL, "\n");
+        line = strtok_r(NULL, "\n", &saveptr);
     }
 
     free(content_copy);

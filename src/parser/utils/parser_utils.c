@@ -17,8 +17,7 @@ bool parse_lrc_timestamp_ex(const char *str, int64_t *timestamp_us, const char *
         // Create temporary string without '<': [MM:SS.xx]
         char temp[64];
         temp[0] = '[';
-        strncpy(temp + 1, parse_str + 1, sizeof(temp) - 2);
-        temp[sizeof(temp) - 1] = '\0';
+        snprintf(temp + 1, sizeof(temp) - 1, "%s", parse_str + 1);
         parse_str = temp;
 
         // Try [MM:SS.xx] format

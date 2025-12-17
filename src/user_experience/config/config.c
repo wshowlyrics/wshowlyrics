@@ -218,7 +218,7 @@ bool config_load(struct config *cfg, const char *path) {
             char *end = strchr(trimmed, ']');
             if (end) {
                 *end = '\0';
-                strncpy(section, trimmed + 1, sizeof(section) - 1);
+                snprintf(section, sizeof(section), "%s", trimmed + 1);
             }
             continue;
         }
@@ -397,14 +397,15 @@ bool config_is_extension_enabled(const char *ext) {
     if (!exts) return true;
 
     bool found = false;
-    char *token = strtok(exts, ",");
+    char *saveptr;
+    char *token = strtok_r(exts, ",", &saveptr);
     while (token) {
         char *trimmed = config_trim_whitespace(token);
         if (strcasecmp(trimmed, ext) == 0) {
             found = true;
             break;
         }
-        token = strtok(NULL, ",");
+        token = strtok_r(NULL, ",", &saveptr);
     }
 
     free(exts);
@@ -452,7 +453,7 @@ static struct config_key* parse_example_config_keys(const char *example_path) {
             char *end = strchr(trimmed, ']');
             if (end) {
                 *end = '\0';
-                strncpy(section, trimmed + 1, sizeof(section) - 1);
+                snprintf(section, sizeof(section), "%s", trimmed + 1);
             }
             continue;
         }
@@ -468,10 +469,8 @@ static struct config_key* parse_example_config_keys(const char *example_path) {
         struct config_key *node = malloc(sizeof(struct config_key));
         if (!node) continue;
 
-        strncpy(node->section, section, sizeof(node->section) - 1);
-        node->section[sizeof(node->section) - 1] = '\0';
-        strncpy(node->key, key, sizeof(node->key) - 1);
-        node->key[sizeof(node->key) - 1] = '\0';
+        snprintf(node->section, sizeof(node->section), "%s", section);
+        snprintf(node->key, sizeof(node->key), "%s", key);
         node->next = NULL;
 
         if (!head) {
@@ -510,7 +509,7 @@ static bool key_exists_in_file(const char *user_path, const char *section, const
             char *end = strchr(trimmed, ']');
             if (end) {
                 *end = '\0';
-                strncpy(current_section, trimmed + 1, sizeof(current_section) - 1);
+                snprintf(current_section, sizeof(current_section), "%s", trimmed + 1);
             }
             continue;
         }
@@ -580,10 +579,8 @@ void config_validate_user_config(void) {
             // Add to missing list
             struct config_key *missing = malloc(sizeof(struct config_key));
             if (missing) {
-                strncpy(missing->section, node->section, sizeof(missing->section) - 1);
-                missing->section[sizeof(missing->section) - 1] = '\0';
-                strncpy(missing->key, node->key, sizeof(missing->key) - 1);
-                missing->key[sizeof(missing->key) - 1] = '\0';
+                snprintf(missing->section, sizeof(missing->section), "%s", node->section);
+                snprintf(missing->key, sizeof(missing->key), "%s", node->key);
                 missing->next = NULL;
 
                 if (!missing_head) {
@@ -605,6 +602,7 @@ void config_validate_user_config(void) {
 
         // Build missing keys list for notification
         char missing_keys_list[1024] = {0};
+        size_t offset = 0;
         int count = 0;
         int total_count = 0;
 
@@ -613,19 +611,25 @@ void config_validate_user_config(void) {
             total_count++;
 
             // Add to notification message (limit to first 5 keys to avoid too long message)
-            if (count < 5) {
-                char entry[256];
-                snprintf(entry, sizeof(entry), "• [%s] %s\\n", node->section, node->key);
-                strncat(missing_keys_list, entry, sizeof(missing_keys_list) - strlen(missing_keys_list) - 1);
+            if (count < 5 && offset < sizeof(missing_keys_list)) {
+                int written = snprintf(missing_keys_list + offset,
+                                      sizeof(missing_keys_list) - offset,
+                                      "• [%s] %s\\n", node->section, node->key);
+                if (written > 0) {
+                    offset += written;
+                }
                 count++;
             }
         }
 
         // Add "and X more..." if there are more than 5 missing keys
-        if (total_count > 5) {
-            char more[64];
-            snprintf(more, sizeof(more), "...and %d more", total_count - 5);
-            strncat(missing_keys_list, more, sizeof(missing_keys_list) - strlen(missing_keys_list) - 1);
+        if (total_count > 5 && offset < sizeof(missing_keys_list)) {
+            int written = snprintf(missing_keys_list + offset,
+                                  sizeof(missing_keys_list) - offset,
+                                  "...and %d more", total_count - 5);
+            if (written > 0) {
+                offset += written;
+            }
         }
 
         log_warn("");

@@ -30,8 +30,7 @@ bool file_monitor_check_and_reload(
         reload_callback(state, file_path);
 
         // Update stored checksum
-        strncpy(stored_checksum, current_checksum, checksum_size - 1);
-        stored_checksum[checksum_size - 1] = '\0';
+        snprintf(stored_checksum, checksum_size, "%s", current_checksum);
 
         rendering_manager_set_dirty(state);
         return true;

@@ -27,8 +27,7 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
         return;
     }
 
-    strncpy(dest, title, dest_size - 1);
-    dest[dest_size - 1] = '\0';
+    snprintf(dest, dest_size, "%s", title);
 
     // Remove file extension
     char *ext = strrchr(dest, '.');

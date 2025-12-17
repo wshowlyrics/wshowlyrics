@@ -71,7 +71,8 @@ static char* build_player_arg(void) {
     char *first_available = NULL;
 
     // Check each preferred player
-    char *player = strtok(players_copy, ",");
+    char *saveptr;
+    char *player = strtok_r(players_copy, ",", &saveptr);
     while (player) {
         // Trim whitespace
         while (*player == ' ') player++;
@@ -100,7 +101,7 @@ static char* build_player_arg(void) {
             free(status);
         }
 
-        player = strtok(NULL, ",");
+        player = strtok_r(NULL, ",", &saveptr);
     }
 
     free(players_copy);

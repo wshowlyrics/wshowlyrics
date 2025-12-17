@@ -250,7 +250,8 @@ cleanup_default:
 
     // Split and trim
     int idx = 0;
-    char *token = strtok(exts_copy, ",");
+    char *saveptr;
+    char *token = strtok_r(exts_copy, ",", &saveptr);
     while (token && idx < count) {
         char *trimmed = config_trim_whitespace(token);
         result[idx] = strdup(trimmed);
@@ -261,7 +262,7 @@ cleanup_default:
             return NULL;
         }
         idx++;
-        token = strtok(NULL, ",");
+        token = strtok_r(NULL, ",", &saveptr);
     }
     result[idx] = NULL;
 
