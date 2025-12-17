@@ -857,12 +857,10 @@ void config_validate_user_config(void) {
     // - Uses realpath() to canonicalize and resolve symlinks/.. sequences
     // - Validates path is within safe directories (HOME, XDG_CONFIG_HOME, /etc/, /usr/share/, cwd)
     // - Prevents path traversal attacks
-    // lgtm[cpp/path-injection]
-    struct section_list *user_sections = parse_user_config_sections(user_path);
+    struct section_list *user_sections = parse_user_config_sections(user_path); // codeql[cpp/path-injection]
 
     // Parse user config keys (validated above)
-    // lgtm[cpp/path-injection]
-    struct config_key *user_keys = parse_user_config_keys(user_path);
+    struct config_key *user_keys = parse_user_config_keys(user_path); // codeql[cpp/path-injection]
 
     // Check for unknown sections and keys
     struct config_key *unknown_head = NULL;

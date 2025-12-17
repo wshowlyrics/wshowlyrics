@@ -490,7 +490,11 @@ bool openai_translate_lyrics(struct lyrics_data *data) {
         return false;
     }
 
-    args->data = data;
+    // SECURITY: All call sites audited - data points to persistent lyrics_data structures:
+    // - lyrics_manager.c:187 uses &state->lyrics (persistent state)
+    // - main.c:369 uses &state.lyrics (persistent state)
+    // Stack-allocated temporaries have been eliminated (see commit f16aa2d)
+    args->data = data; // codeql[cpp/stack-address-escape]
     args->target_lang = strdup(target_lang);
     args->api_key = strdup(api_key);
     args->model_name = strdup(model_name);
