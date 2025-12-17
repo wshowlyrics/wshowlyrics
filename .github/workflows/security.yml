@@ -64,10 +64,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Cppcheck
-        run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: Install latest Cppcheck with SARIF support
+        run: |
+          # Cppcheck 2.16+ has native SARIF support
+          wget https://github.com/danmar/cppcheck/releases/download/2.16.0/cppcheck-2.16.0-x86_64-linux.tar.xz
+          tar xf cppcheck-2.16.0-x86_64-linux.tar.xz
+          echo "${{ github.workspace }}/cppcheck-2.16.0/bin" >> $GITHUB_PATH
 
-      - name: Run Cppcheck
+      - name: Run Cppcheck with SARIF output
         run: |
           cppcheck --enable=all \
             --suppress=missingIncludeSystem \
@@ -75,16 +79,9 @@ jobs:
             --std=c11 --platform=unix64 \
             --inline-suppr \
             --error-exitcode=0 \
-            --xml --xml-version=2 \
-            --output-file=cppcheck.xml \
-            src/
-
-      - name: Convert to SARIF
-        run: |
-          pip install cppcheck-codequality
-          cppcheck-codequality \
-            --input-file=cppcheck.xml \
-            --output-file=cppcheck.sarif
+            --output-format=sarif \
+            --output-file=cppcheck.sarif \
+            src/ 2>&1 | tee cppcheck.log || true
 
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v4
