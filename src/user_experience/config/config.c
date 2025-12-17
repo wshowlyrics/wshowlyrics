@@ -857,10 +857,10 @@ void config_validate_user_config(void) {
     // - Uses realpath() to canonicalize and resolve symlinks/.. sequences
     // - Validates path is within safe directories (HOME, XDG_CONFIG_HOME, /etc/, /usr/share/, cwd)
     // - Prevents path traversal attacks
-    struct section_list *user_sections = parse_user_config_sections(user_path); // codeql[cpp/path-injection]
+    struct section_list *user_sections = parse_user_config_sections(user_path);
 
     // Parse user config keys (validated above)
-    struct config_key *user_keys = parse_user_config_keys(user_path); // codeql[cpp/path-injection]
+    struct config_key *user_keys = parse_user_config_keys(user_path);
 
     // Check for unknown sections and keys
     struct config_key *unknown_head = NULL;
@@ -1059,6 +1059,13 @@ char* config_load_with_fallback(struct config *cfg) {
         // Check if user config exists
         struct stat st;
         if (stat(user_config_path, &st) != 0) {
+            // Validate path before creating new file (security)
+            if (!validate_config_path(user_config_path)) {
+                log_error("Config path validation failed: %s", user_config_path);
+                free(user_config_path);
+                return NULL;
+            }
+
             // User config doesn't exist - try to copy from system config
             const char *system_config = "/etc/wshowlyrics/settings.ini";
             FILE *src = fopen(system_config, "r");
