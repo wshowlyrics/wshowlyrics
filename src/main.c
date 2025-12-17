@@ -362,11 +362,12 @@ int main(int argc, char *argv[]) {
                 } else {
                     // File still missing - search for lyrics again
                     log_info("Searching for lyrics again...");
-                    struct lyrics_data new_lyrics = {0};
-                    if (lyrics_find_for_track(&state.current_track, &new_lyrics)) {
+                    // Free old lyrics and search directly into state.lyrics to avoid
+                    // dangling pointer issues with async translation thread
+                    lrc_free_data(&state.lyrics);
+                    memset(&state.lyrics, 0, sizeof(state.lyrics));
+                    if (lyrics_find_for_track(&state.current_track, &state.lyrics)) {
                         log_info("Found new lyrics, replacing old ones");
-                        lrc_free_data(&state.lyrics);
-                        state.lyrics = new_lyrics;
                         state.current_line = NULL;
                         state.prev_line = NULL;
                         state.next_line = NULL;
