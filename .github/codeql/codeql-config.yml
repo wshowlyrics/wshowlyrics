@@ -5,3 +5,8 @@ paths-ignore:
   - 'build/**'
   - '**/build/**'
   - '**/.meson-private/**'
+
+# Exclude specific noisy queries
+query-filters:
+  - exclude:
+      id: cpp/short-global-name
