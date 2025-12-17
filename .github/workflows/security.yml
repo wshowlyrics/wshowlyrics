@@ -103,33 +103,41 @@ jobs:
             exit 0
           fi
 
-          # Fix SARIF: Cppcheck 2.16.0 outputs startColumn=0, but SARIF requires >= 1
+          # Fix SARIF: Cppcheck 2.16.0 outputs line/column=0, but SARIF requires >= 1
           cat > fix_sarif.py << 'PYTHON_SCRIPT'
-          import json
+import json
 
-          with open('cppcheck-raw.sarif', 'r') as f:
-              sarif = json.load(f)
+with open('cppcheck-raw.sarif', 'r') as f:
+    sarif = json.load(f)
 
-          # Fix invalid column numbers (must be >= 1)
-          for run in sarif.get('runs', []):
-              for result in run.get('results', []):
-                  for location in result.get('locations', []):
-                      physical = location.get('physicalLocation', {})
-                      region = physical.get('region', {})
+# Fix invalid line/column numbers (must be >= 1)
+for run in sarif.get('runs', []):
+    for result in run.get('results', []):
+        for location in result.get('locations', []):
+            physical = location.get('physicalLocation', {})
+            region = physical.get('region', {})
 
-                      # Fix startColumn
-                      if 'startColumn' in region and region['startColumn'] < 1:
-                          region['startColumn'] = 1
+            # Fix startLine
+            if 'startLine' in region and region['startLine'] < 1:
+                region['startLine'] = 1
 
-                      # Fix endColumn
-                      if 'endColumn' in region and region['endColumn'] < 1:
-                          region['endColumn'] = 1
+            # Fix endLine
+            if 'endLine' in region and region['endLine'] < 1:
+                region['endLine'] = 1
 
-          with open('cppcheck.sarif', 'w') as f:
-              json.dump(sarif, f, indent=2)
+            # Fix startColumn
+            if 'startColumn' in region and region['startColumn'] < 1:
+                region['startColumn'] = 1
 
-          print("Fixed SARIF column numbers")
-          PYTHON_SCRIPT
+            # Fix endColumn
+            if 'endColumn' in region and region['endColumn'] < 1:
+                region['endColumn'] = 1
+
+with open('cppcheck.sarif', 'w') as f:
+    json.dump(sarif, f, indent=2)
+
+print("Fixed SARIF line/column numbers")
+PYTHON_SCRIPT
 
           python3 fix_sarif.py
 
