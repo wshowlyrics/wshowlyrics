@@ -92,15 +92,45 @@ jobs:
             --inline-suppr \
             --error-exitcode=0 \
             --output-format=sarif \
-            --output-file=cppcheck.sarif \
+            --output-file=cppcheck-raw.sarif \
             src/
 
           # Verify SARIF file was created
-          if [ ! -f cppcheck.sarif ]; then
-            echo "Error: cppcheck.sarif was not created"
+          if [ ! -f cppcheck-raw.sarif ]; then
+            echo "Error: cppcheck-raw.sarif was not created"
             echo "Creating empty SARIF file to prevent upload failure"
             echo '{"version":"2.1.0","runs":[]}' > cppcheck.sarif
+            exit 0
           fi
+
+          # Fix SARIF: Cppcheck 2.16.0 outputs startColumn=0, but SARIF requires >= 1
+          python3 << 'EOF'
+import json
+import sys
+
+with open('cppcheck-raw.sarif', 'r') as f:
+    sarif = json.load(f)
+
+# Fix invalid column numbers (must be >= 1)
+for run in sarif.get('runs', []):
+    for result in run.get('results', []):
+        for location in result.get('locations', []):
+            physical = location.get('physicalLocation', {})
+            region = physical.get('region', {})
+
+            # Fix startColumn
+            if 'startColumn' in region and region['startColumn'] < 1:
+                region['startColumn'] = 1
+
+            # Fix endColumn
+            if 'endColumn' in region and region['endColumn'] < 1:
+                region['endColumn'] = 1
+
+with open('cppcheck.sarif', 'w') as f:
+    json.dump(sarif, f, indent=2)
+
+print("Fixed SARIF column numbers")
+EOF
 
           # Show file size for debugging
           ls -lh cppcheck.sarif
