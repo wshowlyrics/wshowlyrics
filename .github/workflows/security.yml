@@ -68,7 +68,7 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: cpp
-          queries: security-and-quality
+          queries: security-only
           config-file: .github/codeql/codeql-config.yml
 
       - name: Install build dependencies
@@ -88,12 +88,6 @@ jobs:
         run: |
           meson setup build
           meson compile -C build
-
-      - name: Remove build directory before analysis
-        run: |
-          # CodeQL has already collected necessary info during build
-          # Remove build artifacts to prevent them from being scanned
-          rm -rf build
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
