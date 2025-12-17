@@ -853,14 +853,14 @@ void config_validate_user_config(void) {
     }
 
     // Parse user config sections (including empty ones)
-    // lgtm[cpp/path-injection]
     // SECURITY: Path is validated at line 825 using validate_config_path() which:
     // - Uses realpath() to canonicalize and resolve symlinks/.. sequences
     // - Validates path is within safe directories (HOME, XDG_CONFIG_HOME, /etc/, /usr/share/, cwd)
     // - Prevents path traversal attacks
+    // lgtm[cpp/path-injection]
     struct section_list *user_sections = parse_user_config_sections(user_path);
 
-    // Parse user config keys
+    // Parse user config keys (validated above)
     // lgtm[cpp/path-injection]
     struct config_key *user_keys = parse_user_config_keys(user_path);
 
