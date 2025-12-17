@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "config.h"
 #include "../../constants.h"
 #include "../../utils/string/string_utils.h"
@@ -9,9 +10,14 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <limits.h>
+#include <unistd.h>
 
 // Global configuration instance
 struct config g_config;
+
+// Forward declarations
+static bool validate_config_path(const char *path);
 
 // Get pointer to global config (encapsulated access)
 struct config* config_get(void) {
@@ -209,6 +215,12 @@ static void check_and_fix_config_permissions(const char *path) {
 
 // Simple INI parser
 bool config_load(struct config *cfg, const char *path) {
+    // Validate path for security (path traversal prevention)
+    if (!validate_config_path(path)) {
+        log_warn("Config path validation failed: %s", path);
+        return false;
+    }
+
     FILE *f = fopen(path, "r");
     if (!f) {
         log_warn("Config file not found: %s (using defaults)", path);
@@ -503,6 +515,11 @@ static struct config_key* parse_example_config_keys(const char *example_path) {
 
 // Check if a key exists in user config file
 static bool key_exists_in_file(const char *user_path, const char *section, const char *key) {
+    // Validate path for security
+    if (!validate_config_path(user_path)) {
+        return false;
+    }
+
     FILE *f = fopen(user_path, "r");
     if (!f) {
         return false;
@@ -562,8 +579,85 @@ static void free_section_list(struct section_list *head) {
     }
 }
 
+// Validate config file path for security (path traversal prevention)
+static bool validate_config_path(const char *path) {
+    if (!path) {
+        return false;
+    }
+
+    char resolved_path[PATH_MAX];
+
+    // Try to resolve the full path (for existing files)
+    if (!realpath(path, resolved_path)) {
+        // If file doesn't exist, try to validate the directory path instead
+
+        // Extract directory from path
+        char dir_path[PATH_MAX];
+        snprintf(dir_path, sizeof(dir_path), "%s", path);
+        char *last_slash = strrchr(dir_path, '/');
+        if (last_slash) {
+            *last_slash = '\0';
+
+            // Try to resolve the directory
+            if (!realpath(dir_path, resolved_path)) {
+                // Directory doesn't exist either - this might be okay for new files
+                // Just validate the input path directly (must be absolute)
+                if (path[0] != '/') {
+                    return false;  // Relative paths not allowed
+                }
+                snprintf(resolved_path, sizeof(resolved_path), "%s", path);
+            }
+        } else {
+            // No directory component - invalid path
+            return false;
+        }
+    }
+
+    // Config files must be in one of these safe directories:
+    // 1. User's home directory or XDG config (for user configs)
+    // 2. /etc/ (for system-wide configs)
+    // 3. /usr/share/ (for installed example configs)
+    // 4. Current working directory (for local development builds only)
+    const char *home = getenv("HOME");
+    const char *xdg_config = getenv("XDG_CONFIG_HOME");
+
+    // Check if resolved path is in a safe location
+    bool is_safe = false;
+
+    // Check user directories
+    if (home && strncmp(resolved_path, home, strlen(home)) == 0) {
+        is_safe = true;
+    }
+    if (xdg_config && strncmp(resolved_path, xdg_config, strlen(xdg_config)) == 0) {
+        is_safe = true;
+    }
+
+    // Check system directories
+    if (strncmp(resolved_path, "/etc/", 5) == 0) {
+        is_safe = true;
+    }
+    if (strncmp(resolved_path, "/usr/share/", 11) == 0) {
+        is_safe = true;
+    }
+
+    // Check current directory (only for local builds)
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd))) {
+        if (strncmp(resolved_path, cwd, strlen(cwd)) == 0) {
+            is_safe = true;
+        }
+    }
+
+    return is_safe;
+}
+
 // Parse user config to extract all sections (including empty ones)
 static struct section_list* parse_user_config_sections(const char *user_path) {
+    // Validate path for security
+    if (!validate_config_path(user_path)) {
+        return NULL;
+    }
+
     FILE *f = fopen(user_path, "r");
     if (!f) {
         return NULL;
@@ -622,6 +716,11 @@ static struct section_list* parse_user_config_sections(const char *user_path) {
 
 // Parse user config to extract all config keys
 static struct config_key* parse_user_config_keys(const char *user_path) {
+    // Validate path for security
+    if (!validate_config_path(user_path)) {
+        return NULL;
+    }
+
     FILE *f = fopen(user_path, "r");
     if (!f) {
         return NULL;
@@ -720,6 +819,13 @@ void config_validate_user_config(void) {
     if (stat(user_path, &st) != 0) {
         free(user_path);
         return;  // User config doesn't exist, no validation needed
+    }
+
+    // Validate path for security (path traversal prevention)
+    if (!validate_config_path(user_path)) {
+        log_warn("Config path validation failed: %s", user_path);
+        free(user_path);
+        return;
     }
 
     // Find settings.ini.example in multiple locations
