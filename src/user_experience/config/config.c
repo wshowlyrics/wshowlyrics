@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include "config.h"
 #include "../../constants.h"
 #include "../../utils/string/string_utils.h"
@@ -581,70 +580,66 @@ static void free_section_list(struct section_list *head) {
 
 // Validate config file path for security (path traversal prevention)
 static bool validate_config_path(const char *path) {
-    if (!path) {
+    if (!path || path[0] == '\0') {
         return false;
     }
 
-    char resolved_path[PATH_MAX];
+    // Path must be absolute (prevent relative path attacks)
+    if (path[0] != '/') {
+        return false;
+    }
 
-    // Try to resolve the full path (for existing files)
-    if (!realpath(path, resolved_path)) {
-        // If file doesn't exist, try to validate the directory path instead
-
-        // Extract directory from path
-        char dir_path[PATH_MAX];
-        snprintf(dir_path, sizeof(dir_path), "%s", path);
-        char *last_slash = strrchr(dir_path, '/');
-        if (last_slash) {
-            *last_slash = '\0';
-
-            // Try to resolve the directory
-            if (!realpath(dir_path, resolved_path)) {
-                // Directory doesn't exist either - this might be okay for new files
-                // Just validate the input path directly (must be absolute)
-                if (path[0] != '/') {
-                    return false;  // Relative paths not allowed
-                }
-                snprintf(resolved_path, sizeof(resolved_path), "%s", path);
-            }
-        } else {
-            // No directory component - invalid path
-            return false;
-        }
+    // Check for path traversal sequences (prevent ../ attacks)
+    if (strstr(path, "/../") != NULL ||
+        strstr(path, "/./") != NULL ||
+        strcmp(path + strlen(path) - 3, "/..") == 0 ||
+        strcmp(path + strlen(path) - 2, "/.") == 0) {
+        return false;
     }
 
     // Config files must be in one of these safe directories:
-    // 1. User's home directory or XDG config (for user configs)
+    // 1. User's home directory (for user configs)
     // 2. /etc/ (for system-wide configs)
     // 3. /usr/share/ (for installed example configs)
     // 4. Current working directory (for local development builds only)
     const char *home = getenv("HOME");
     const char *xdg_config = getenv("XDG_CONFIG_HOME");
 
-    // Check if resolved path is in a safe location
+    // Check if path is in a safe location
     bool is_safe = false;
 
     // Check user directories
-    if (home && strncmp(resolved_path, home, strlen(home)) == 0) {
-        is_safe = true;
+    if (home && strncmp(path, home, strlen(home)) == 0) {
+        // Ensure it's actually within the home directory (not just starts with it)
+        size_t home_len = strlen(home);
+        if (path[home_len] == '/' || path[home_len] == '\0') {
+            is_safe = true;
+        }
     }
-    if (xdg_config && strncmp(resolved_path, xdg_config, strlen(xdg_config)) == 0) {
-        is_safe = true;
+
+    if (xdg_config && strncmp(path, xdg_config, strlen(xdg_config)) == 0) {
+        size_t xdg_len = strlen(xdg_config);
+        if (path[xdg_len] == '/' || path[xdg_len] == '\0') {
+            is_safe = true;
+        }
     }
 
     // Check system directories
-    if (strncmp(resolved_path, "/etc/", 5) == 0) {
+    if (strncmp(path, "/etc/", 5) == 0) {
         is_safe = true;
     }
-    if (strncmp(resolved_path, "/usr/share/", 11) == 0) {
+    if (strncmp(path, "/usr/share/", 11) == 0) {
         is_safe = true;
     }
 
     // Check current directory (only for local builds)
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd))) {
-        if (strncmp(resolved_path, cwd, strlen(cwd)) == 0) {
-            is_safe = true;
+        size_t cwd_len = strlen(cwd);
+        if (strncmp(path, cwd, cwd_len) == 0) {
+            if (path[cwd_len] == '/' || path[cwd_len] == '\0') {
+                is_safe = true;
+            }
         }
     }
 
