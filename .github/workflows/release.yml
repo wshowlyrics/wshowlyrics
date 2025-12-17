@@ -2,7 +2,7 @@ name: Release to AUR
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["Security Scan"]
     types:
       - completed
 

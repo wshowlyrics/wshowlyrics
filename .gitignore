@@ -71,3 +71,8 @@ builddir/
 # Lyrics cache/data files
 *.lrc
 *.srt
+
+# Configuration files with potential secrets
+settings.ini
+*.ini
+!settings.ini.example
