@@ -151,11 +151,23 @@ int build_album_art_cache_path(char *dest, size_t dest_size, const char *md5_has
         return -1;
     }
 
+    // Validate MD5 is not empty
+    if (strlen(md5_hash) == 0) {
+        log_error("build_album_art_cache_path: MD5 hash is empty");
+        return -1;
+    }
+
     return build_path(dest, dest_size, "%s/%s.png", CACHE_ALBUM_ART_DIR, md5_hash);
 }
 
 int build_lyrics_cache_path(char *dest, size_t dest_size, const char *md5_hash) {
     if (!dest || !md5_hash || dest_size == 0) {
+        return -1;
+    }
+
+    // Validate MD5 is not empty
+    if (strlen(md5_hash) == 0) {
+        log_error("build_lyrics_cache_path: MD5 hash is empty");
         return -1;
     }
 
@@ -213,6 +225,12 @@ int build_translation_cache_path(char *dest, size_t dest_size,
                                   const char *original_md5,
                                   const char *target_lang) {
     if (!dest || !original_md5 || !target_lang || dest_size == 0) {
+        return -1;
+    }
+
+    // Validate MD5 is not empty
+    if (strlen(original_md5) == 0) {
+        log_error("build_translation_cache_path: MD5 checksum is empty");
         return -1;
     }
 

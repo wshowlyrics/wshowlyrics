@@ -444,6 +444,12 @@ bool claude_translate_lyrics(struct lyrics_data *data) {
         return false;
     }
 
+    // Validate MD5 checksum
+    if (strlen(data->md5_checksum) == 0) {
+        log_error("claude_translator: MD5 checksum is empty, cannot cache translation");
+        return false;
+    }
+
     // Build cache path
     char cache_path[512];
     snprintf(cache_path, sizeof(cache_path),

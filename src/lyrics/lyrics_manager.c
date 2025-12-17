@@ -157,6 +157,26 @@ bool lyrics_manager_update_track_info(struct lyrics_state *state) {
 }
 
 bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
+    // Cancel ongoing translation and wait for it to finish
+    // This prevents race condition where old and new translation threads
+    // write to the same cache file simultaneously
+    state->lyrics.translation_should_cancel = true;
+
+    int wait_count = 0;
+    struct timespec wait_delay = {0, 50000000L}; // 50ms
+    while (state->lyrics.translation_in_progress && wait_count < 100) {
+        nanosleep(&wait_delay, NULL);
+        wait_count++;
+    }
+    if (wait_count >= 100) {
+        log_warn("Translation thread did not stop in time (waited 5s), force cancelling");
+        pthread_cancel(state->lyrics.translation_thread);
+        pthread_join(state->lyrics.translation_thread, NULL);
+    } else if (state->lyrics.translation_in_progress == false && wait_count > 0) {
+        // Thread finished gracefully, join it to clean up resources
+        pthread_join(state->lyrics.translation_thread, NULL);
+    }
+
     // Free previous lyrics
     lrc_free_data(&state->lyrics);
     state->current_line = NULL;

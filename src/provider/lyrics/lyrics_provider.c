@@ -32,6 +32,7 @@ static void translate_lyrics_with_provider(struct lyrics_data *data) {
 
     // Skip if translation is disabled
     if (strcmp(provider, "false") == 0) {
+        log_info("Translation disabled (provider=false)");
         return;
     }
 
@@ -42,9 +43,12 @@ static void translate_lyrics_with_provider(struct lyrics_data *data) {
         if (ext && (strcasecmp(ext, ".srt") == 0 ||
                     strcasecmp(ext, ".vtt") == 0 ||
                     strcasecmp(ext, ".lrcx") == 0)) {
+            log_info("Translation skipped for format: %s", ext);
             return;  // Skip translation silently
         }
     }
+
+    log_info("Starting translation with provider: %s", provider);
 
     // Call appropriate translator based on provider
     if (strcmp(provider, "deepl") == 0) {
@@ -594,10 +598,7 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                                  track->url, duration_ms, data)) {
             log_success("Found lyrics via %s provider", providers[i]->name);
 
-            // Try to translate lyrics with configured provider
-            translate_lyrics_with_provider(data);
-
-            // If lyrics came from lrclib, cache them
+            // If lyrics came from lrclib, cache them first (before translation)
             if (strcmp(providers[i]->name, "lrclib") == 0 && has_hash) {
                 char cache_path[512];
                 if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
@@ -622,11 +623,21 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                         }
                         fclose(f);
                         log_info("Cached lyrics: %s", cache_path);
+
+                        // Calculate MD5 checksum of cached file for translation
+                        data->source_file_path = strdup(cache_path);
+                        if (!calculate_file_md5(cache_path, data->md5_checksum)) {
+                            log_warn("Failed to calculate MD5 checksum for %s", cache_path);
+                            data->md5_checksum[0] = '\0';
+                        }
                     } else {
                         log_warn("Failed to cache lyrics");
                     }
                 }
             }
+
+            // Try to translate lyrics with configured provider
+            translate_lyrics_with_provider(data);
 
             return true;
         }
@@ -642,6 +653,13 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                     // Load from cache
                     if (lrc_parse_file(cache_path, data)) {
                         log_success("Found lyrics via cache");
+
+                        // Store the file path and calculate checksum
+                        data->source_file_path = strdup(cache_path);
+                        if (!calculate_file_md5(cache_path, data->md5_checksum)) {
+                            log_warn("Failed to calculate MD5 checksum for %s", cache_path);
+                            data->md5_checksum[0] = '\0';
+                        }
 
                         // Try to translate lyrics with configured provider
                         translate_lyrics_with_provider(data);

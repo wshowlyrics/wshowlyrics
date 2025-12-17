@@ -231,12 +231,6 @@ bool translator_should_translate(struct lyrics_data *data) {
         return false;
     }
 
-    // Check if lyrics format is LRC (only translate LRC files)
-    // ruby_segments are used by LRC and SRT, but we need to exclude SRT/VTT
-    if (!data->lines->ruby_segments) {
-        return false;  // Not LRC format (likely LRCX with word_segments)
-    }
-
     // Check for SRT/VTT/LRCX by file extension (exclude them)
     if (data->source_file_path) {
         const char *ext = strrchr(data->source_file_path, '.');
@@ -245,6 +239,29 @@ bool translator_should_translate(struct lyrics_data *data) {
                     strcasecmp(ext, ".lrcx") == 0)) {
             return false;  // SRT/VTT/LRCX not supported
         }
+    }
+
+    // Check if lyrics format is LRC (only translate LRC files)
+    // ruby_segments are used by LRC and SRT, but we need to exclude SRT/VTT
+    // Note: First line might be empty, so check until we find a non-empty line
+    struct lyrics_line *line = data->lines;
+    bool has_ruby_segments = false;
+    bool has_word_segments = false;
+
+    while (line) {
+        if (line->ruby_segments) {
+            has_ruby_segments = true;
+            break;
+        }
+        if (line->segments) {
+            has_word_segments = true;
+            break;
+        }
+        line = line->next;
+    }
+
+    if (has_word_segments || !has_ruby_segments) {
+        return false;  // LRCX format (word_segments) or no segments at all
     }
 
     return true;  // LRC format
