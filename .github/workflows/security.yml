@@ -79,7 +79,9 @@ jobs:
             libwayland-dev wayland-protocols \
             libcurl4-openssl-dev \
             libappindicator3-dev libgdk-pixbuf2.0-dev \
-            libfontconfig1-dev
+            libfontconfig1-dev \
+            libssl-dev \
+            libjson-c-dev
 
       - name: Build with CodeQL
         run: |
