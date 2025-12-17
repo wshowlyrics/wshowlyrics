@@ -211,18 +211,18 @@ static GdkPixbuf* apply_circular_mask(GdkPixbuf *pixbuf) {
 
 // Create a minimal dummy menu (required by AppIndicator)
 static GtkWidget* create_menu(void) {
-    GtkWidget *menu = gtk_menu_new();
+    GtkWidget *tray_menu = gtk_menu_new();
 
     // Add a simple info item
     GtkWidget *info_item = gtk_menu_item_new_with_label("Lyrics - Album Art Display");
     gtk_widget_set_sensitive(info_item, FALSE);
-    gtk_menu_shell_append(GTK_MENU_SHELL(menu), info_item);
+    gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), info_item);
 
-    gtk_widget_show_all(menu);
+    gtk_widget_show_all(tray_menu);
 
     log_info("Minimal tray menu created (album art display only)");
 
-    return menu;
+    return tray_menu;
 }
 
 bool system_tray_init(void) {

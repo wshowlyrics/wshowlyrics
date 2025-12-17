@@ -12,14 +12,19 @@ char* state_helpers_escape_newlines(const char *text) {
     // Count newlines to calculate needed buffer size
     // CRLF needs 4 chars (^M^J), LF needs 2 chars (^J), CR needs 2 chars (^M)
     size_t extra_chars = 0;
-    for (const char *p = text; *p; p++) {
+    const char *p = text;
+    while (*p) {
         if (*p == '\r' && *(p + 1) == '\n') {
             extra_chars += 3; // ^M^J (4 chars) - 2 original = 2 extra
-            p++; // Skip the \n
+            p += 2; // Skip both \r and \n
         } else if (*p == '\n') {
             extra_chars += 1; // ^J (2 chars) - 1 original = 1 extra
+            p++;
         } else if (*p == '\r') {
             extra_chars += 1; // ^M (2 chars) - 1 original = 1 extra
+            p++;
+        } else {
+            p++;
         }
     }
 
@@ -32,24 +37,28 @@ char* state_helpers_escape_newlines(const char *text) {
 
     // Copy and escape newlines
     char *dst = escaped;
-    for (const char *src = text; *src; src++) {
+    const char *src = text;
+    while (*src) {
         if (*src == '\r' && *(src + 1) == '\n') {
             // CRLF -> ^M^J
             *dst++ = '^';
             *dst++ = 'M';
             *dst++ = '^';
             *dst++ = 'J';
-            src++; // Skip the \n
+            src += 2; // Skip both \r and \n
         } else if (*src == '\n') {
             // LF -> ^J
             *dst++ = '^';
             *dst++ = 'J';
+            src++;
         } else if (*src == '\r') {
             // CR -> ^M
             *dst++ = '^';
             *dst++ = 'M';
+            src++;
         } else {
             *dst++ = *src;
+            src++;
         }
     }
     *dst = '\0';

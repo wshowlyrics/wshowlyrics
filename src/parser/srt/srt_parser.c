@@ -86,6 +86,31 @@ static bool parse_srt_timestamp(const char *str, int64_t *start_us, int64_t *end
     return false;
 }
 
+// Append text line to buffer with bounds checking
+static void append_text_to_buffer(char *text_buffer, int *text_len, const char *line) {
+    size_t remaining = CONTENT_BUFFER_SIZE - *text_len - 1;
+
+    if (*text_len > 0 && remaining > 0) {
+        // Add newline between lines
+        text_buffer[(*text_len)++] = '\n';
+        text_buffer[*text_len] = '\0';
+        remaining--;
+    }
+
+    // Append line text if there's space
+    size_t line_len = strlen(line);
+    if (line_len > remaining) {
+        log_warn("SRT subtitle line truncated (exceeds %zu bytes buffer limit)",
+                 (size_t)CONTENT_BUFFER_SIZE);
+        line_len = remaining;  // Truncate if needed
+    }
+    if (line_len > 0) {
+        memcpy(text_buffer + *text_len, line, line_len);
+        *text_len += line_len;
+        text_buffer[*text_len] = '\0';
+    }
+}
+
 bool srt_parse_string(const char *content, struct lyrics_data *data) {
     char *content_copy = NULL;
     if (!parse_init(content, data, &content_copy)) {
@@ -170,26 +195,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
                 state = STATE_INDEX;
             } else {
                 // Append text with proper bounds checking
-                size_t remaining = sizeof(text_buffer) - text_len - 1;
-                if (text_len > 0 && remaining > 0) {
-                    // Add newline between lines
-                    text_buffer[text_len++] = '\n';
-                    text_buffer[text_len] = '\0';
-                    remaining--;
-                }
-
-                // Append line text if there's space
-                size_t line_len = strlen(line);
-                if (line_len > remaining) {
-                    log_warn("SRT subtitle line truncated (exceeds %zu bytes buffer limit)",
-                             sizeof(text_buffer));
-                    line_len = remaining;  // Truncate if needed
-                }
-                if (line_len > 0) {
-                    memcpy(text_buffer + text_len, line, line_len);
-                    text_len += line_len;
-                    text_buffer[text_len] = '\0';
-                }
+                append_text_to_buffer(text_buffer, &text_len, line);
             }
             break;
         }

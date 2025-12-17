@@ -397,7 +397,7 @@ static void* translate_lyrics_async(void *arg) {
             // Strip ruby notation
             char *stripped = strip_ruby_notation(line->text);
             if (!stripped || stripped[0] == '\0') {
-                if (stripped) free(stripped);
+                free(stripped);
                 line = line->next;
                 continue;
             }

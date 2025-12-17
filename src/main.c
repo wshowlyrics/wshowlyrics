@@ -400,9 +400,7 @@ exit:
     FcFini();
 
     // Free allocated font string if it was from config
-    if (font_from_config_alloc) {
-        free(font_from_config_alloc);
-    }
+    free(font_from_config_alloc);
 
     // Free config file path
     free(state.config_file_path);
