@@ -406,6 +406,17 @@ static void* translate_lyrics_async(void *arg) {
             current++;
             data->translation_current = current;
 
+            // Skip if text is already in target language
+            char *skipped_translation = NULL;
+            if (translator_should_skip_translation(stripped, target_lang, &skipped_translation)) {
+                line->translation = skipped_translation;
+                log_info("deepl_translator: [%d/%d] Already in target language: %s",
+                         current, translatable_count, skipped_translation);
+                free(stripped);
+                line = line->next;
+                continue;
+            }
+
             char *translation = translate_single_line(stripped, target_lang, api_key);
 
             if (translation) {
@@ -429,11 +440,7 @@ static void* translate_lyrics_async(void *arg) {
 
             // Rate limit delay
             if (line->next) {
-                struct timespec delay = {
-                    .tv_sec = 0,
-                    .tv_nsec = RATE_LIMIT_DELAY_MS * 1000000L
-                };
-                nanosleep(&delay, NULL);
+                translator_rate_limit_delay(RATE_LIMIT_DELAY_MS);
             }
         }
         line = line->next;

@@ -108,12 +108,24 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                                     state->foreground, &w, &h);
             } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->current_line->translation) {
                 // LRC or SRT without <sub> - use line-level translation
-                // If translation is still in progress, show hourglass icon
+                // If translation is still in progress, show icon based on cache status
                 char translation_text[512];
                 if (state->lyrics.translation_in_progress) {
-                    // Translation ahead of current line - show hourglass with translated text
-                    snprintf(translation_text, sizeof(translation_text),
-                            "⏳ %s", state->current_line->translation);
+                    // Translation ahead of current line - show icon based on threshold
+                    float cache_threshold = config_get_cache_threshold(g_config.translation.cache_policy);
+                    int T = state->lyrics.translation_current;
+                    int A = state->lyrics.translation_total;
+                    bool cached = (A > 0) && ((float)T / A >= cache_threshold);
+
+                    if (cached) {
+                        // Cached - show disk icon (safe to interrupt)
+                        snprintf(translation_text, sizeof(translation_text),
+                                "💾 %s", state->current_line->translation);
+                    } else {
+                        // Still in progress - show hourglass (not yet saved)
+                        snprintf(translation_text, sizeof(translation_text),
+                                "⏳ %s", state->current_line->translation);
+                    }
                 } else {
                     // Translation complete - just show translation
                     snprintf(translation_text, sizeof(translation_text),

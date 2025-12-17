@@ -83,4 +83,23 @@ bool translator_should_translate(struct lyrics_data *data);
 void translator_prepare_cache_resume(struct lyrics_data *data, int *already_translated,
                                       int revalidate_count);
 
+/**
+ * Check if translation should be skipped (already in target language).
+ * If yes, copies original text to output.
+ *
+ * @param stripped_text Text without ruby notation
+ * @param target_lang Target language code
+ * @param out_translation Output pointer for translation (if skipped)
+ * @return true if should skip (already in target language), false if should translate
+ */
+bool translator_should_skip_translation(const char *stripped_text, const char *target_lang,
+                                         char **out_translation);
+
+/**
+ * Apply rate limit delay between translation requests.
+ *
+ * @param delay_ms Delay in milliseconds
+ */
+void translator_rate_limit_delay(int delay_ms);
+
 #endif // TRANSLATOR_COMMON_H

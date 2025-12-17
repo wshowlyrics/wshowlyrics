@@ -1,10 +1,12 @@
 #include "translator_common.h"
 #include "../../constants.h"
+#include "../../utils/lang_detect/lang_detect.h"
 #include <json-c/json.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -300,4 +302,31 @@ void translator_prepare_cache_resume(struct lyrics_data *data, int *already_tran
     }
 
     *already_translated = new_already_translated;
+}
+
+bool translator_should_skip_translation(const char *stripped_text, const char *target_lang,
+                                         char **out_translation) {
+    if (!stripped_text || !target_lang || !out_translation) {
+        return false;
+    }
+
+    // Check if text is already in target language
+    if (is_already_in_language(stripped_text, target_lang)) {
+        *out_translation = strdup(stripped_text);
+        return true;
+    }
+
+    return false;
+}
+
+void translator_rate_limit_delay(int delay_ms) {
+    if (delay_ms <= 0) {
+        return;
+    }
+
+    struct timespec delay = {
+        .tv_sec = delay_ms / 1000,
+        .tv_nsec = (delay_ms % 1000) * 1000000L
+    };
+    nanosleep(&delay, NULL);
 }

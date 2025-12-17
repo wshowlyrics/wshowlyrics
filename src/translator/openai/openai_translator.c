@@ -346,9 +346,11 @@ static void* translate_lyrics_async(void *arg) {
             }
 
             // Check if text is already in target language (skip API call)
-            if (is_already_in_language(stripped, args->target_lang)) {
-                log_info("openai_translator: [%d/%d] Skipped (already in target language)",
-                       current, translatable_count);
+            char *skipped_translation = NULL;
+            if (translator_should_skip_translation(stripped, args->target_lang, &skipped_translation)) {
+                line->translation = skipped_translation;
+                log_info("openai_translator: [%d/%d] Already in target language: %s",
+                       current, translatable_count, skipped_translation);
                 free(stripped);
                 line = line->next;
                 continue;
@@ -380,12 +382,7 @@ static void* translate_lyrics_async(void *arg) {
             // Rate limiting
             if (line->next) {
                 struct config *cfg = config_get();
-                int rate_limit_ms = cfg->translation.rate_limit_ms;
-                struct timespec delay = {
-                    .tv_sec = rate_limit_ms / 1000,
-                    .tv_nsec = (rate_limit_ms % 1000) * 1000000L
-                };
-                nanosleep(&delay, NULL);
+                translator_rate_limit_delay(cfg->translation.rate_limit_ms);
             }
         }
         line = line->next;
