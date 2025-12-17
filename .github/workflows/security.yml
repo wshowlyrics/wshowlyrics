@@ -64,20 +64,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install latest Cppcheck with SARIF support
+      - name: Build Cppcheck from source with SARIF support
         run: |
-          # Cppcheck 2.16+ has native SARIF support
-          wget -q https://github.com/danmar/cppcheck/releases/download/2.16.0/cppcheck-2.16.0-x86_64-linux.tar.xz
-          tar xf cppcheck-2.16.0-x86_64-linux.tar.xz
-          export PATH="${{ github.workspace }}/cppcheck-2.16.0/bin:$PATH"
-          echo "${{ github.workspace }}/cppcheck-2.16.0/bin" >> $GITHUB_PATH
+          # Install build dependencies
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libpcre3-dev
+
+          # Clone and build Cppcheck 2.16.0
+          git clone --depth 1 --branch 2.16.0 https://github.com/danmar/cppcheck.git
+          cd cppcheck
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc)
+          sudo make install
+
           # Verify installation
           cppcheck --version
 
       - name: Run Cppcheck with SARIF output
         run: |
           # Run Cppcheck and generate SARIF
-          ${{ github.workspace }}/cppcheck-2.16.0/bin/cppcheck --enable=all \
+          cppcheck --enable=all \
             --suppress=missingIncludeSystem \
             --suppress=unmatchedSuppression \
             --std=c11 --platform=unix64 \
