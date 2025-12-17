@@ -130,6 +130,21 @@ char* config_get_path(void) {
     return config_get_user_path();
 }
 
+// Validate path for safe use in shell commands
+static bool is_safe_path_for_shell(const char *path) {
+    if (!path || path[0] != '/') return false;  // Must be absolute path
+
+    // Check for shell metacharacters that could enable command injection
+    for (const char *p = path; *p; p++) {
+        if (*p == ';' || *p == '|' || *p == '&' || *p == '`' ||
+            *p == '$' || *p == '(' || *p == ')' || *p == '<' ||
+            *p == '>' || *p == '\n' || *p == '\r' || *p == '\\') {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Check config file permissions and fix them if they're too permissive
 static void check_and_fix_config_permissions(const char *path) {
     struct stat st;
@@ -170,7 +185,7 @@ static void check_and_fix_config_permissions(const char *path) {
 
             // Send error notification only on failure
             struct config *cfg = config_get();
-            if (cfg->lyrics.enable_notifications) {
+            if (cfg->lyrics.enable_notifications && is_safe_path_for_shell(path)) {
                 char cmd[2048];
                 snprintf(cmd, sizeof(cmd),
                     "notify-send -a wshowlyrics -u critical -t %d "
@@ -648,7 +663,7 @@ void config_validate_user_config(void) {
         }
         // If key doesn't exist, default to true (show notification)
 
-        if (should_notify) {
+        if (should_notify && is_safe_path_for_shell(found_example_path)) {
             char cmd[2048];
             snprintf(cmd, sizeof(cmd),
                 "notify-send -a wshowlyrics -u normal -t %d "
@@ -698,22 +713,21 @@ char* config_load_with_fallback(struct config *cfg) {
         if (stat(user_config_path, &st) != 0) {
             // User config doesn't exist - try to copy from system config
             const char *system_config = "/etc/wshowlyrics/settings.ini";
-            if (stat(system_config, &st) == 0) {
-                // System config exists - copy it
-                FILE *src = fopen(system_config, "r");
-                if (src) {
-                    FILE *dst = fopen(user_config_path, "w");
-                    if (dst) {
-                        char buf[4096];
-                        size_t n;
-                        while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
-                            fwrite(buf, 1, n, dst);
-                        }
-                        fclose(dst);
-                        printf("Copied system config to user config: %s\n", user_config_path);
+            FILE *src = fopen(system_config, "r");
+            if (src) {
+                mode_t old_mask = umask(0022);  // Ensure rw-r--r-- permissions
+                FILE *dst = fopen(user_config_path, "w");
+                umask(old_mask);
+                if (dst) {
+                    char buf[4096];
+                    size_t n;
+                    while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+                        fwrite(buf, 1, n, dst);
                     }
-                    fclose(src);
+                    fclose(dst);
+                    printf("Copied system config to user config: %s\n", user_config_path);
                 }
+                fclose(src);
             }
         }
 

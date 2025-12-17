@@ -144,6 +144,10 @@ static void registry_global(void *data, struct wl_registry *wl_registry,
                 name, &zwlr_layer_shell_v1_interface, 1);
     } else if (strcmp(interface, wl_output_interface.name) == 0) {
         struct lyrics_output *output = calloc(1, sizeof(struct lyrics_output));
+        if (!output) {
+            fprintf(stderr, "Failed to allocate memory for output\n");
+            return;
+        }
         output->output = wl_registry_bind(wl_registry,
                 name, &wl_output_interface, 3);
         output->scale = 1;

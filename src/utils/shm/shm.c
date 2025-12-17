@@ -70,8 +70,8 @@ static const struct wl_buffer_listener buffer_listener = {
 static struct pool_buffer *create_buffer(struct wl_shm *shm,
         struct pool_buffer *buf, int32_t width, int32_t height,
         uint32_t format) {
-    const uint32_t stride = width * 4;
-    const size_t size = stride * height;
+    const size_t stride = (size_t)width * 4;
+    const size_t size = stride * (size_t)height;
 
     const int fd = allocate_shm_file(size);
     assert(fd != -1);
