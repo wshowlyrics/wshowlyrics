@@ -23,45 +23,19 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [archlinux, ubuntu]
-    name: CI for ${{ matrix.os == 'archlinux' && 'ArchLinux' || 'Ubuntu' }}
-    container: ${{ matrix.os == 'archlinux' && 'archlinux:latest' || null }}
+    container:
+      image: archlinux:latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install base dependencies (ArchLinux)
-      if: matrix.os == 'archlinux'
+    - name: Install base dependencies
       run: |
         pacman -Syu --noconfirm
         pacman -S --noconfirm base-devel git sudo
 
-    - name: Install dependencies (Ubuntu)
-      if: matrix.os == 'ubuntu'
-      run: |
-        apt-get update
-        apt-get install -y \
-          meson \
-          ninja-build \
-          gcc \
-          pkg-config \
-          libwayland-dev \
-          wayland-protocols \
-          libcairo2-dev \
-          libpango1.0-dev \
-          libcurl4-openssl-dev \
-          libssl-dev \
-          libappindicator3-dev \
-          libgdk-pixbuf-2.0-dev \
-          libfontconfig1-dev \
-          libjson-c-dev
-
-    - name: Build using makepkg (ArchLinux)
-      if: matrix.os == 'archlinux'
+    - name: Build using makepkg (AUR method)
       run: |
         # Use makepkg to replicate exact AUR build process
         # This catches all compiler warnings that would fail in AUR
@@ -86,12 +60,6 @@ jobs:
 
         # Run makepkg with automatic dependency resolution
         su builder -c "makepkg -sf --noconfirm"
-
-    - name: Build using meson (Ubuntu)
-      if: matrix.os == 'ubuntu'
-      run: |
-        meson setup build
-        meson compile -C build
 
     - name: Verify binary exists
       run: |
@@ -120,8 +88,7 @@ jobs:
           exit 1
         fi
 
-    - name: Verify installation files (ArchLinux)
-      if: matrix.os == 'archlinux'
+    - name: Verify installation files
       run: |
         # Verify that all required files for installation exist
         if [ ! -f wshowlyrics.service ]; then

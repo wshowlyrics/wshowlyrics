@@ -17,26 +17,6 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check ArchLinux CI status
-        id: check_archlinux
-        run: |
-          # Check if ArchLinux job succeeded using GitHub API
-          JOB_STATUS=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            /repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs \
-            --jq '.jobs[] | select(.name == "CI for ArchLinux") | .conclusion')
-
-          echo "ArchLinux CI status: $JOB_STATUS"
-
-          if [ "$JOB_STATUS" != "success" ]; then
-            echo "ArchLinux CI did not succeed, skipping AUR publish"
-            exit 1
-          fi
-
-          echo "ArchLinux CI succeeded, proceeding with AUR publish"
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - name: Checkout lyrics repository
         uses: actions/checkout@v4
         with:
