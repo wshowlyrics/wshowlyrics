@@ -5,8 +5,6 @@ on:
     workflows: ["CI"]
     types:
       - completed
-    branches:
-      - master
 
 jobs:
   secret-scan:
@@ -19,11 +17,11 @@ jobs:
         with:
           fetch-depth: 0  # Scan full git history for secrets
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Only needed for commercial use
+      - name: Run Gitleaks with Docker
+        run: |
+          docker run -v ${{ github.workspace }}:/repo \
+            zricethezav/gitleaks:latest \
+            detect --source="/repo" --verbose --no-git
 
   sast-semgrep:
     name: SAST - Semgrep
