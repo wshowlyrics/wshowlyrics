@@ -1,4 +1,18 @@
 # Lyrics Overlay for Wayland
+[![Build Status](https://github.com/unstable-code/lyrics/actions/workflows/ci.yml/badge.svg)](https://github.com/unstable-code/lyrics/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/unstable-code/lyrics)](https://github.com/unstable-code/lyrics/releases)
+[![AUR version](https://img.shields.io/aur/version/wshowlyrics-git)](https://aur.archlinux.org/packages/wshowlyrics-git)
+[![Platform: Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://www.linux.org/)
+[![Wayland](https://img.shields.io/badge/Wayland-Only-orange.svg)](https://wayland.freedesktop.org/)
+<a href="https://scan.coverity.com/projects/unstable-code-lyrics">
+  <img alt="Coverity Scan Build Status"
+       src="https://scan.coverity.com/projects/32766/badge.svg"/>
+</a>
+<a href="https://sonarcloud.io/summary/new_code?id=unstable-code_lyrics">
+  <img alt="Quality Gate Status"
+       src="https://sonarcloud.io/api/project_badges/measure?project=unstable-code_lyrics&metric=alert_status"/>
+</a>
+
 <img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/e33bb35e-24f3-4632-811c-b7e55a0660a1" />
 
 Wayland 기반 가사 오버레이 프로그램입니다. [wshowkeys 프로젝트를 기반](https://github.com/unstable-code/wshowkeys)으로 제작되었으며, [LyricsX](https://github.com/ddddxxx/LyricsX)에서 영감을 받았습니다.
