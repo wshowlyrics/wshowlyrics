@@ -294,7 +294,7 @@ static const char* find_word_start(const char *limit, const char *end, const cha
                 prev--;
             }
             if (is_space_char(prev, limit, text_end)) {
-                return p;
+                return (p >= limit && p <= end) ? p : limit;
             }
             p = prev;
         }
@@ -313,7 +313,7 @@ static const char* find_word_start(const char *limit, const char *end, const cha
 
         // Check if previous character is a space or not a kanji
         if (is_space_char(prev, limit, text_end) || !is_cjk_ideograph(prev, limit, text_end)) {
-            return p; // Found word boundary
+            return (p >= limit && p <= end) ? p : limit; // Found word boundary
         }
 
         // Move pointer to start of previous character
