@@ -186,10 +186,20 @@ static const char* parse_word_timestamp_segment(const char *pos, struct lyrics_d
             *next_segment_ptr = &segment->next;
             new_line->segment_count++;
 
+            // Ensure full_text buffer is allocated with sufficient capacity
+            size_t word_len = strlen(segment->text);
+            if (*full_text_len + word_len + 1 > *full_text_capacity) {
+                *full_text_capacity = (*full_text_len + word_len + 1) * 2;
+                char *new_full_text = realloc(*full_text, *full_text_capacity);
+                if (!new_full_text) {
+                    return NULL;  // Signal error
+                }
+                *full_text = new_full_text;
+            }
+
             if (*full_text_len > 0) {
                 (*full_text)[(*full_text_len)++] = ' ';
             }
-            size_t word_len = strlen(segment->text);
             memcpy(*full_text + *full_text_len, segment->text, word_len);
             *full_text_len += word_len;
             (*full_text)[*full_text_len] = '\0';
