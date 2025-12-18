@@ -1,0 +1,72 @@
+name: Coverity Scan
+
+on:
+  schedule:
+    # 매주 일요일 02:00 UTC (한국시간 11:00)
+    # Coverity Scan 무료 플랜: 7일 롤링 윈도우 제한 (주 1회)
+    - cron: '0 2 * * 0'
+
+jobs:
+  coverity:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          meson ninja-build \
+          libcairo2-dev libpango1.0-dev \
+          libwayland-dev wayland-protocols \
+          libcurl4-openssl-dev libssl-dev libjson-c-dev \
+          libappindicator3-dev libgdk-pixbuf2.0-dev \
+          libfontconfig1-dev libexttextcat-dev
+
+    - name: Cache Coverity Build Tool
+      id: cache-coverity
+      uses: actions/cache@v4
+      with:
+        path: coverity-tool
+        key: coverity-tool-${{ runner.os }}-2024.12
+
+    - name: Download Coverity Build Tool
+      if: steps.cache-coverity.outputs.cache-hit != 'true'
+      run: |
+        wget -q https://scan.coverity.com/download/linux64 \
+          --post-data "token=${{ secrets.COVERITY_SCAN_TOKEN }}&project=unstable-code%2Flyrics" \
+          -O coverity_tool.tgz
+        mkdir -p coverity-tool
+        tar xzf coverity_tool.tgz -C coverity-tool --strip-components=1
+        rm coverity_tool.tgz
+
+    - name: Add Coverity to PATH
+      run: echo "$GITHUB_WORKSPACE/coverity-tool/bin" >> $GITHUB_PATH
+
+    - name: Configure project with Meson
+      run: meson setup build
+
+    - name: Run Coverity Build
+      run: cov-build --dir cov-int meson compile -C build
+
+    - name: Create tarball for Coverity Scan
+      run: tar czvf lyrics.tgz cov-int
+
+    - name: Submit to Coverity Scan
+      run: |
+        curl --form token=${{ secrets.COVERITY_SCAN_TOKEN }} \
+             --form email=${{ secrets.COVERITY_EMAIL }} \
+             --form file=@lyrics.tgz \
+             --form version="${GITHUB_SHA:0:8}" \
+             --form description="Automated weekly scan - commit ${{ github.sha }}" \
+             https://scan.coverity.com/builds?project=unstable-code%2Flyrics
+
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverity-build-log
+        path: cov-int/build-log.txt
+        if-no-files-found: ignore

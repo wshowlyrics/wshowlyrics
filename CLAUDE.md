@@ -330,9 +330,54 @@ src/
 
 ## Code Quality & Analysis
 
+### Overview
+
+This project uses a multi-layered SAST (Static Application Security Testing) approach for comprehensive code quality and security monitoring:
+
+**Active Tools:**
+
+1. **Gitleaks** (Secret Scanning)
+   - Scans git history for exposed secrets
+   - Runs after CI completion
+   - Prevents credential leaks
+
+2. **Semgrep** (Security Patterns)
+   - OWASP security patterns
+   - C-specific vulnerability detection
+   - SARIF output to GitHub Security tab
+   - Config: `p/security-audit`, `p/c`, `p/ci`
+
+3. **SonarCloud** (Comprehensive Quality Analysis)
+   - Runs on every commit/PR
+   - Bug detection (memory leaks, null pointers, resource leaks)
+   - Security vulnerabilities (buffer overflow, injection)
+   - Code smells (complexity, duplications, maintainability)
+   - Technical debt calculation
+   - GitHub PR decoration with Quality Gate
+
+4. **Coverity Scan** (Deep Concurrency Analysis)
+   - Weekly scans (Sundays 02:00 UTC / 11:00 KST)
+   - Race condition and deadlock detection
+   - Industry-standard deep data flow analysis
+   - 7-day rolling window (one scan per week)
+
+**Tool Comparison:**
+
+| Tool | Frequency | Speed | Focus | Integration |
+|------|-----------|-------|-------|-------------|
+| **Gitleaks** | After CI | ~10s | Secret leaks | Docker |
+| **Semgrep** | After CI | ~30s | Security patterns | GitHub Security |
+| **SonarCloud** | Every commit/PR | 2-3 min | Overall quality | PR decoration |
+| **Coverity** | Weekly (Sun) | 10-15 min | Concurrency bugs | Weekly report |
+
+**Dashboards:**
+- SonarCloud: https://sonarcloud.io/project/overview?id=unstable-code_lyrics
+- Coverity: https://scan.coverity.com/projects/unstable-code-lyrics
+- GitHub Security: Repository → Security → Code scanning
+
 ### SonarCloud Integration
 
-This project uses SonarCloud for continuous code quality analysis. Issues can be accessed via REST API without requiring browser MCP.
+Continuous code quality analysis with every commit and pull request. Issues can be accessed via REST API without requiring browser MCP.
 
 **Project:** `unstable-code_lyrics`
 **Dashboard:** https://sonarcloud.io/project/overview?id=unstable-code_lyrics
@@ -415,9 +460,51 @@ curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics
 - Fixed day threshold would either include too much or miss rapid releases
 - Version-based tracking aligns with existing workflow
 
-### Commit Message Format for SonarCloud Fixes
+### Coverity Scan Integration
 
-When fixing issues identified by SonarCloud, use the following commit message format:
+Weekly deep analysis for advanced bug detection, particularly concurrency issues.
+
+**Project:** `unstable-code/lyrics`
+**Dashboard:** https://scan.coverity.com/projects/unstable-code-lyrics
+
+**Schedule:**
+- Automated weekly scans every Sunday 02:00 UTC (11:00 KST)
+- 7-day rolling window (last submission + 7 days = next available submission)
+- No manual workflow dispatch (prevents accidental quota exhaustion)
+
+**Workflow:** `.github/workflows/coverity-scan.yml`
+
+**GitHub Secrets Required:**
+```
+COVERITY_SCAN_TOKEN  # Project token from Coverity dashboard
+COVERITY_EMAIL       # Email for scan notifications
+```
+
+**Analysis Focus:**
+- Race conditions in translation threads
+- Deadlocks in MPRIS polling
+- Deep data flow analysis
+- Complex use-after-free scenarios
+- Resource leaks in error paths
+
+**Workflow Features:**
+- Coverity Build Tool caching (~500MB, cached after first run)
+- Automatic build log upload on failure
+- Short commit hash as version identifier
+- Result compression (cov-int → lyrics.tgz)
+
+**Viewing Results:**
+1. Visit Coverity dashboard
+2. Review "Outstanding Defects"
+3. Each defect includes:
+   - Detailed code path visualization
+   - CWE classification
+   - Severity rating
+   - Fix suggestions
+
+### Commit Message Format for SAST Fixes
+
+When fixing issues identified by SAST tools (SonarCloud, Coverity, Semgrep), use the following commit message format:
 
 ```
 fix: [Brief description of the fix]
@@ -434,7 +521,8 @@ Benefits:
 - [Benefit 2]
 - [Benefit 3]
 
-Fixes: SonarCloud issues [issue-key-1], [issue-key-2]
+Fixes: [Tool] issues [issue-key-1], [issue-key-2]
+(e.g., "Fixes: SonarCloud issues AZsw3M7s...", "Fixes: Coverity defect CID-12345")
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
