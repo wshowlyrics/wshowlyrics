@@ -313,7 +313,7 @@ bool translator_should_skip_translation(const char *stripped_text, const char *t
 
     // Check if text is already in target language
     if (is_already_in_language(stripped_text, target_lang)) {
-        *out_translation = strdup(stripped_text);
+        *out_translation = NULL;
         return true;
     }
 

@@ -344,7 +344,7 @@ static void* translate_lyrics_async(void *arg) {
             if (translator_should_skip_translation(stripped, args->target_lang, &skipped_translation)) {
                 line->translation = skipped_translation;
                 log_info("claude_translator: [%d/%d] Already in target language: %s",
-                       current, translatable_count, skipped_translation);
+                       current, translatable_count, stripped);
                 free(stripped);
                 line = line->next;
                 continue;
