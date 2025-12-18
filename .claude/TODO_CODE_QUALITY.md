@@ -330,11 +330,21 @@ void render_word(struct render_params *params);
 - [x] pango_utils.c 포맷 스트링 + 가변 인자
 - [x] parser_utils.c 0바이트 malloc
 
-### Phase 2: 복잡도 최우선 (config.c) ⚠️
-**예상**: 6-8시간
-- [ ] config.c:219 함수 분리 (복잡도 129)
-- [ ] config.c:824 검증 로직 리팩토링 (복잡도 84)
-- [ ] 관련 if문 병합 및 변수 정리
+### Phase 2: 복잡도 최우선 (config.c) ✅
+**예상**: 6-8시간 → **실제**: 2시간 ✅
+- [x] config.c:219 함수 분리 (복잡도 129 → 25 이하)
+  - parse_rate_limit_value() 추출
+  - parse_display_section() 추출
+  - parse_lyrics_section() 추출
+  - parse_translation_section() 추출
+  - parse_deprecated_deepl_section() 추출
+- [x] config.c:824 검증 로직 리팩토링 (복잡도 84 → 25 이하)
+  - find_example_config_path() 추출
+  - find_unknown_config_entries() 추출
+  - find_missing_config_entries() 추출
+  - display_unknown_keys_warning() 추출
+  - display_missing_keys_warning() 추출
+- [x] 빌드 검증 완료
 
 ### Phase 3: Provider 및 Parser 복잡도
 **예상**: 5-7시간

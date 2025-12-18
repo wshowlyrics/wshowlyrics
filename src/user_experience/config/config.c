@@ -19,6 +19,169 @@ struct config g_config;
 
 // Forward declarations
 static bool validate_config_path(const char *path);
+static bool parse_hex_color(const char *hex, double rgba[4]);
+
+// Parse rate limit value with support for intuitive formats
+// Returns milliseconds between requests
+static int parse_rate_limit_value(const char *value) {
+    char *endptr;
+    long number = strtol(value, &endptr, 10);
+
+    if (number <= 0) {
+        log_warn("Invalid rate_limit value: %s (must be positive)", value);
+        return 6000; // Default: 6 seconds
+    }
+
+    if (*endptr == 'm' || *endptr == 'M') {
+        // Requests per minute
+        return 60000 / number;
+    } else if (*endptr == 's' || *endptr == 'S') {
+        // Requests per second
+        return 1000 / number;
+    } else if (*endptr == '\0') {
+        // Raw milliseconds (backward compatible)
+        return number;
+    } else {
+        log_warn("Invalid rate_limit format: %s (use: 50m, 5s, or 1200)", value);
+        return 6000; // Default: 6 seconds
+    }
+}
+
+// Parse [display] section
+static void parse_display_section(struct config *cfg, const char *key, const char *value) {
+    if (strcmp(key, "font_family") == 0) {
+        free(cfg->display.font_family);
+        cfg->display.font_family = strdup(value);
+    } else if (strcmp(key, "font_size") == 0) {
+        cfg->display.font_size = atoi(value);
+    } else if (strcmp(key, "font_weight") == 0) {
+        free(cfg->display.font_weight);
+        cfg->display.font_weight = strdup(value);
+    } else if (strcmp(key, "color_active") == 0) {
+        parse_hex_color(value, cfg->display.color_active);
+    } else if (strcmp(key, "color_background") == 0) {
+        parse_hex_color(value, cfg->display.color_background);
+    } else if (strcmp(key, "anchor") == 0) {
+        free(cfg->display.anchor);
+        cfg->display.anchor = strdup(value);
+    } else if (strcmp(key, "margin") == 0) {
+        cfg->display.margin = atoi(value);
+    } else if (strcmp(key, "line_spacing") == 0) {
+        cfg->display.line_spacing = atoi(value);
+    } else if (strcmp(key, "enable_multiline_lrcx") == 0) {
+        cfg->display.enable_multiline_lrcx = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+    }
+}
+
+// Parse [lyrics] section
+static void parse_lyrics_section(struct config *cfg, const char *key, const char *value) {
+    if (strcmp(key, "search_dirs") == 0) {
+        free(cfg->lyrics.search_dirs);
+        cfg->lyrics.search_dirs = strdup(value);
+    } else if (strcmp(key, "extensions") == 0) {
+        free(cfg->lyrics.extensions);
+        cfg->lyrics.extensions = strdup(value);
+    } else if (strcmp(key, "preferred_players") == 0) {
+        free(cfg->lyrics.preferred_players);
+        cfg->lyrics.preferred_players = strdup(value);
+    } else if (strcmp(key, "enable_lrclib") == 0) {
+        cfg->lyrics.enable_lrclib = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+    } else if (strcmp(key, "enable_itunes") == 0) {
+        cfg->lyrics.enable_itunes = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+    } else if (strcmp(key, "enable_notifications") == 0) {
+        cfg->lyrics.enable_notifications = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+    } else if (strcmp(key, "notification_timeout") == 0) {
+        cfg->lyrics.notification_timeout = atoi(value);
+    }
+}
+
+// Parse [translation] section
+static void parse_translation_section(struct config *cfg, const char *key, const char *value) {
+    if (strcmp(key, "provider") == 0) {
+        free(cfg->translation.provider);
+        cfg->translation.provider = strdup(value);
+    } else if (strcmp(key, "api_key") == 0) {
+        free(cfg->translation.api_key);
+        cfg->translation.api_key = strdup(value);
+    } else if (strcmp(key, "target_language") == 0) {
+        free(cfg->translation.target_language);
+        cfg->translation.target_language = strdup(value);
+    } else if (strcmp(key, "translation_display") == 0) {
+        free(cfg->translation.translation_display);
+        cfg->translation.translation_display = strdup(value);
+    } else if (strcmp(key, "translation_opacity") == 0) {
+        cfg->translation.translation_opacity = atof(value);
+        // Clamp to valid range [0.0, 1.0]
+        if (cfg->translation.translation_opacity < 0.0) cfg->translation.translation_opacity = 0.0;
+        if (cfg->translation.translation_opacity > 1.0) cfg->translation.translation_opacity = 1.0;
+    } else if (strcmp(key, "rate_limit_ms") == 0 || strcmp(key, "rate_limit") == 0) {
+        cfg->translation.rate_limit_ms = parse_rate_limit_value(value);
+        // Clamp to reasonable range [0, 60000] (0-60 seconds)
+        if (cfg->translation.rate_limit_ms < 0) cfg->translation.rate_limit_ms = 0;
+        if (cfg->translation.rate_limit_ms > 60000) cfg->translation.rate_limit_ms = 60000;
+    } else if (strcmp(key, "max_retries") == 0) {
+        cfg->translation.max_retries = atoi(value);
+        // Clamp to reasonable range [0, 10]
+        if (cfg->translation.max_retries < 0) cfg->translation.max_retries = 0;
+        if (cfg->translation.max_retries > 10) cfg->translation.max_retries = 10;
+    } else if (strcmp(key, "revalidate_count") == 0) {
+        cfg->translation.revalidate_count = atoi(value);
+        // Clamp to reasonable range [1, 10]
+        if (cfg->translation.revalidate_count < 1) cfg->translation.revalidate_count = 1;
+        if (cfg->translation.revalidate_count > 10) cfg->translation.revalidate_count = 10;
+    } else if (strcmp(key, "cache_policy") == 0) {
+        // Parse cache policy: comfort, balanced, aggressive
+        if (strcasecmp(value, "comfort") == 0) {
+            cfg->translation.cache_policy = CACHE_POLICY_COMFORT;
+        } else if (strcasecmp(value, "balanced") == 0) {
+            cfg->translation.cache_policy = CACHE_POLICY_BALANCED;
+        } else if (strcasecmp(value, "aggressive") == 0) {
+            cfg->translation.cache_policy = CACHE_POLICY_AGGRESSIVE;
+        } else {
+            log_warn("Unknown cache_policy '%s', using default 'balanced'", value);
+            cfg->translation.cache_policy = CACHE_POLICY_BALANCED;
+        }
+    }
+}
+
+// Parse deprecated [deepl] section with migration warning
+static void parse_deprecated_deepl_section(struct config *cfg, const char *key, const char *value) {
+    static bool deepl_warning_shown = false;
+    if (!deepl_warning_shown) {
+        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        log_warn("⚠️  [deepl] section is deprecated");
+        log_warn("Please migrate to [translation] section in your config");
+        log_warn("See settings.ini.example for new format");
+        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        deepl_warning_shown = true;
+    }
+
+    if (strcmp(key, "enable_deepl") == 0) {
+        // Migrate enable_deepl to provider
+        bool enable_deepl = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        if (enable_deepl) {
+            free(cfg->translation.provider);
+            cfg->translation.provider = strdup("deepl");
+        } else {
+            free(cfg->translation.provider);
+            cfg->translation.provider = strdup("false");
+        }
+    } else if (strcmp(key, "api_key") == 0) {
+        free(cfg->translation.api_key);
+        cfg->translation.api_key = strdup(value);
+    } else if (strcmp(key, "target_language") == 0) {
+        free(cfg->translation.target_language);
+        cfg->translation.target_language = strdup(value);
+    } else if (strcmp(key, "translation_display") == 0) {
+        free(cfg->translation.translation_display);
+        cfg->translation.translation_display = strdup(value);
+    } else if (strcmp(key, "translation_opacity") == 0) {
+        cfg->translation.translation_opacity = atof(value);
+        // Clamp to valid range [0.0, 1.0]
+        if (cfg->translation.translation_opacity < 0.0) cfg->translation.translation_opacity = 0.0;
+        if (cfg->translation.translation_opacity > 1.0) cfg->translation.translation_opacity = 1.0;
+    }
+}
 
 // Get pointer to global config (encapsulated access)
 struct config* config_get(void) {
@@ -268,155 +431,15 @@ bool config_load(struct config *cfg, const char *path) {
             value = config_trim_whitespace(value);
         }
 
-        // Parse based on section
+        // Parse based on section using helper functions
         if (strcmp(section, "display") == 0) {
-            if (strcmp(key, "font_family") == 0) {
-                free(cfg->display.font_family);
-                cfg->display.font_family = strdup(value);
-            } else if (strcmp(key, "font_size") == 0) {
-                cfg->display.font_size = atoi(value);
-            } else if (strcmp(key, "font_weight") == 0) {
-                free(cfg->display.font_weight);
-                cfg->display.font_weight = strdup(value);
-            } else if (strcmp(key, "color_active") == 0) {
-                parse_hex_color(value, cfg->display.color_active);
-            } else if (strcmp(key, "color_background") == 0) {
-                parse_hex_color(value, cfg->display.color_background);
-            } else if (strcmp(key, "anchor") == 0) {
-                free(cfg->display.anchor);
-                cfg->display.anchor = strdup(value);
-            } else if (strcmp(key, "margin") == 0) {
-                cfg->display.margin = atoi(value);
-            } else if (strcmp(key, "line_spacing") == 0) {
-                cfg->display.line_spacing = atoi(value);
-            } else if (strcmp(key, "enable_multiline_lrcx") == 0) {
-                cfg->display.enable_multiline_lrcx = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
-            }
+            parse_display_section(cfg, key, value);
         } else if (strcmp(section, "lyrics") == 0) {
-            if (strcmp(key, "search_dirs") == 0) {
-                free(cfg->lyrics.search_dirs);
-                cfg->lyrics.search_dirs = strdup(value);
-            } else if (strcmp(key, "extensions") == 0) {
-                free(cfg->lyrics.extensions);
-                cfg->lyrics.extensions = strdup(value);
-            } else if (strcmp(key, "preferred_players") == 0) {
-                free(cfg->lyrics.preferred_players);
-                cfg->lyrics.preferred_players = strdup(value);
-            } else if (strcmp(key, "enable_lrclib") == 0) {
-                cfg->lyrics.enable_lrclib = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
-            } else if (strcmp(key, "enable_itunes") == 0) {
-                cfg->lyrics.enable_itunes = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
-            } else if (strcmp(key, "enable_notifications") == 0) {
-                cfg->lyrics.enable_notifications = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
-            } else if (strcmp(key, "notification_timeout") == 0) {
-                cfg->lyrics.notification_timeout = atoi(value);
-            }
+            parse_lyrics_section(cfg, key, value);
         } else if (strcmp(section, "translation") == 0) {
-            if (strcmp(key, "provider") == 0) {
-                free(cfg->translation.provider);
-                cfg->translation.provider = strdup(value);
-            } else if (strcmp(key, "api_key") == 0) {
-                free(cfg->translation.api_key);
-                cfg->translation.api_key = strdup(value);
-            } else if (strcmp(key, "target_language") == 0) {
-                free(cfg->translation.target_language);
-                cfg->translation.target_language = strdup(value);
-            } else if (strcmp(key, "translation_display") == 0) {
-                free(cfg->translation.translation_display);
-                cfg->translation.translation_display = strdup(value);
-            } else if (strcmp(key, "translation_opacity") == 0) {
-                cfg->translation.translation_opacity = atof(value);
-                // Clamp to valid range [0.0, 1.0]
-                if (cfg->translation.translation_opacity < 0.0) cfg->translation.translation_opacity = 0.0;
-                if (cfg->translation.translation_opacity > 1.0) cfg->translation.translation_opacity = 1.0;
-            } else if (strcmp(key, "rate_limit_ms") == 0 || strcmp(key, "rate_limit") == 0) {
-                // Parse rate limit with support for intuitive formats:
-                // - "50m" = 50 requests per minute
-                // - "5s" = 5 requests per second
-                // - "1200" = 1200 milliseconds (raw)
-                char *endptr;
-                long number = strtol(value, &endptr, 10);
-
-                if (number <= 0) {
-                    log_warn("Invalid rate_limit value: %s (must be positive)", value);
-                    cfg->translation.rate_limit_ms = 6000; // Use default
-                } else if (*endptr == 'm' || *endptr == 'M') {
-                    // Requests per minute
-                    cfg->translation.rate_limit_ms = 60000 / number;
-                } else if (*endptr == 's' || *endptr == 'S') {
-                    // Requests per second
-                    cfg->translation.rate_limit_ms = 1000 / number;
-                } else if (*endptr == '\0') {
-                    // Raw milliseconds (backward compatible)
-                    cfg->translation.rate_limit_ms = number;
-                } else {
-                    log_warn("Invalid rate_limit format: %s (use: 50m, 5s, or 1200)", value);
-                    cfg->translation.rate_limit_ms = 6000; // Use default
-                }
-
-                // Clamp to reasonable range [0, 60000] (0-60 seconds)
-                if (cfg->translation.rate_limit_ms < 0) cfg->translation.rate_limit_ms = 0;
-                if (cfg->translation.rate_limit_ms > 60000) cfg->translation.rate_limit_ms = 60000;
-            } else if (strcmp(key, "max_retries") == 0) {
-                cfg->translation.max_retries = atoi(value);
-                // Clamp to reasonable range [0, 10]
-                if (cfg->translation.max_retries < 0) cfg->translation.max_retries = 0;
-                if (cfg->translation.max_retries > 10) cfg->translation.max_retries = 10;
-            } else if (strcmp(key, "revalidate_count") == 0) {
-                cfg->translation.revalidate_count = atoi(value);
-                // Clamp to reasonable range [1, 10]
-                if (cfg->translation.revalidate_count < 1) cfg->translation.revalidate_count = 1;
-                if (cfg->translation.revalidate_count > 10) cfg->translation.revalidate_count = 10;
-            } else if (strcmp(key, "cache_policy") == 0) {
-                // Parse cache policy: comfort, balanced, aggressive
-                if (strcasecmp(value, "comfort") == 0) {
-                    cfg->translation.cache_policy = CACHE_POLICY_COMFORT;
-                } else if (strcasecmp(value, "balanced") == 0) {
-                    cfg->translation.cache_policy = CACHE_POLICY_BALANCED;
-                } else if (strcasecmp(value, "aggressive") == 0) {
-                    cfg->translation.cache_policy = CACHE_POLICY_AGGRESSIVE;
-                } else {
-                    log_warn("Unknown cache_policy '%s', using default 'balanced'", value);
-                    cfg->translation.cache_policy = CACHE_POLICY_BALANCED;
-                }
-            }
+            parse_translation_section(cfg, key, value);
         } else if (strcmp(section, "deepl") == 0) {
-            // Deprecated [deepl] section - migrate to [translation] with warning
-            static bool deepl_warning_shown = false;
-            if (!deepl_warning_shown) {
-                log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                log_warn("⚠️  [deepl] section is deprecated");
-                log_warn("Please migrate to [translation] section in your config");
-                log_warn("See settings.ini.example for new format");
-                log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                deepl_warning_shown = true;
-            }
-
-            if (strcmp(key, "enable_deepl") == 0) {
-                // Migrate enable_deepl to provider
-                bool enable_deepl = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
-                if (enable_deepl) {
-                    free(cfg->translation.provider);
-                    cfg->translation.provider = strdup("deepl");
-                } else {
-                    free(cfg->translation.provider);
-                    cfg->translation.provider = strdup("false");
-                }
-            } else if (strcmp(key, "api_key") == 0) {
-                free(cfg->translation.api_key);
-                cfg->translation.api_key = strdup(value);
-            } else if (strcmp(key, "target_language") == 0) {
-                free(cfg->translation.target_language);
-                cfg->translation.target_language = strdup(value);
-            } else if (strcmp(key, "translation_display") == 0) {
-                free(cfg->translation.translation_display);
-                cfg->translation.translation_display = strdup(value);
-            } else if (strcmp(key, "translation_opacity") == 0) {
-                cfg->translation.translation_opacity = atof(value);
-                // Clamp to valid range [0.0, 1.0]
-                if (cfg->translation.translation_opacity < 0.0) cfg->translation.translation_opacity = 0.0;
-                if (cfg->translation.translation_opacity > 1.0) cfg->translation.translation_opacity = 1.0;
-            }
+            parse_deprecated_deepl_section(cfg, key, value);
         }
     }
 
@@ -820,29 +843,9 @@ static bool key_exists_in_example(struct config_key *example_keys, const char *s
     return false;
 }
 
-// Validate user config against settings.ini.example
-void config_validate_user_config(void) {
-    // Get user config path
-    char *user_path = config_get_user_path();
-    if (!user_path) {
-        return;
-    }
-
-    // Check if user config exists
-    struct stat st;
-    if (stat(user_path, &st) != 0) {
-        free(user_path);
-        return;  // User config doesn't exist, no validation needed
-    }
-
-    // Validate path for security (path traversal prevention)
-    if (!validate_config_path(user_path)) {
-        log_warn("Config path validation failed: %s", user_path);
-        free(user_path);
-        return;
-    }
-
-    // Find settings.ini.example in multiple locations
+// Find example config file in multiple locations
+// Returns NULL if not found, otherwise returns path and sets example_keys
+static const char* find_example_config_path(struct config_key **example_keys) {
     const char *example_paths[] = {
         "/etc/wshowlyrics/settings.ini.example",
         "/usr/share/wshowlyrics/settings.ini.example",
@@ -850,33 +853,22 @@ void config_validate_user_config(void) {
         NULL
     };
 
-    struct config_key *example_keys = NULL;
-    const char *found_example_path = NULL;
-
     for (int i = 0; example_paths[i] != NULL; i++) {
-        example_keys = parse_example_config_keys(example_paths[i]);
-        if (example_keys) {
-            found_example_path = example_paths[i];
-            break;
+        *example_keys = parse_example_config_keys(example_paths[i]);
+        if (*example_keys) {
+            return example_paths[i];
         }
     }
 
-    if (!example_keys) {
-        free(user_path);
-        return;  // Could not find example config, skip validation
-    }
+    return NULL;
+}
 
-    // Parse user config sections (including empty ones)
-    // SECURITY: Path is validated at line 825 using validate_config_path() which:
-    // - Uses realpath() to canonicalize and resolve symlinks/.. sequences
-    // - Validates path is within safe directories (HOME, XDG_CONFIG_HOME, /etc/, /usr/share/, cwd)
-    // - Prevents path traversal attacks
-    struct section_list *user_sections = parse_user_config_sections(user_path);
+// Find unknown config entries (sections and keys not in example)
+static struct config_key* find_unknown_config_entries(
+    struct config_key *example_keys,
+    struct section_list *user_sections,
+    struct config_key *user_keys) {
 
-    // Parse user config keys (validated above)
-    struct config_key *user_keys = parse_user_config_keys(user_path);
-
-    // Check for unknown sections and keys
     struct config_key *unknown_head = NULL;
     struct config_key *unknown_tail = NULL;
 
@@ -884,7 +876,7 @@ void config_validate_user_config(void) {
     if (user_sections) {
         for (struct section_list *sec = user_sections; sec != NULL; sec = sec->next) {
             if (!section_exists_in_example(example_keys, sec->section)) {
-                // Unknown section - add it to unknown list with empty key to indicate section-level issue
+                // Unknown section - add it to unknown list
                 struct config_key *unknown = malloc(sizeof(struct config_key));
                 if (unknown) {
                     snprintf(unknown->section, sizeof(unknown->section), "%s", sec->section);
@@ -927,24 +919,14 @@ void config_validate_user_config(void) {
         }
     }
 
-    // Display warnings for unknown keys
-    if (unknown_head) {
-        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        log_warn("⚠️  Unknown configuration fields detected:");
-        log_warn("These settings are not recognized and will be ignored:");
-        log_warn("");
+    return unknown_head;
+}
 
-        for (struct config_key *node = unknown_head; node != NULL; node = node->next) {
-            log_warn("  [%s] %s", node->section, node->key);
-        }
+// Find missing config entries (keys in example but not in user config)
+static struct config_key* find_missing_config_entries(
+    struct config_key *example_keys,
+    const char *user_path) {
 
-        log_warn("");
-        log_warn("These may be from an older version or typos.");
-        log_warn("Please check: %s", found_example_path);
-        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    }
-
-    // Check for missing keys
     struct config_key *missing_head = NULL;
     struct config_key *missing_tail = NULL;
 
@@ -967,85 +949,153 @@ void config_validate_user_config(void) {
         }
     }
 
-    // Display warnings for missing keys
-    if (missing_head) {
-        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        log_warn("Your configuration file is missing some new settings:");
-        log_warn("User config: %s", user_path);
-        log_warn("");
+    return missing_head;
+}
 
-        // Build missing keys list for notification
-        char missing_keys_list[1024] = {0};
-        size_t offset = 0;
-        int count = 0;
-        int total_count = 0;
+// Display warning for unknown config keys
+static void display_unknown_keys_warning(struct config_key *unknown_keys, const char *example_path) {
+    if (!unknown_keys) return;
 
-        for (struct config_key *node = missing_head; node != NULL; node = node->next) {
-            log_warn("  [%s] %s", node->section, node->key);
-            total_count++;
+    log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    log_warn("⚠️  Unknown configuration fields detected:");
+    log_warn("These settings are not recognized and will be ignored:");
+    log_warn("");
 
-            // Add to notification message (limit to first 5 keys to avoid too long message)
-            if (count < 5 && offset < sizeof(missing_keys_list)) {
-                int written = snprintf(missing_keys_list + offset,
-                                      sizeof(missing_keys_list) - offset,
-                                      "• [%s] %s\\n", node->section, node->key);
-                if (written > 0) {
-                    offset += written;
-                }
-                count++;
-            }
-        }
+    for (struct config_key *node = unknown_keys; node != NULL; node = node->next) {
+        log_warn("  [%s] %s", node->section, node->key);
+    }
 
-        // Add "and X more..." if there are more than 5 missing keys
-        if (total_count > 5 && offset < sizeof(missing_keys_list)) {
+    log_warn("");
+    log_warn("These may be from an older version or typos.");
+    log_warn("Please check: %s", example_path);
+    log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+}
+
+// Display warning for missing config keys and send notification
+static void display_missing_keys_warning(struct config_key *missing_keys, const char *user_path, const char *example_path) {
+    if (!missing_keys) return;
+
+    log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    log_warn("Your configuration file is missing some new settings:");
+    log_warn("User config: %s", user_path);
+    log_warn("");
+
+    // Build missing keys list for notification
+    char missing_keys_list[1024] = {0};
+    size_t offset = 0;
+    int count = 0;
+    int total_count = 0;
+
+    for (struct config_key *node = missing_keys; node != NULL; node = node->next) {
+        log_warn("  [%s] %s", node->section, node->key);
+        total_count++;
+
+        // Add to notification message (limit to first 5 keys to avoid too long message)
+        if (count < 5 && offset < sizeof(missing_keys_list)) {
             int written = snprintf(missing_keys_list + offset,
                                   sizeof(missing_keys_list) - offset,
-                                  "...and %d more", total_count - 5);
+                                  "• [%s] %s\\n", node->section, node->key);
             if (written > 0) {
                 offset += written;
             }
-        }
-
-        log_warn("");
-        log_warn("Please check the example configuration file for details:");
-        log_warn("  %s", found_example_path);
-        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-        // Send desktop notification
-        // Check if notifications are explicitly disabled in config
-        bool should_notify = true;
-
-        // Check if enable_notifications key exists in user config
-        if (key_exists_in_file(user_path, "lyrics", "enable_notifications")) {
-            // Key exists, use its value
-            should_notify = g_config.lyrics.enable_notifications;
-        }
-        // If key doesn't exist, default to true (show notification)
-
-        if (should_notify && is_safe_path_for_shell(found_example_path)) {
-            char cmd[2048];
-            snprintf(cmd, sizeof(cmd),
-                "notify-send -a wshowlyrics -u normal -t %d "
-                "\"⚠️ Configuration Update Required\" "
-                "\"Your config is missing new settings:\\n%s\\n"
-                "Check: %s\" 2>/dev/null",
-                g_config.lyrics.notification_timeout,
-                missing_keys_list,
-                found_example_path);
-
-            int ret = system(cmd);
-            if (ret != 0) {
-                log_warn("Failed to send desktop notification (notify-send may not be available)");
-            }
+            count++;
         }
     }
+
+    // Add "and X more..." if there are more than 5 missing keys
+    if (total_count > 5 && offset < sizeof(missing_keys_list)) {
+        int written = snprintf(missing_keys_list + offset,
+                              sizeof(missing_keys_list) - offset,
+                              "...and %d more", total_count - 5);
+        if (written > 0) {
+            offset += written;
+        }
+    }
+
+    log_warn("");
+    log_warn("Please check the example configuration file for details:");
+    log_warn("  %s", example_path);
+    log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+    // Send desktop notification
+    bool should_notify = true;
+
+    // Check if enable_notifications key exists in user config
+    if (key_exists_in_file(user_path, "lyrics", "enable_notifications")) {
+        // Key exists, use its value
+        should_notify = g_config.lyrics.enable_notifications;
+    }
+
+    if (should_notify && is_safe_path_for_shell(example_path)) {
+        char cmd[2048];
+        snprintf(cmd, sizeof(cmd),
+            "notify-send -a wshowlyrics -u normal -t %d "
+            "\"⚠️ Configuration Update Required\" "
+            "\"Your config is missing new settings:\\n%s\\n"
+            "Check: %s\" 2>/dev/null",
+            g_config.lyrics.notification_timeout,
+            missing_keys_list,
+            example_path);
+
+        int ret = system(cmd);
+        if (ret != 0) {
+            log_warn("Failed to send desktop notification (notify-send may not be available)");
+        }
+    }
+}
+
+// Validate user config against settings.ini.example
+void config_validate_user_config(void) {
+    // Get user config path
+    char *user_path = config_get_user_path();
+    if (!user_path) {
+        return;
+    }
+
+    // Check if user config exists
+    struct stat st;
+    if (stat(user_path, &st) != 0) {
+        free(user_path);
+        return;  // User config doesn't exist, no validation needed
+    }
+
+    // Validate path for security (path traversal prevention)
+    if (!validate_config_path(user_path)) {
+        log_warn("Config path validation failed: %s", user_path);
+        free(user_path);
+        return;
+    }
+
+    // Find example config file
+    struct config_key *example_keys = NULL;
+    const char *found_example_path = find_example_config_path(&example_keys);
+    if (!example_keys) {
+        free(user_path);
+        return;  // Could not find example config, skip validation
+    }
+
+    // Parse user config
+    // SECURITY: Path is validated above using validate_config_path() which:
+    // - Uses realpath() to canonicalize and resolve symlinks/.. sequences
+    // - Validates path is within safe directories (HOME, XDG_CONFIG_HOME, /etc/, /usr/share/, cwd)
+    // - Prevents path traversal attacks
+    struct section_list *user_sections = parse_user_config_sections(user_path);
+    struct config_key *user_keys = parse_user_config_keys(user_path);
+
+    // Find unknown and missing config entries using helper functions
+    struct config_key *unknown_keys = find_unknown_config_entries(example_keys, user_sections, user_keys);
+    struct config_key *missing_keys = find_missing_config_entries(example_keys, user_path);
+
+    // Display warnings
+    display_unknown_keys_warning(unknown_keys, found_example_path);
+    display_missing_keys_warning(missing_keys, user_path, found_example_path);
 
     // Cleanup
     free_config_keys(example_keys);
     free_section_list(user_sections);
     free_config_keys(user_keys);
-    free_config_keys(unknown_head);
-    free_config_keys(missing_head);
+    free_config_keys(unknown_keys);
+    free_config_keys(missing_keys);
     free(user_path);
 }
 
