@@ -48,7 +48,7 @@ int calculate_max_ruby_height_word(cairo_t *cairo, const char *font,
     while (seg) {
         if (seg->ruby) {
             int ruby_w, ruby_h;
-            get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", seg->ruby);
+            get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, seg->ruby);
             if (ruby_h > max_ruby_height) {
                 max_ruby_height = ruby_h;
             }
@@ -101,7 +101,7 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
             if (seg_iter->ruby) {
                 get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg_iter->text, seg_iter->ruby);
             } else {
-                get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", seg_iter->text);
+                get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, seg_iter->text);
             }
             // All text at same baseline (max_ruby_height gives space for ruby above)
             cairo_move_to(cairo, x_iter, max_ruby_height);
@@ -148,7 +148,7 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
         if (display_ruby) {
             get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, display_text, display_ruby);
         } else {
-            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", display_text ? display_text : "");
+            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, display_text ? display_text : "");
         }
 
         // Calculate fill ratio
@@ -222,7 +222,7 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
         if (size_iter->ruby) {
             get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, size_iter->text, size_iter->ruby);
         } else {
-            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", size_iter->text);
+            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, size_iter->text);
             seg_h += max_ruby_height;
         }
 
@@ -288,7 +288,7 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
             if (seg->ruby) { \
                 get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg->text, seg->ruby); \
             } else { \
-                get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", seg->text); \
+                get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, seg->text); \
             } \
             /* Use pango_printf_ruby for all text - ensures consistent baseline */ \
             cairo_move_to(cairo, x_offset, y_offset + max_ruby_height); \
@@ -348,12 +348,12 @@ void render_karaoke_multiline(cairo_t *cairo, const char *font, int scale,
 
             int w, h;
             get_text_size(cairo, font, &w, &h, NULL, scale * context_scale,
-                         "%s", stripped);
+                         stripped);
 
             cairo_save(cairo);
             cairo_translate(cairo, 0, y_offset);
             cairo_move_to(cairo, 0, 0);  // Set explicit starting position
-            pango_printf(cairo, font, scale * context_scale, "%s", stripped);
+            pango_printf(cairo, font, scale * context_scale, stripped);
             cairo_restore(cairo);
 
             if (w > total_width) total_width = w;
@@ -388,12 +388,12 @@ void render_karaoke_multiline(cairo_t *cairo, const char *font, int scale,
 
             int w, h;
             get_text_size(cairo, font, &w, &h, NULL, scale * context_scale,
-                         "%s", stripped);
+                         stripped);
 
             cairo_save(cairo);
             cairo_translate(cairo, 0, y_offset);
             cairo_move_to(cairo, 0, 0);  // Set explicit starting position
-            pango_printf(cairo, font, scale * context_scale, "%s", stripped);
+            pango_printf(cairo, font, scale * context_scale, stripped);
             cairo_restore(cairo);
 
             if (w > total_width) total_width = w;

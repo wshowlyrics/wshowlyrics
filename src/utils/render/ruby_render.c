@@ -13,7 +13,7 @@ int calculate_max_ruby_height_ruby(cairo_t *cairo, const char *font,
     while (seg) {
         if (seg->ruby) {
             int ruby_w, ruby_h;
-            get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", seg->ruby);
+            get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, seg->ruby);
             if (ruby_h > max_ruby_height) {
                 max_ruby_height = ruby_h;
             }
@@ -71,10 +71,10 @@ void render_ruby_segments(cairo_t *cairo, const char *font, int scale,
             cairo_set_source_u32(cairo, dimmed);
 
             int trans_w, trans_h;
-            get_text_size(cairo, font, &trans_w, &trans_h, NULL, translation_scale, "%s", seg->translation);
+            get_text_size(cairo, font, &trans_w, &trans_h, NULL, translation_scale, seg->translation);
             // Place translation at same baseline level (text will naturally appear below due to font metrics)
             cairo_move_to(cairo, x_offset, y_offset);
-            pango_printf(cairo, font, translation_scale, "%s", seg->translation);
+            pango_printf(cairo, font, translation_scale, seg->translation);
 
             if (trans_w > total_width) {
                 total_width = trans_w;
@@ -101,7 +101,7 @@ void render_ruby_segments(cairo_t *cairo, const char *font, int scale,
         if (seg->ruby) {
             get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg->text, seg->ruby);
         } else {
-            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", seg->text);
+            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, seg->text);
         }
         // Use pango_printf_ruby for all text - ensures consistent baseline
         cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
@@ -201,7 +201,7 @@ void render_ruby_segments_with_translation(cairo_t *cairo, const char *font, int
             if (seg->ruby) {
                 get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg->text, seg->ruby);
             } else {
-                get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", seg->text);
+                get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, seg->text);
             }
 
             cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
@@ -226,12 +226,12 @@ void render_ruby_segments_with_translation(cairo_t *cairo, const char *font, int
 
         int trans_w, trans_h;
         get_text_size(cairo, font, &trans_w, &trans_h, NULL, translation_scale,
-                    "%s", translation);
+                    translation);
 
         // Place translation below main text (adjust spacing based on ruby presence)
         double spacing_factor = (max_ruby_height > 0) ? 1.5 : 1.0;
         cairo_move_to(cairo, 0, y_offset + (base_text_h * spacing_factor));
-        pango_printf(cairo, font, translation_scale, "%s", translation);
+        pango_printf(cairo, font, translation_scale, translation);
 
         // Translation is on a separate line, compare width independently
         if (trans_w > total_width) {

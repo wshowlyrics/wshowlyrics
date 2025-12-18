@@ -55,10 +55,10 @@ int render_segment_plain(cairo_t *cairo, const char *font, int scale,
                         int x_offset, int y_offset, int max_ruby_height,
                         const char *text) {
     int seg_w, seg_h;
-    get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, "%s", text);
+    get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, text);
     // Bottom-align: position at same y as ruby text's base text would be
     cairo_move_to(cairo, x_offset, y_offset);
-    pango_printf(cairo, font, scale, "%s", text);
+    pango_printf(cairo, font, scale, text);
     return seg_w;
 }
 
@@ -79,10 +79,10 @@ void render_plain_text(cairo_t *cairo, const char *font, int scale,
     cairo_set_source_u32(cairo, foreground);
 
     int w, h;
-    get_text_size(cairo, font, &w, &h, NULL, scale, "%s", text);
+    get_text_size(cairo, font, &w, &h, NULL, scale, text);
 
     cairo_move_to(cairo, 0, 0);
-    pango_printf(cairo, font, scale, "%s", text);
+    pango_printf(cairo, font, scale, text);
 
     *width = w;
     *height = h;

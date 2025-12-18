@@ -491,9 +491,10 @@ bool openai_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) 
              "/tmp/wshowlyrics/translated/%s_%s.json",
              data->md5_checksum, target_lang);
 
-    // Create cache directory
-    if (system("mkdir -p /tmp/wshowlyrics/translated") != 0) {
-        log_warn("openai_translator: Failed to create cache directory");
+    // Create cache directories
+    if (!ensure_cache_directories()) {
+        log_error("openai_translator: Failed to create cache directories");
+        return false;
     }
 
     // Prepare thread arguments

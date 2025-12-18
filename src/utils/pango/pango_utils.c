@@ -1,5 +1,4 @@
 #include "pango_utils.h"
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,22 +28,15 @@ PangoLayout *get_pango_layout(cairo_t *cairo, const char *font,
 }
 
 void get_text_size(cairo_t *cairo, const char *font, int *width, int *height,
-        int *baseline, double scale, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    // Add one since vsnprintf excludes null terminator.
-    const int length = vsnprintf(NULL, 0, fmt, args) + 1;
-    va_end(args);
-
-    char *buf = malloc(length);
-    if (buf == NULL) {
+        int *baseline, double scale, const char *text) {
+    if (!text) {
+        if (width) *width = 0;
+        if (height) *height = 0;
+        if (baseline) *baseline = 0;
         return;
     }
-    va_start(args, fmt);
-    vsnprintf(buf, length, fmt, args);
-    va_end(args);
 
-    PangoLayout *layout = get_pango_layout(cairo, font, buf, scale);
+    PangoLayout *layout = get_pango_layout(cairo, font, text, scale);
     pango_cairo_update_layout(cairo, layout);
 
     // Get both ink and logical extents
@@ -63,26 +55,15 @@ void get_text_size(cairo_t *cairo, const char *font, int *width, int *height,
         *baseline = pango_layout_get_baseline(layout) / PANGO_SCALE;
     }
     g_object_unref(layout);
-    free(buf);
 }
 
 void pango_printf(cairo_t *cairo, const char *font, double scale,
-        const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    // Add one since vsnprintf excludes null terminator.
-    const int length = vsnprintf(NULL, 0, fmt, args) + 1;
-    va_end(args);
-
-    char *buf = malloc(length);
-    if (buf == NULL) {
+        const char *text) {
+    if (!text) {
         return;
     }
-    va_start(args, fmt);
-    vsnprintf(buf, length, fmt, args);
-    va_end(args);
 
-    PangoLayout *layout = get_pango_layout(cairo, font, buf, scale);
+    PangoLayout *layout = get_pango_layout(cairo, font, text, scale);
     cairo_font_options_t *fo = cairo_font_options_create();
     cairo_get_font_options(cairo, fo);
     pango_cairo_context_set_font_options(pango_layout_get_context(layout), fo);
@@ -90,7 +71,6 @@ void pango_printf(cairo_t *cairo, const char *font, double scale,
     pango_cairo_update_layout(cairo, layout);
     pango_cairo_show_layout(cairo, layout);
     g_object_unref(layout);
-    free(buf);
 }
 
 void get_ruby_text_size(cairo_t *cairo, const char *font, int *width, int *height,
@@ -103,12 +83,12 @@ void get_ruby_text_size(cairo_t *cairo, const char *font, int *width, int *heigh
 
     // Get base text size
     int base_w, base_h;
-    get_text_size(cairo, font, &base_w, &base_h, NULL, scale, "%s", base_text);
+    get_text_size(cairo, font, &base_w, &base_h, NULL, scale, base_text);
 
     // Get ruby text size (smaller font)
     int ruby_w = 0, ruby_h = 0;
     if (ruby_text && ruby_text[0] != '\0') {
-        get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", ruby_text);
+        get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, ruby_text);
     }
 
     // Width is base text width (ruby is centered over base)
@@ -127,10 +107,10 @@ int pango_printf_ruby(cairo_t *cairo, const char *font, double scale,
 
     // Calculate sizes
     int base_w, base_h, ruby_w = 0, ruby_h = 0;
-    get_text_size(cairo, font, &base_w, &base_h, NULL, scale, "%s", base_text);
+    get_text_size(cairo, font, &base_w, &base_h, NULL, scale, base_text);
 
     if (ruby_text && ruby_text[0] != '\0') {
-        get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, "%s", ruby_text);
+        get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, ruby_text);
     }
 
     // Save current position
@@ -148,13 +128,13 @@ int pango_printf_ruby(cairo_t *cairo, const char *font, double scale,
         double ruby_offset_x = (base_w - ruby_w) / 2.0;
         // Move ruby UP so base text stays at y
         cairo_move_to(cairo, x + ruby_offset_x, y - ruby_h - spacing);
-        pango_printf(cairo, font, scale * 0.5, "%s", ruby_text);
+        pango_printf(cairo, font, scale * 0.5, ruby_text);
         cairo_restore(cairo);
     }
 
     // Draw base text at the original y position (consistent for all text)
     cairo_move_to(cairo, x, y);
-    pango_printf(cairo, font, scale, "%s", base_text);
+    pango_printf(cairo, font, scale, base_text);
 
     // Don't move cairo current point - let caller manage position
     // Return base text width for caller to update position

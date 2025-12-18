@@ -148,6 +148,18 @@ bool parse_file_generic(const char *filename, const char *format_name,
     long size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
+    // Check for invalid file size
+    if (size < 0) {
+        fclose(fp);
+        return false;
+    }
+
+    // Empty file is not valid lyrics
+    if (size == 0) {
+        fclose(fp);
+        return false;
+    }
+
     char *content = malloc(size + 1);
     if (!content) {
         fclose(fp);
