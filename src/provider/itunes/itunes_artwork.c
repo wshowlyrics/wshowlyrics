@@ -32,6 +32,9 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
         return NULL;
     }
 
+    // Enforce TLS 1.2 or higher for security
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+
     // Sanitize track title to remove YouTube IDs and file extensions
     char *clean_track = sanitize_title(track);
     if (!clean_track || strlen(clean_track) == 0) {

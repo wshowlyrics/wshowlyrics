@@ -34,6 +34,9 @@ static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
         return false;
     }
 
+    // Enforce TLS 1.2 or higher for security
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+
     curl_memory_buffer_init(buffer);
 
     curl_easy_setopt(curl, CURLOPT_URL, url);

@@ -36,6 +36,9 @@ static bool lrclib_search_fallback(const char *title, const char *artist,
         return false;
     }
 
+    // Enforce TLS 1.2 or higher for security
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+
     // Sanitize title to remove YouTube IDs and file extensions
     char *clean_title = sanitize_title(title);
     if (!clean_title || strlen(clean_title) == 0) {
@@ -230,6 +233,9 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
         log_error("Failed to initialize CURL");
         return false;
     }
+
+    // Enforce TLS 1.2 or higher for security
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 
     // URL encode parameters
     char *title_encoded = url_encode(curl, title);

@@ -274,6 +274,9 @@ static char* translate_single_line(const char *text, const char *target_lang, co
         CURL *curl = curl_easy_init();
         if (!curl) return NULL;
 
+        // Enforce TLS 1.2 or higher for security
+        curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+
         struct curl_slist *headers = NULL;
         char auth_header[512];
         snprintf(auth_header, sizeof(auth_header),

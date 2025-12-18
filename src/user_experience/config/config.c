@@ -9,6 +9,7 @@
 #include <strings.h>
 #include <ctype.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
@@ -1083,17 +1084,24 @@ char* config_load_with_fallback(struct config *cfg) {
             const char *system_config = "/etc/wshowlyrics/settings.ini";
             FILE *src = fopen(system_config, "r");
             if (src) {
+                // Use open() with O_EXCL to avoid TOCTOU race condition
                 mode_t old_mask = umask(0022);  // Ensure rw-r--r-- permissions
-                FILE *dst = fopen(user_config_path, "w");
+                int fd = open(user_config_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
                 umask(old_mask);
-                if (dst) {
-                    char buf[4096];
-                    size_t n;
-                    while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
-                        fwrite(buf, 1, n, dst);
+
+                if (fd >= 0) {
+                    FILE *dst = fdopen(fd, "w");
+                    if (dst) {
+                        char buf[4096];
+                        size_t n;
+                        while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+                            fwrite(buf, 1, n, dst);
+                        }
+                        fclose(dst);  // Also closes fd
+                        printf("Copied system config to user config: %s\n", user_config_path);
+                    } else {
+                        close(fd);  // fdopen failed, close manually
                     }
-                    fclose(dst);
-                    printf("Copied system config to user config: %s\n", user_config_path);
                 }
                 fclose(src);
             }

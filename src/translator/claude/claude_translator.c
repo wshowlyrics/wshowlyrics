@@ -170,6 +170,9 @@ static char* translate_single_line(const char *text, const char *target_lang,
         return NULL;
     }
 
+    // Enforce TLS 1.2 or higher for security
+    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+
     // Get retry settings from config
     struct config *cfg = config_get();
     const int max_retries = cfg->translation.max_retries;
@@ -421,6 +424,9 @@ bool claude_translator_init(void) {
         log_error("claude_translator: Failed to initialize CURL");
         return false;
     }
+
+    // Enforce TLS 1.2 or higher for security
+    curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 
     return true;
 }

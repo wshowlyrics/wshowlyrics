@@ -106,22 +106,22 @@ int build_path(char *dest, size_t dest_size, const char *fmt, ...) {
 static bool mkdir_p(const char *path) {
     struct stat st;
 
-    // Check if directory already exists
-    if (stat(path, &st) == 0) {
-        if (S_ISDIR(st.st_mode)) {
-            return true;
+    // Try to create directory first to avoid TOCTOU race condition
+    if (mkdir(path, 0755) == 0) {
+        return true;  // Successfully created
+    }
+
+    // If mkdir failed with EEXIST, verify it's actually a directory
+    if (errno == EEXIST) {
+        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+            return true;  // Already exists and is a directory
         }
-        // Path exists but is not a directory
+        // Exists but is not a directory
         return false;
     }
 
-    // Create directory with mode 0755
-    if (mkdir(path, 0755) == 0) {
-        return true;
-    }
-
-    // Failed to create, but errno == EEXIST means another process created it
-    return (errno == EEXIST);
+    // Other error (permission denied, parent doesn't exist, etc.)
+    return false;
 }
 
 bool ensure_cache_directories(void) {
