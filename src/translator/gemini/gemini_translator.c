@@ -369,7 +369,7 @@ static void* translate_lyrics_async(void *arg) {
                 // Language validation: verify translation is different language
                 // This is a fallback check in case pre-detection missed it
                 if (is_same_language(stripped, translation)) {
-                    log_info("gemini_translator: [%d/%d] Skipped (same language after translation)",
+                    log_warn("gemini_translator: [%d/%d] Skipped (same language after translation) - API cost wasted",
                            current, translatable_count);
                     free(translation);
                     // Don't set translation - original text will be displayed
