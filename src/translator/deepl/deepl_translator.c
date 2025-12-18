@@ -42,6 +42,7 @@ struct translation_thread_args {
     char *target_lang;
     char *api_key;
     char *cache_path;
+    int64_t track_length_us;
 };
 
 
@@ -345,6 +346,10 @@ static void* translate_lyrics_async(void *arg) {
     data->translation_total = translatable_count;
     data->translation_in_progress = true;
 
+    // Check if translation can complete before song ends
+    struct config *cfg_check = config_get();
+    translator_check_time_feasibility(data, cfg_check->translation.rate_limit_ms, args->track_length_us);
+
     // Try loading from cache first
     int already_translated = 0;
     bool cache_loaded = translator_load_from_cache(cache_path, data);
@@ -585,7 +590,7 @@ static bool perform_api_translation(struct lyrics_data *data, const char *target
 #endif
 
 // Main translation function
-bool deepl_translate_lyrics(struct lyrics_data *data) {
+bool deepl_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
     struct config *cfg = config_get();
 
     // Check if API key is configured
@@ -624,6 +629,7 @@ bool deepl_translate_lyrics(struct lyrics_data *data) {
     args->target_lang = strdup(cfg->translation.target_language);
     args->api_key = strdup(cfg->translation.api_key);
     args->cache_path = cache_path[0] != '\0' ? strdup(cache_path) : strdup("");
+    args->track_length_us = track_length_us;
 
     if (!args->target_lang || !args->api_key || !args->cache_path) {
         log_error("Failed to allocate memory for translation thread args");

@@ -10,7 +10,7 @@
 //   2. API key is configured
 //   3. Lyrics format is LRC (has ruby_segments, not SRT/VTT/LRCX)
 // Returns true if translation was performed or loaded from cache, false otherwise
-bool deepl_translate_lyrics(struct lyrics_data *data);
+bool deepl_translate_lyrics(struct lyrics_data *data, int64_t track_length_us);
 
 // Initialize DeepL translator (called on startup)
 bool deepl_translator_init(void);

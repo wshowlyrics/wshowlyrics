@@ -1,6 +1,7 @@
 #include "translator_common.h"
 #include "../../constants.h"
 #include "../../utils/lang_detect/lang_detect.h"
+#include "../../user_experience/config/config.h"
 #include <json-c/json.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -329,4 +330,64 @@ void translator_rate_limit_delay(int delay_ms) {
         .tv_nsec = (delay_ms % 1000) * 1000000L
     };
     nanosleep(&delay, NULL);
+}
+
+void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_ms,
+                                        int64_t track_length_us) {
+    if (!data || rate_limit_ms <= 0) {
+        return;
+    }
+
+    // If track length is not available (0), skip check
+    if (track_length_us == 0) {
+        return;
+    }
+
+    // Count translatable lines (lines with text but no translation)
+    int translatable_count = 0;
+    struct lyrics_line *line = data->lines;
+    while (line) {
+        if (line->text && line->text[0] != '\0' && !line->translation) {
+            translatable_count++;
+        }
+        line = line->next;
+    }
+
+    if (translatable_count == 0) {
+        return;  // Nothing to translate
+    }
+
+    // Calculate estimated translation time (in microseconds for precision)
+    int64_t estimated_time_us = (int64_t)rate_limit_ms * 1000 * translatable_count;
+
+    // Check if translation will complete before song ends
+    if (estimated_time_us > track_length_us) {
+        // Translation won't complete - calculate how much will be done
+        double completion_ratio = (double)track_length_us / estimated_time_us;
+        int lines_completed = (int)(translatable_count * completion_ratio);
+
+        // Get cache threshold based on policy (comfort: 50%, balanced: 75%, aggressive: 90%)
+        struct config *cfg = config_get();
+        float threshold = config_get_cache_threshold(cfg->translation.cache_policy);
+        int threshold_lines = (int)(translatable_count * threshold);
+
+        // Only warn if below threshold (cache will be discarded)
+        if (lines_completed < threshold_lines) {
+            int threshold_percent = (int)(threshold * 100);
+            double estimated_sec = estimated_time_us / 1000000.0;
+            double track_sec = track_length_us / 1000000.0;
+            int completion_percent = (int)(completion_ratio * 100);
+            int required_rate_ms = (int)(track_length_us / 1000 / translatable_count / threshold);
+
+            log_warn("Translation will be DISCARDED (below cache threshold)!");
+            log_warn("  Estimated time: %.1fs (%d lines × %dms)",
+                     estimated_sec, translatable_count, rate_limit_ms);
+            log_warn("  Song duration: %.1fs (only %d%% / %d lines will complete)",
+                     track_sec, completion_percent, lines_completed);
+            log_warn("  Cache threshold: %d%% (%d lines required)",
+                     threshold_percent, threshold_lines);
+            log_warn("  REDUCE rate_limit to at least %dms to save progress!",
+                     required_rate_ms);
+        }
+    }
 }

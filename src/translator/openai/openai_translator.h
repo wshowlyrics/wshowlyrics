@@ -11,9 +11,10 @@
  * Uses MD5-based caching to avoid redundant API calls.
  *
  * @param data Lyrics data to translate (modified in-place)
+ * @param track_length_us Song duration in microseconds (0 to skip feasibility check)
  * @return true if translation started successfully (or loaded from cache), false otherwise
  */
-bool openai_translate_lyrics(struct lyrics_data *data);
+bool openai_translate_lyrics(struct lyrics_data *data, int64_t track_length_us);
 
 /**
  * Initialize OpenAI translator

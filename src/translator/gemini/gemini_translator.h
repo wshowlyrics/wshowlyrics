@@ -13,7 +13,7 @@
  * @param data Lyrics data to translate (modified in-place)
  * @return true if translation started successfully (or loaded from cache), false otherwise
  */
-bool gemini_translate_lyrics(struct lyrics_data *data);
+bool gemini_translate_lyrics(struct lyrics_data *data, int64_t track_length_us);
 
 /**
  * Initialize Gemini translator

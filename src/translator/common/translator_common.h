@@ -102,4 +102,16 @@ bool translator_should_skip_translation(const char *stripped_text, const char *t
  */
 void translator_rate_limit_delay(int delay_ms);
 
+/**
+ * Check if translation will complete enough lines to be cached.
+ * Warns if translation will be discarded (below cache_policy threshold).
+ * Threshold is based on cache_policy: comfort (50%), balanced (75%), aggressive (90%).
+ *
+ * @param data Lyrics data to analyze
+ * @param rate_limit_ms Rate limit delay in milliseconds
+ * @param track_length_us Song duration in microseconds (0 to skip check)
+ */
+void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_ms,
+                                        int64_t track_length_us);
+
 #endif // TRANSLATOR_COMMON_H

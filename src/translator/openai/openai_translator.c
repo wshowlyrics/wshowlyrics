@@ -28,6 +28,7 @@ struct translation_thread_args {
     char *api_key;
     char *model_name;
     char *cache_path;
+    int64_t track_length_us;
 };
 
 // CURL write callback
@@ -282,6 +283,10 @@ static void* translate_lyrics_async(void *arg) {
     data->translation_total = translatable_count;
     data->translation_in_progress = true;
 
+    // Check if translation can complete before song ends
+    struct config *cfg_check = config_get();
+    translator_check_time_feasibility(data, cfg_check->translation.rate_limit_ms, args->track_length_us);
+
     // Try loading from cache first
     int already_translated = 0;
     bool cache_loaded = translator_load_from_cache(args->cache_path, data);
@@ -438,7 +443,7 @@ void openai_translator_cleanup(void) {
     }
 }
 
-bool openai_translate_lyrics(struct lyrics_data *data) {
+bool openai_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
     if (!data || !curl_handle) {
         return false;
     }
@@ -495,6 +500,7 @@ bool openai_translate_lyrics(struct lyrics_data *data) {
     args->api_key = strdup(api_key);
     args->model_name = strdup(model_name);
     args->cache_path = strdup(cache_path);
+    args->track_length_us = track_length_us;
 
     // Launch async translation thread
     if (pthread_create(&data->translation_thread, NULL, translate_lyrics_async, args) != 0) {

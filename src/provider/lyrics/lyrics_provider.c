@@ -24,7 +24,7 @@
 // ============================================================================
 
 // Translate lyrics using the configured translation provider
-static void translate_lyrics_with_provider(struct lyrics_data *data) {
+static void translate_lyrics_with_provider(struct lyrics_data *data, int64_t track_length_us) {
     if (!data || !g_config.translation.provider) {
         return;
     }
@@ -53,13 +53,13 @@ static void translate_lyrics_with_provider(struct lyrics_data *data) {
 
     // Call appropriate translator based on provider
     if (strcmp(provider, "deepl") == 0) {
-        deepl_translate_lyrics(data);
+        deepl_translate_lyrics(data, track_length_us);
     } else if (strncmp(provider, "gemini-", 7) == 0 || strncmp(provider, "gemini", 6) == 0) {
-        gemini_translate_lyrics(data);
+        gemini_translate_lyrics(data, track_length_us);
     } else if (strncmp(provider, "claude-", 7) == 0 || strncmp(provider, "claude", 6) == 0) {
-        claude_translate_lyrics(data);
+        claude_translate_lyrics(data, track_length_us);
     } else if (strncmp(provider, "gpt-", 4) == 0 || strncmp(provider, "openai", 6) == 0) {
-        openai_translate_lyrics(data);
+        openai_translate_lyrics(data, track_length_us);
     } else {
         log_warn("Unknown translation provider: %s", provider);
     }
@@ -640,7 +640,7 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
             }
 
             // Try to translate lyrics with configured provider
-            translate_lyrics_with_provider(data);
+            translate_lyrics_with_provider(data, track->length_us);
 
             return true;
         }
@@ -665,7 +665,7 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                         }
 
                         // Try to translate lyrics with configured provider
-                        translate_lyrics_with_provider(data);
+                        translate_lyrics_with_provider(data, track->length_us);
 
                         return true;
                     } else {
