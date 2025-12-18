@@ -373,7 +373,8 @@ static void* translate_lyrics_async(void *arg) {
                     log_warn("openai_translator: [%d/%d] Skipped (same language after translation) - API cost wasted",
                            current, translatable_count);
                     free(translation);
-                    // Don't set translation - original text will be displayed
+                    free(line->translation);
+                    line->translation = NULL;  // Ensure translation is not displayed
                 } else {
                     free(line->translation);
                     line->translation = translation;
