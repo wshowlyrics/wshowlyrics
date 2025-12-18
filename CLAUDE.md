@@ -327,3 +327,90 @@ src/
 └── events/
     └── wayland_events.c                     # Wayland event handlers
 ```
+
+## Code Quality & Analysis
+
+### SonarCloud Integration
+
+This project uses SonarCloud for continuous code quality analysis. Issues can be accessed via REST API without requiring browser MCP.
+
+**Project:** `unstable-code_lyrics`
+**Dashboard:** https://sonarcloud.io/project/overview?id=unstable-code_lyrics
+
+### Accessing Issues via API
+
+**Base Endpoint:**
+```
+https://sonarcloud.io/api/issues/search
+```
+
+**Common Parameters:**
+- `componentKeys`: Project identifier (unstable-code_lyrics)
+- `resolved`: false (unresolved issues only)
+- `ps`: Page size (number of issues per page)
+- `s`: Sort field (SEVERITY, FILE, LINE, etc.)
+- `asc`: Sort order (false = descending)
+- `types`: Issue type filter (BUG, VULNERABILITY, CODE_SMELL)
+
+**Example Queries:**
+
+```bash
+# Get top 10 most severe issues
+curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics&resolved=false&ps=10&s=SEVERITY&asc=false"
+
+# Get all security vulnerabilities
+curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics&types=VULNERABILITY&resolved=false"
+
+# Get all bugs
+curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics&types=BUG&resolved=false"
+
+# Get code smells in specific file
+curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics&types=CODE_SMELL&componentKeys=unstable-code_lyrics:src/parser/utils/parser_utils.c"
+```
+
+**Response Format:**
+```json
+{
+  "issues": [
+    {
+      "key": "issue-id",
+      "type": "BUG|VULNERABILITY|CODE_SMELL",
+      "severity": "BLOCKER|CRITICAL|MAJOR|MINOR|INFO",
+      "component": "unstable-code_lyrics:src/path/to/file.c",
+      "line": 123,
+      "message": "Issue description"
+    }
+  ]
+}
+```
+
+### Browser MCP vs API Comparison
+
+**SonarCloud API (Recommended):**
+- ✅ No installation required
+- ✅ Fetch all issues programmatically
+- ✅ Automation-friendly (CI/CD integration)
+- ✅ Works with WebFetch tool in Claude Code
+- ✅ No authentication required for public projects
+- ✅ Direct access to structured data (JSON)
+
+**Browser MCP:**
+- ⚠️ Requires installation and configuration
+- ⚠️ Useful for complex interactions (clicking, scrolling, form filling)
+- ⚠️ Currently unnecessary for SonarCloud issue review
+- ⚠️ Overhead for simple data retrieval
+
+**Recommendation:** Use SonarCloud API for code quality analysis. Browser MCP is only needed for complex web interactions that cannot be achieved via API.
+
+### Quality Gate Settings
+
+**New Code Definition:** "Previous version"
+- Recommended for projects with regular release tagging
+- This project uses semantic versioning (v0.6.x)
+- Release frequency: Variable (hours to days)
+- See release history: https://github.com/unstable-code/lyrics/tags
+
+**Why not "Number of days":**
+- Release intervals are inconsistent (1 hour to 7 days)
+- Fixed day threshold would either include too much or miss rapid releases
+- Version-based tracking aligns with existing workflow
