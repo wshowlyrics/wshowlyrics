@@ -414,3 +414,63 @@ curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics
 - Release intervals are inconsistent (1 hour to 7 days)
 - Fixed day threshold would either include too much or miss rapid releases
 - Version-based tracking aligns with existing workflow
+
+### Commit Message Format for SonarCloud Fixes
+
+When fixing issues identified by SonarCloud, use the following commit message format:
+
+```
+fix: [Brief description of the fix]
+
+[Detailed explanation of the issue and solution]
+
+Changes:
+- [Specific change 1]
+- [Specific change 2]
+- [Specific change 3]
+
+Benefits:
+- [Benefit 1]
+- [Benefit 2]
+- [Benefit 3]
+
+Fixes: SonarCloud issues [issue-key-1], [issue-key-2]
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+```
+
+**Example:**
+```
+fix: Add explicit bounds checking to prevent buffer overflow
+
+Address SonarCloud BLOCKER issues in find_word_start() function.
+Add defensive boundary checks to ensure returned pointer is always
+within [limit, end] range, even in theoretically impossible cases.
+
+Changes:
+- Add explicit bounds check: (p >= limit && p <= end) ? p : limit
+- Applied to both return paths (space-based and kanji-based)
+- Works in both debug and release builds
+- No assertion dependency (cleaner code)
+
+Benefits:
+- Satisfies static analyzer with explicit validation
+- Prevents potential buffer overflow in edge cases
+- Defensive coding against memory corruption
+- Minimal performance impact (~0.1%, branch prediction)
+
+Fixes: SonarCloud issues AZsw3M7sHpp0TbwUWQYl, AZsw3M7sHpp0TbwUWQYm
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+```
+
+**Key Elements:**
+- **Title prefix**: `fix:` for bug/security fixes
+- **Changes section**: Bullet points listing specific code changes
+- **Benefits section**: Explain why the fix is valuable
+- **Fixes reference**: Include SonarCloud issue keys for traceability
+- **Standard footer**: Claude Code signature and co-authorship
