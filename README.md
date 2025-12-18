@@ -617,6 +617,16 @@ mpv --force-window=yes song.mp3
 > - **Local files**: Users are responsible for obtaining lyrics files from legitimate sources.
 > - **Online lyrics**: When local files are not found, this tool retrieves publicly available lyrics from [lrclib.net](https://lrclib.net) API (MIT License). The developers do not host, modify, or redistribute this content—lyrics are fetched directly from lrclib.net and displayed to the user in real-time.
 
+> [!NOTE]
+> **Translation Services**: This tool integrates with third-party AI translation APIs (OpenAI, DeepL, Gemini, Claude). Users are responsible for:
+> - Obtaining and securing their own API keys
+> - API usage costs according to their provider's pricing
+> - Translation quality and accuracy (AI translations may contain errors)
+> - Lyrics text being sent to external API services for private processing only (not public redistribution)
+
+> [!CAUTION]
+> **Explicit Content Warning**: Lyrics and their translations may contain explicit content (profanity, sexual references, violence, drug use, etc.). This tool does not provide content filtering. Parental supervision is recommended for minors.
+
 > [!WARNING]
 > Publicly sharing or redistributing lyrics content (e.g., uploading to websites, sharing in public repositories) may violate copyright laws. Users are solely responsible for ensuring compliance with applicable copyright laws in their jurisdiction.
 
