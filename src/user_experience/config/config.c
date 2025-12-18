@@ -1070,42 +1070,42 @@ char* config_load_with_fallback(struct config *cfg) {
         }
         free(dir_path);
 
-        // Check if user config exists
-        struct stat st;
-        if (stat(user_config_path, &st) != 0) {
-            // Validate path before creating new file (security)
-            if (!validate_config_path(user_config_path)) {
-                log_error("Config path validation failed: %s", user_config_path);
-                free(user_config_path);
-                return NULL;
-            }
+        // Validate path before file operations (security)
+        if (!validate_config_path(user_config_path)) {
+            log_error("Config path validation failed: %s", user_config_path);
+            free(user_config_path);
+            return NULL;
+        }
 
-            // User config doesn't exist - try to copy from system config
+        // Try to create config file atomically - if it exists, open() will fail
+        // This eliminates TOCTOU by combining check and create into single atomic operation
+        mode_t old_mask = umask(0022);  // Ensure rw-r--r-- permissions
+        int fd = open(user_config_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
+        umask(old_mask);
+
+        // If file was just created (fd >= 0), copy from system config
+        if (fd >= 0) {
             const char *system_config = "/etc/wshowlyrics/settings.ini";
             FILE *src = fopen(system_config, "r");
             if (src) {
-                // Use open() with O_EXCL to avoid TOCTOU race condition
-                mode_t old_mask = umask(0022);  // Ensure rw-r--r-- permissions
-                int fd = open(user_config_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
-                umask(old_mask);
-
-                if (fd >= 0) {
-                    FILE *dst = fdopen(fd, "w");
-                    if (dst) {
-                        char buf[4096];
-                        size_t n;
-                        while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
-                            fwrite(buf, 1, n, dst);
-                        }
-                        fclose(dst);  // Also closes fd
-                        printf("Copied system config to user config: %s\n", user_config_path);
-                    } else {
-                        close(fd);  // fdopen failed, close manually
+                FILE *dst = fdopen(fd, "w");
+                if (dst) {
+                    char buf[4096];
+                    size_t n;
+                    while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+                        fwrite(buf, 1, n, dst);
                     }
+                    fclose(dst);  // Also closes fd
+                    printf("Copied system config to user config: %s\n", user_config_path);
+                } else {
+                    close(fd);  // fdopen failed, close manually
                 }
                 fclose(src);
+            } else {
+                close(fd);  // System config not found, close the empty file
             }
         }
+        // If fd < 0 and errno == EEXIST, file already exists - continue normally
 
         // Try to load user config
         if (config_load(cfg, user_config_path)) {
