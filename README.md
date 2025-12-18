@@ -609,6 +609,17 @@ mpv --force-window=yes song.mp3
 # All options from the Usage section above work with ./build/lyrics
 ```
 
+## Legal Notice
+
+> [!NOTE]
+> wshowlyrics is a lyrics display tool only. The developers do not provide, host, or distribute lyrics content.
+>
+> - **Local files**: Users are responsible for obtaining lyrics files from legitimate sources.
+> - **Online lyrics**: When local files are not found, this tool retrieves publicly available lyrics from [lrclib.net](https://lrclib.net) API (MIT License). The developers do not host, modify, or redistribute this content—lyrics are fetched directly from lrclib.net and displayed to the user in real-time.
+
+> [!WARNING]
+> Publicly sharing or redistributing lyrics content (e.g., uploading to websites, sharing in public repositories) may violate copyright laws. Users are solely responsible for ensuring compliance with applicable copyright laws in their jurisdiction.
+
 ## License
 
 GNU General Public License v3.0 (GPL-3.0)
