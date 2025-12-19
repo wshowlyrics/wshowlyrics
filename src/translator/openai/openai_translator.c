@@ -55,46 +55,15 @@ static char* build_request_json(const char *text, const char *target_lang, const
  * Response format: {"choices": [{"message": {"content": "..."}}]}
  */
 static char* parse_response_json(const char *json_str) {
-    json_object *root = json_tokener_parse(json_str);
-    if (!root) {
-        log_error("openai_translator: Failed to parse JSON response");
+    // Extract text using JSON path: choices[0].message.content
+    char *text = json_extract_text_by_path(json_str, "choices[0].message.content", "openai_translator");
+    if (!text) {
         return NULL;
     }
 
-    // Navigate: choices[0].message.content
-    json_object *choices;
-    if (!json_object_object_get_ex(root, "choices", &choices)) {
-        log_error("openai_translator: No 'choices' in response");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *choice = json_object_array_get_idx(choices, 0);
-    if (!choice) {
-        log_error("openai_translator: Empty choices array");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *message;
-    if (!json_object_object_get_ex(choice, "message", &message)) {
-        log_error("openai_translator: No 'message' in choice");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *content_obj;
-    if (!json_object_object_get_ex(message, "content", &content_obj)) {
-        log_error("openai_translator: No 'content' in message");
-        json_object_put(root);
-        return NULL;
-    }
-
-    const char *text = json_object_get_string(content_obj);
     // Extract last line to handle cases where AI includes original text
     char *result = translator_extract_last_line(text);
-    json_object_put(root);
-
+    free(text);
     return result;
 }
 

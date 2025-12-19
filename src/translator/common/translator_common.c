@@ -669,3 +669,121 @@ int translator_parse_retry_delay(const char *response_json) {
 
     return 0;
 }
+
+/**
+ * Extract text from JSON response by following a path expression
+ * Path format: "field.nested[index].text"
+ */
+char* json_extract_text_by_path(const char *json_str, const char *path, const char *provider_name) {
+    if (!json_str || !path || !provider_name) {
+        return NULL;
+    }
+
+    // Parse JSON
+    json_object *root = json_tokener_parse(json_str);
+    if (!root) {
+        log_error("%s: Failed to parse JSON response", provider_name);
+        return NULL;
+    }
+
+    // Traverse path
+    json_object *current = root;
+    char *path_copy = strdup(path);
+    char *token = path_copy;
+    char *next_token = NULL;
+
+    while (token && *token) {
+        // Find next delimiter ('.' or '[')
+        char *dot = strchr(token, '.');
+        char *bracket = strchr(token, '[');
+
+        // Determine which comes first
+        if (bracket && (!dot || bracket < dot)) {
+            // Array access: "field[N]" or just "[N]"
+            *bracket = '\0';
+
+            // If there's a field name before bracket, access it first
+            if (token < bracket && *token) {
+                json_object *next_obj = NULL;
+                if (!json_object_object_get_ex(current, token, &next_obj)) {
+                    log_error("%s: No '%s' in JSON response", provider_name, token);
+                    json_object_put(root);
+                    free(path_copy);
+                    return NULL;
+                }
+                current = next_obj;
+            }
+
+            // Parse array index
+            int index = 0;
+            if (sscanf(bracket + 1, "%d", &index) != 1) {
+                log_error("%s: Invalid array index in path: %s", provider_name, bracket + 1);
+                json_object_put(root);
+                free(path_copy);
+                return NULL;
+            }
+
+            // Access array element
+            current = json_object_array_get_idx(current, index);
+            if (!current) {
+                log_error("%s: Empty or invalid array at index %d", provider_name, index);
+                json_object_put(root);
+                free(path_copy);
+                return NULL;
+            }
+
+            // Find closing bracket and move to next token
+            char *close_bracket = strchr(bracket + 1, ']');
+            if (!close_bracket) {
+                log_error("%s: Malformed array index in path", provider_name);
+                json_object_put(root);
+                free(path_copy);
+                return NULL;
+            }
+
+            token = close_bracket + 1;
+            if (*token == '.') {
+                token++; // Skip the dot
+            }
+        } else if (dot) {
+            // Object field access: "field.next"
+            *dot = '\0';
+            next_token = dot + 1;
+
+            json_object *next_obj = NULL;
+            if (!json_object_object_get_ex(current, token, &next_obj)) {
+                log_error("%s: No '%s' in JSON response", provider_name, token);
+                json_object_put(root);
+                free(path_copy);
+                return NULL;
+            }
+            current = next_obj;
+            token = next_token;
+        } else {
+            // Last field in path
+            json_object *text_obj = NULL;
+            if (!json_object_object_get_ex(current, token, &text_obj)) {
+                log_error("%s: No '%s' in JSON response", provider_name, token);
+                json_object_put(root);
+                free(path_copy);
+                return NULL;
+            }
+            current = text_obj;
+            break;
+        }
+    }
+
+    // Extract final text value
+    const char *text = json_object_get_string(current);
+    if (!text) {
+        log_error("%s: Final value is not a string", provider_name);
+        json_object_put(root);
+        free(path_copy);
+        return NULL;
+    }
+
+    char *result = strdup(text);
+    json_object_put(root);
+    free(path_copy);
+    return result;
+}

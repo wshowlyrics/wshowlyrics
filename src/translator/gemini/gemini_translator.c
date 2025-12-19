@@ -54,60 +54,15 @@ static char* build_request_json(const char *text, const char *target_lang) {
  * Response format: {"candidates": [{"content": {"parts": [{"text": "..."}]}}]}
  */
 static char* parse_response_json(const char *json_str) {
-    json_object *root = json_tokener_parse(json_str);
-    if (!root) {
-        log_error("gemini_translator: Failed to parse JSON response");
+    // Extract text using JSON path: candidates[0].content.parts[0].text
+    char *text = json_extract_text_by_path(json_str, "candidates[0].content.parts[0].text", "gemini_translator");
+    if (!text) {
         return NULL;
     }
 
-    // Navigate: candidates[0].content.parts[0].text
-    json_object *candidates;
-    if (!json_object_object_get_ex(root, "candidates", &candidates)) {
-        log_error("gemini_translator: No 'candidates' in response");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *candidate = json_object_array_get_idx(candidates, 0);
-    if (!candidate) {
-        log_error("gemini_translator: Empty candidates array");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *content;
-    if (!json_object_object_get_ex(candidate, "content", &content)) {
-        log_error("gemini_translator: No 'content' in candidate");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *parts;
-    if (!json_object_object_get_ex(content, "parts", &parts)) {
-        log_error("gemini_translator: No 'parts' in content");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *part = json_object_array_get_idx(parts, 0);
-    if (!part) {
-        log_error("gemini_translator: Empty parts array");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *text_obj;
-    if (!json_object_object_get_ex(part, "text", &text_obj)) {
-        log_error("gemini_translator: No 'text' in part");
-        json_object_put(root);
-        return NULL;
-    }
-
-    const char *text = json_object_get_string(text_obj);
     // Extract last line to handle cases where AI includes original text
     char *result = translator_extract_last_line(text);
-    json_object_put(root);
-
+    free(text);
     return result;
 }
 

@@ -58,39 +58,15 @@ static char* build_request_json(const char *text, const char *target_lang, const
  * Response format: {"content": [{"text": "..."}]}
  */
 static char* parse_response_json(const char *json_str) {
-    json_object *root = json_tokener_parse(json_str);
-    if (!root) {
-        log_error("claude_translator: Failed to parse JSON response");
+    // Extract text using JSON path: content[0].text
+    char *text = json_extract_text_by_path(json_str, "content[0].text", "claude_translator");
+    if (!text) {
         return NULL;
     }
 
-    // Navigate: content[0].text
-    json_object *content;
-    if (!json_object_object_get_ex(root, "content", &content)) {
-        log_error("claude_translator: No 'content' in response");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *content_item = json_object_array_get_idx(content, 0);
-    if (!content_item) {
-        log_error("claude_translator: Empty content array");
-        json_object_put(root);
-        return NULL;
-    }
-
-    json_object *text_obj;
-    if (!json_object_object_get_ex(content_item, "text", &text_obj)) {
-        log_error("claude_translator: No 'text' in content item");
-        json_object_put(root);
-        return NULL;
-    }
-
-    const char *text = json_object_get_string(text_obj);
     // Extract last line to handle cases where AI includes original text
     char *result = translator_extract_last_line(text);
-    json_object_put(root);
-
+    free(text);
     return result;
 }
 

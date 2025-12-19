@@ -255,4 +255,25 @@ int translator_build_translation_prompt(char *buffer, size_t buffer_size,
  */
 int translator_parse_retry_delay(const char *response_json);
 
+/**
+ * Extract text from JSON response by following a path expression.
+ *
+ * Supports nested object access and array indexing:
+ * - "field" → object field access
+ * - "field.nested" → nested object access
+ * - "array[0]" → array element access
+ * - "field[0].nested[1].text" → complex path
+ *
+ * Path examples:
+ * - Claude: "content[0].text"
+ * - OpenAI: "choices[0].message.content"
+ * - Gemini: "candidates[0].content.parts[0].text"
+ *
+ * @param json_str JSON response string to parse
+ * @param path JSON path expression to the target text field
+ * @param provider_name Provider name for error logging
+ * @return Extracted text (caller must free), or NULL on error
+ */
+char* json_extract_text_by_path(const char *json_str, const char *path, const char *provider_name);
+
 #endif // TRANSLATOR_COMMON_H
