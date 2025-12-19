@@ -276,4 +276,37 @@ int translator_parse_retry_delay(const char *response_json);
  */
 char* json_extract_text_by_path(const char *json_str, const char *path, const char *provider_name);
 
+/**
+ * Function pointer type for building provider-specific HTTP headers.
+ * Each translator provides its own header builder (e.g., API key format).
+ *
+ * @param api_key API key for authentication
+ * @param extra_data Optional provider-specific data (e.g., API version)
+ * @return CURL header list (caller must free with curl_slist_free_all), or NULL on error
+ */
+typedef struct curl_slist* (*translator_build_headers_fn)(const char *api_key, const void *extra_data);
+
+/**
+ * Parameters for HTTP translation request.
+ * Used by translator_perform_http_request() to eliminate parameter overload.
+ */
+struct translator_http_params {
+    const char *endpoint;              // API endpoint URL
+    const char *request_body;          // JSON request body
+    const char *provider_name;         // Provider name for logging
+    const char *api_key;               // API key for authentication
+    const void *extra_data;            // Optional provider-specific data
+    int max_retries;                   // Maximum retry attempts
+    translator_build_headers_fn build_headers;  // Header builder function
+};
+
+/**
+ * Perform HTTP request with retry logic (common for all translators).
+ * Eliminates duplicate CURL setup/teardown/retry logic across providers.
+ *
+ * @param params Request parameters (endpoint, headers, retry settings)
+ * @return Raw JSON response (caller must free), or NULL on error
+ */
+char* translator_perform_http_request(struct translator_http_params *params);
+
 #endif // TRANSLATOR_COMMON_H

@@ -71,6 +71,30 @@ static char* parse_response_json(const char *json_str) {
 }
 
 /**
+ * Build Claude-specific HTTP headers
+ * extra_data is expected to be the API version string
+ */
+static struct curl_slist* build_claude_headers(const char *api_key, const void *extra_data) {
+    const char *api_version = (const char *)extra_data;
+    if (!api_version) {
+        api_version = CLAUDE_API_VERSION;
+    }
+
+    char api_key_header[512];
+    snprintf(api_key_header, sizeof(api_key_header), "x-api-key: %s", api_key);
+
+    char version_header[128];
+    snprintf(version_header, sizeof(version_header), "anthropic-version: %s", api_version);
+
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, api_key_header);
+    headers = curl_slist_append(headers, version_header);
+
+    return headers;
+}
+
+/**
  * Translate a single line using Claude API with retry logic
  */
 static char* translate_single_line(const char *text, const char *target_lang,
@@ -79,104 +103,35 @@ static char* translate_single_line(const char *text, const char *target_lang,
         return NULL;
     }
 
-    // Create thread-local CURL handle to avoid race conditions
-    CURL *local_curl = curl_easy_init();
-    if (!local_curl) {
-        log_error("claude_translator: Failed to initialize CURL for translation");
+    // Build request JSON
+    char *request_json = build_request_json(text, target_lang, model_name);
+    if (!request_json) {
         return NULL;
     }
 
-    // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
-
-    // Get retry settings from config
+    // Setup HTTP request parameters
     struct config *cfg = config_get();
-    const int max_retries = cfg->translation.max_retries;
+    struct translator_http_params params = {
+        .endpoint = CLAUDE_API_ENDPOINT,
+        .request_body = request_json,
+        .provider_name = "claude_translator",
+        .api_key = api_key,
+        .extra_data = CLAUDE_API_VERSION,
+        .max_retries = cfg->translation.max_retries,
+        .build_headers = build_claude_headers
+    };
 
-    char *translation = NULL;
-    int attempt = 0;
+    // Perform HTTP request with common retry logic
+    char *response_json = translator_perform_http_request(&params);
+    free(request_json);
 
-    while (attempt < max_retries && !translation) {
-        attempt++;
-
-        // Build request JSON
-        char *request_json = build_request_json(text, target_lang, model_name);
-        if (!request_json) {
-            curl_easy_cleanup(local_curl);
-            return NULL;
-        }
-
-        // Setup CURL
-        struct translator_curl_response response;
-        translator_curl_response_init(&response);
-        curl_easy_setopt(local_curl, CURLOPT_URL, CLAUDE_API_ENDPOINT);
-        curl_easy_setopt(local_curl, CURLOPT_POSTFIELDS, request_json);
-        curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, translator_curl_write_callback);
-        curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, &response);
-
-        // Setup headers
-        char api_key_header[512];
-        snprintf(api_key_header, sizeof(api_key_header), "x-api-key: %s", api_key);
-
-        char version_header[128];
-        snprintf(version_header, sizeof(version_header), "anthropic-version: %s", CLAUDE_API_VERSION);
-
-        struct curl_slist *headers = NULL;
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-        headers = curl_slist_append(headers, api_key_header);
-        headers = curl_slist_append(headers, version_header);
-        curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
-
-        // Perform request
-        CURLcode res = curl_easy_perform(local_curl);
-        curl_slist_free_all(headers);
-        free(request_json);
-
-        if (res != CURLE_OK) {
-            log_error("claude_translator: CURL error: %s", curl_easy_strerror(res));
-            translator_curl_response_free(&response);
-            curl_easy_cleanup(local_curl);
-            return NULL;
-        }
-
-        // Check HTTP response code
-        long http_code = 0;
-        curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
-
-        if (http_code == 200) {
-            // Success - parse response
-            translation = parse_response_json(response.data);
-            translator_curl_response_free(&response);
-            break;
-        } else if (http_code == 401 || http_code == 403) {
-            // Authentication/permission error - don't retry
-            log_error("claude_translator: Authentication error (HTTP %ld)", http_code);
-            translator_curl_response_free(&response);
-            curl_easy_cleanup(local_curl);
-            return NULL;
-        } else {
-            // Temporary error - retry with delay
-            int retry_delay_ms = translator_parse_retry_delay(response.data);
-            if (retry_delay_ms == 0) {
-                retry_delay_ms = 5000 * attempt; // Exponential backoff
-            }
-
-            log_warn("claude_translator: HTTP error %ld, retrying in %dms (attempt %d/%d)",
-                    http_code, retry_delay_ms, attempt, max_retries);
-
-            translator_curl_response_free(&response);
-
-            if (attempt < max_retries) {
-                struct timespec delay = {
-                    .tv_sec = retry_delay_ms / 1000,
-                    .tv_nsec = (retry_delay_ms % 1000) * 1000000L
-                };
-                nanosleep(&delay, NULL);
-            }
-        }
+    if (!response_json) {
+        return NULL;
     }
 
-    curl_easy_cleanup(local_curl);
+    // Parse response
+    char *translation = parse_response_json(response_json);
+    free(response_json);
     return translation;
 }
 

@@ -3,6 +3,7 @@
 #include "../../utils/lang_detect/lang_detect.h"
 #include "../../utils/render/render_common.h"
 #include "../../user_experience/config/config.h"
+#include <curl/curl.h>
 #include <json-c/json.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -668,6 +669,101 @@ int translator_parse_retry_delay(const char *response_json) {
     }
 
     return 0;
+}
+
+/**
+ * Perform HTTP request with retry logic (common for all translators)
+ */
+char* translator_perform_http_request(struct translator_http_params *params) {
+    if (!params || !params->endpoint || !params->request_body ||
+        !params->provider_name || !params->build_headers) {
+        return NULL;
+    }
+
+    // Create thread-local CURL handle to avoid race conditions
+    CURL *local_curl = curl_easy_init();
+    if (!local_curl) {
+        log_error("%s: Failed to initialize CURL for translation", params->provider_name);
+        return NULL;
+    }
+
+    // Enforce TLS 1.2 or higher for security
+    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+
+    char *response_data = NULL;
+    int attempt = 0;
+
+    while (attempt < params->max_retries && !response_data) {
+        attempt++;
+
+        // Setup CURL request
+        struct translator_curl_response response;
+        translator_curl_response_init(&response);
+        curl_easy_setopt(local_curl, CURLOPT_URL, params->endpoint);
+        curl_easy_setopt(local_curl, CURLOPT_POSTFIELDS, params->request_body);
+        curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, translator_curl_write_callback);
+        curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, &response);
+
+        // Build provider-specific headers
+        struct curl_slist *headers = params->build_headers(params->api_key, params->extra_data);
+        if (!headers) {
+            translator_curl_response_free(&response);
+            curl_easy_cleanup(local_curl);
+            return NULL;
+        }
+        curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
+
+        // Perform request
+        CURLcode res = curl_easy_perform(local_curl);
+        curl_slist_free_all(headers);
+
+        if (res != CURLE_OK) {
+            log_error("%s: CURL error: %s", params->provider_name, curl_easy_strerror(res));
+            translator_curl_response_free(&response);
+            curl_easy_cleanup(local_curl);
+            return NULL;
+        }
+
+        // Check HTTP response code
+        long http_code = 0;
+        curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+        if (http_code == 200) {
+            // Success - return response data
+            response_data = response.data;
+            response.data = NULL;  // Transfer ownership
+            translator_curl_response_free(&response);
+            break;
+        } else if (http_code == 401 || http_code == 403) {
+            // Authentication/permission error - don't retry
+            log_error("%s: Authentication error (HTTP %ld)", params->provider_name, http_code);
+            translator_curl_response_free(&response);
+            curl_easy_cleanup(local_curl);
+            return NULL;
+        } else {
+            // Temporary error - retry with delay
+            int retry_delay_ms = translator_parse_retry_delay(response.data);
+            if (retry_delay_ms == 0) {
+                retry_delay_ms = 5000 * attempt; // Exponential backoff
+            }
+
+            log_warn("%s: HTTP error %ld, retrying in %dms (attempt %d/%d)",
+                    params->provider_name, http_code, retry_delay_ms, attempt, params->max_retries);
+
+            translator_curl_response_free(&response);
+
+            if (attempt < params->max_retries) {
+                struct timespec delay = {
+                    .tv_sec = retry_delay_ms / 1000,
+                    .tv_nsec = (retry_delay_ms % 1000) * 1000000L
+                };
+                nanosleep(&delay, NULL);
+            }
+        }
+    }
+
+    curl_easy_cleanup(local_curl);
+    return response_data;
 }
 
 /**
