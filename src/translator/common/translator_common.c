@@ -2,6 +2,7 @@
 #include "../../constants.h"
 #include "../../utils/lang_detect/lang_detect.h"
 #include "../../utils/render/render_common.h"
+#include "../../utils/file/file_utils.h"
 #include "../../user_experience/config/config.h"
 #include <curl/curl.h>
 #include <json-c/json.h>
@@ -687,8 +688,10 @@ char* translator_perform_http_request(struct translator_http_params *params) {
         return NULL;
     }
 
-    // Enforce TLS 1.3 or higher for security (fallback to TLS 1.2 if unavailable)
-    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3 | CURL_SSLVERSION_MAX_DEFAULT);
+    // Enforce TLS 1.2 minimum with TLS 1.3 maximum for security
+    // Range: TLS 1.2, TLS 1.3 (excludes weak TLS 1.0, 1.1)
+    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION,
+                     CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_3);
 
     char *response_data = NULL;
     int attempt = 0;
@@ -764,6 +767,86 @@ char* translator_perform_http_request(struct translator_http_params *params) {
 
     curl_easy_cleanup(local_curl);
     return response_data;
+}
+
+bool translator_translate_lyrics_generic(struct lyrics_data *data,
+                                          int64_t track_length_us,
+                                          const char *provider_name,
+                                          translator_line_fn translate_line_fn) {
+    if (!data) {
+        return false;
+    }
+
+    // Check if lyrics should be translated (LRC only)
+    if (!translator_should_translate(data)) {
+        return false;
+    }
+
+    // Get config
+    const char *provider = g_config.translation.provider;
+    const char *api_key = g_config.translation.api_key;
+    const char *target_lang = g_config.translation.target_language;
+
+    // Extract model name from provider
+    const char *model_name = provider;
+
+    // Validate
+    if (!api_key || strlen(api_key) == 0) {
+        log_error("%s: API key not configured", provider_name);
+        return false;
+    }
+
+    if (!model_name || strlen(model_name) == 0) {
+        log_error("%s: Model name not configured", provider_name);
+        return false;
+    }
+
+    // Validate MD5 checksum
+    if (strlen(data->md5_checksum) == 0) {
+        log_error("%s: MD5 checksum is empty, cannot cache translation", provider_name);
+        return false;
+    }
+
+    // Build cache path
+    char cache_path[512];
+    snprintf(cache_path, sizeof(cache_path),
+             "/tmp/wshowlyrics/translated/%s_%s.json",
+             data->md5_checksum, target_lang);
+
+    // Create cache directories
+    if (!ensure_cache_directories()) {
+        log_error("%s: Failed to create cache directories", provider_name);
+        return false;
+    }
+
+    // Prepare thread arguments
+    struct translator_thread_args *args = malloc(sizeof(struct translator_thread_args));
+    if (!args) {
+        return false;
+    }
+
+    args->data = data;
+    args->target_lang = strdup(target_lang);
+    args->api_key = strdup(api_key);
+    args->model_name = strdup(model_name);
+    args->cache_path = strdup(cache_path);
+    args->track_length_us = track_length_us;
+    args->provider_name = provider_name;
+    args->translate_line_fn = translate_line_fn;
+
+    // Launch async translation thread
+    if (pthread_create(&data->translation_thread, NULL, translator_async_worker, args) != 0) {
+        log_error("%s: Failed to create translation thread", provider_name);
+        free(args->target_lang);
+        free(args->api_key);
+        free(args->model_name);
+        free(args->cache_path);
+        free(args);
+        return false;
+    }
+
+    // Don't detach - we need the handle for cancellation
+    return true;
 }
 
 /**

@@ -160,78 +160,11 @@ void claude_translator_cleanup(void) {
 }
 
 bool claude_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
-    if (!data || !curl_handle) {
+    if (!curl_handle) {
         return false;
     }
 
-    // Check if lyrics should be translated (LRC only)
-    if (!translator_should_translate(data)) {
-        return false;
-    }
-
-    // Get config
-    const char *provider = g_config.translation.provider;
-    const char *api_key = g_config.translation.api_key;
-    const char *target_lang = g_config.translation.target_language;
-
-    // Extract model name from provider (e.g., "claude-sonnet-4-5" -> "claude-sonnet-4-5")
-    const char *model_name = provider;
-
-    // Validate
-    if (!api_key || strlen(api_key) == 0) {
-        log_error("claude_translator: API key not configured");
-        return false;
-    }
-
-    if (!model_name || strlen(model_name) == 0) {
-        log_error("claude_translator: Model name not configured");
-        return false;
-    }
-
-    // Validate MD5 checksum
-    if (strlen(data->md5_checksum) == 0) {
-        log_error("claude_translator: MD5 checksum is empty, cannot cache translation");
-        return false;
-    }
-
-    // Build cache path
-    char cache_path[512];
-    snprintf(cache_path, sizeof(cache_path),
-             "/tmp/wshowlyrics/translated/%s_%s.json",
-             data->md5_checksum, target_lang);
-
-    // Create cache directories
-    if (!ensure_cache_directories()) {
-        log_error("claude_translator: Failed to create cache directories");
-        return false;
-    }
-
-    // Prepare thread arguments
-    struct translator_thread_args *args = malloc(sizeof(struct translator_thread_args));
-    if (!args) {
-        return false;
-    }
-
-    args->data = data;
-    args->target_lang = strdup(target_lang);
-    args->api_key = strdup(api_key);
-    args->model_name = strdup(model_name);
-    args->cache_path = strdup(cache_path);
-    args->track_length_us = track_length_us;
-    args->provider_name = "claude_translator";
-    args->translate_line_fn = translate_single_line;
-
-    // Launch async translation thread
-    if (pthread_create(&data->translation_thread, NULL, translator_async_worker, args) != 0) {
-        log_error("claude_translator: Failed to create translation thread");
-        free(args->target_lang);
-        free(args->api_key);
-        free(args->model_name);
-        free(args->cache_path);
-        free(args);
-        return false;
-    }
-
-    // Don't detach - we need the handle for cancellation
-    return true;
+    return translator_translate_lyrics_generic(data, track_length_us,
+                                                "claude_translator",
+                                                translate_single_line);
 }

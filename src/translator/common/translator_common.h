@@ -234,6 +234,21 @@ void translator_save_to_cache_ex(const char *cache_path,
 void* translator_async_worker(void *arg);
 
 /**
+ * Generic lyrics translation launcher (eliminates 75-line duplication).
+ * Common logic for all translator implementations.
+ *
+ * @param data Lyrics data to translate
+ * @param track_length_us Track length in microseconds
+ * @param provider_name Provider name for logging (e.g., "openai_translator")
+ * @param translate_line_fn Provider-specific line translation function
+ * @return true if translation thread launched successfully
+ */
+bool translator_translate_lyrics_generic(struct lyrics_data *data,
+                                          int64_t track_length_us,
+                                          const char *provider_name,
+                                          translator_line_fn translate_line_fn);
+
+/**
  * Build standard translation prompt for all providers.
  * Creates a consistent prompt instructing the AI to translate text.
  *
