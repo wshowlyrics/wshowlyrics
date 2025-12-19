@@ -95,25 +95,37 @@ static void parse_lyrics_section(struct config *cfg, const char *key, const char
     }
 }
 
-// Parse [translation] section
-static void parse_translation_section(struct config *cfg, const char *key, const char *value) {
-    if (strcmp(key, "provider") == 0) {
-        free(cfg->translation.provider);
-        cfg->translation.provider = strdup(value);
-    } else if (strcmp(key, "api_key") == 0) {
+// Parse common translation fields (shared between [translation] and deprecated [deepl])
+static bool parse_common_translation_fields(struct config *cfg, const char *key, const char *value) {
+    if (strcmp(key, "api_key") == 0) {
         free(cfg->translation.api_key);
         cfg->translation.api_key = strdup(value);
+        return true;
     } else if (strcmp(key, "target_language") == 0) {
         free(cfg->translation.target_language);
         cfg->translation.target_language = strdup(value);
+        return true;
     } else if (strcmp(key, "translation_display") == 0) {
         free(cfg->translation.translation_display);
         cfg->translation.translation_display = strdup(value);
+        return true;
     } else if (strcmp(key, "translation_opacity") == 0) {
         cfg->translation.translation_opacity = atof(value);
         // Clamp to valid range [0.0, 1.0]
         if (cfg->translation.translation_opacity < 0.0) cfg->translation.translation_opacity = 0.0;
         if (cfg->translation.translation_opacity > 1.0) cfg->translation.translation_opacity = 1.0;
+        return true;
+    }
+    return false;
+}
+
+// Parse [translation] section
+static void parse_translation_section(struct config *cfg, const char *key, const char *value) {
+    if (strcmp(key, "provider") == 0) {
+        free(cfg->translation.provider);
+        cfg->translation.provider = strdup(value);
+    } else if (parse_common_translation_fields(cfg, key, value)) {
+        // Handled by common fields parser
     } else if (strcmp(key, "rate_limit_ms") == 0 || strcmp(key, "rate_limit") == 0) {
         cfg->translation.rate_limit_ms = parse_rate_limit_value(value);
         // Clamp to reasonable range [0, 60000] (0-60 seconds)
@@ -166,20 +178,9 @@ static void parse_deprecated_deepl_section(struct config *cfg, const char *key, 
             free(cfg->translation.provider);
             cfg->translation.provider = strdup("false");
         }
-    } else if (strcmp(key, "api_key") == 0) {
-        free(cfg->translation.api_key);
-        cfg->translation.api_key = strdup(value);
-    } else if (strcmp(key, "target_language") == 0) {
-        free(cfg->translation.target_language);
-        cfg->translation.target_language = strdup(value);
-    } else if (strcmp(key, "translation_display") == 0) {
-        free(cfg->translation.translation_display);
-        cfg->translation.translation_display = strdup(value);
-    } else if (strcmp(key, "translation_opacity") == 0) {
-        cfg->translation.translation_opacity = atof(value);
-        // Clamp to valid range [0.0, 1.0]
-        if (cfg->translation.translation_opacity < 0.0) cfg->translation.translation_opacity = 0.0;
-        if (cfg->translation.translation_opacity > 1.0) cfg->translation.translation_opacity = 1.0;
+    } else {
+        // Use common fields parser
+        parse_common_translation_fields(cfg, key, value);
     }
 }
 
@@ -493,13 +494,8 @@ static void free_config_keys(struct config_key *head) {
     }
 }
 
-// Parse settings.ini.example to extract all config keys
-static struct config_key* parse_example_config_keys(const char *example_path) {
-    FILE *f = fopen(example_path, "r");
-    if (!f) {
-        return NULL;
-    }
-
+// Common INI parser - extracts all section.key pairs from config file
+static struct config_key* parse_config_keys_from_file(FILE *f) {
     struct config_key *head = NULL;
     struct config_key *tail = NULL;
     char line[CONFIG_LINE_SIZE];
@@ -546,8 +542,19 @@ static struct config_key* parse_example_config_keys(const char *example_path) {
         }
     }
 
-    fclose(f);
     return head;
+}
+
+// Parse settings.ini.example to extract all config keys
+static struct config_key* parse_example_config_keys(const char *example_path) {
+    FILE *f = fopen(example_path, "r");
+    if (!f) {
+        return NULL;
+    }
+
+    struct config_key *result = parse_config_keys_from_file(f);
+    fclose(f);
+    return result;
 }
 
 // Check if a key exists in user config file
@@ -761,54 +768,9 @@ static struct config_key* parse_user_config_keys(const char *user_path) {
         return NULL;
     }
 
-    struct config_key *head = NULL;
-    struct config_key *tail = NULL;
-    char line[CONFIG_LINE_SIZE];
-    char section[64] = {0};
-
-    while (fgets(line, sizeof(line), f)) {
-        char *trimmed = config_trim_whitespace(line);
-
-        // Skip empty lines and comments
-        if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
-            continue;
-        }
-
-        // Section header
-        if (trimmed[0] == '[') {
-            char *end = strchr(trimmed, ']');
-            if (end) {
-                *end = '\0';
-                snprintf(section, sizeof(section), "%s", trimmed + 1);
-            }
-            continue;
-        }
-
-        // Key-value pair
-        char *equals = strchr(trimmed, '=');
-        if (!equals || section[0] == '\0') continue;
-
-        *equals = '\0';
-        char *key = config_trim_whitespace(trimmed);
-
-        // Add to list
-        struct config_key *node = malloc(sizeof(struct config_key));
-        if (!node) continue;
-
-        snprintf(node->section, sizeof(node->section), "%s", section);
-        snprintf(node->key, sizeof(node->key), "%s", key);
-        node->next = NULL;
-
-        if (!head) {
-            head = tail = node;
-        } else {
-            tail->next = node;
-            tail = node;
-        }
-    }
-
+    struct config_key *result = parse_config_keys_from_file(f);
     fclose(f);
-    return head;
+    return result;
 }
 
 // Check if a section exists in example config
