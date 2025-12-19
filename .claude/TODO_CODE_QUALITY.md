@@ -346,11 +346,23 @@ void render_word(struct render_params *params);
   - display_missing_keys_warning() 추출
 - [x] 빌드 검증 완료
 
-### Phase 3: Provider 및 Parser 복잡도
-**예상**: 5-7시간
-- [ ] lrclib_provider.c 복잡도 개선 (54)
-- [ ] system_tray.c 복잡도 개선 (49)
-- [ ] lrcx_parser.c 복잡도 개선 (48)
+### Phase 3: Provider 및 Parser 복잡도 ✅
+**예상**: 5-7시간 → **실제**: 1시간 ✅
+- [x] lrclib_provider.c 복잡도 개선 (54 → <25)
+  - build_search_request_url() 추출
+  - perform_lrclib_request() 추출
+  - find_best_match_in_results() 추출
+  - extract_metadata_from_result() 추출
+- [x] system_tray.c 복잡도 개선 (49 → <25)
+  - cache_current_artwork() 추출
+  - load_cached_album_art() 추출
+  - try_mpris_artwork() 추출
+  - try_itunes_artwork() 추출
+- [x] lrcx_parser.c 복잡도 개선 (48 → <25)
+  - ensure_and_append_to_full_text() 추출
+  - add_parsed_word_segments() 추출
+  - add_raw_text_segment() 추출
+- [x] 빌드 검증 완료
 
 ### Phase 4: Translation 파일 일괄 수정
 **예상**: 4-6시간

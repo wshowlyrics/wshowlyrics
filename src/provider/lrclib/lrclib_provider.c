@@ -25,6 +25,158 @@ static int64_t extract_json_int(const char *json, const char *key, const char *s
     return json_extract_int_from(json, key, search_start);
 }
 
+// Build search request URL with sanitized title and optional artist
+static bool build_search_request_url(CURL *curl, const char *title, const char *artist,
+                                     char *url_buffer, size_t buffer_size) {
+    // Sanitize title to remove YouTube IDs and file extensions
+    char *clean_title = sanitize_title(title);
+    if (!clean_title || strlen(clean_title) == 0) {
+        free(clean_title);
+        return false;
+    }
+
+    log_info("Sanitized title: '%s' -> '%s'", title, clean_title);
+
+    // Build search query - use track_name with sanitized title
+    char *title_encoded = url_encode(curl, clean_title);
+    free(clean_title);
+
+    if (!title_encoded) {
+        return false;
+    }
+
+    int offset = snprintf(url_buffer, buffer_size,
+                         "https://lrclib.net/api/search?track_name=%s", title_encoded);
+    curl_free(title_encoded);
+
+    // Add artist if available
+    if (artist && strlen(artist) > 0) {
+        char *artist_encoded = url_encode(curl, artist);
+        if (artist_encoded) {
+            snprintf(url_buffer + offset, buffer_size - offset,
+                    "&artist_name=%s", artist_encoded);
+            curl_free(artist_encoded);
+        }
+    }
+
+    return true;
+}
+
+// Perform CURL request and return response
+static bool perform_lrclib_request(CURL *curl, const char *url, struct curl_memory_buffer *response) {
+    curl_memory_buffer_init(response);
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    // Perform request
+    CURLcode res = curl_easy_perform(curl);
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+    if (res != CURLE_OK || http_code != HTTP_OK) {
+        log_warn("lrclib search API failed (HTTP %ld)", http_code);
+        curl_memory_buffer_free(response);
+        return false;
+    }
+
+    return true;
+}
+
+// Structure to hold best match search results
+struct best_match_result {
+    char *synced_lyrics;
+    char *obj_start;  // JSON object start for metadata extraction
+    int64_t duration_diff;
+};
+
+// Find best match from JSON array response based on duration
+static struct best_match_result find_best_match_in_results(
+    const char *response_data, int64_t target_duration_ms) {
+
+    struct best_match_result result = {NULL, NULL, INT64_MAX};
+    char *search_pos = (char *)response_data + 1; // Skip opening '['
+
+    while (search_pos && *search_pos) {
+        // Find next object in array
+        char *obj_start = strchr(search_pos, '{');
+        if (!obj_start) break;
+
+        // Extract duration and syncedLyrics for this result
+        int64_t result_duration = extract_json_int(response_data, "duration", obj_start);
+        char *synced_lyrics = extract_json_string(obj_start, "syncedLyrics");
+
+        // Only consider results with synced lyrics
+        if (synced_lyrics && strlen(synced_lyrics) > 0) {
+            if (target_duration_ms > 0 && result_duration > 0) {
+                // We have both durations - compare
+                int64_t duration_diff = llabs((result_duration * 1000) - target_duration_ms);
+                log_info("Found result with duration %ld s (diff: %ld ms)",
+                       result_duration, duration_diff);
+
+                if (duration_diff < result.duration_diff) {
+                    result.duration_diff = duration_diff;
+                    free(result.synced_lyrics);
+                    result.synced_lyrics = synced_lyrics;
+                    result.obj_start = obj_start;
+                    synced_lyrics = NULL; // Prevent free below
+                }
+            } else if (!result.synced_lyrics) {
+                // No duration to compare, just take first result
+                result.synced_lyrics = synced_lyrics;
+                result.obj_start = obj_start;
+                synced_lyrics = NULL; // Prevent free below
+                log_info("Found result (no duration comparison)");
+            }
+        }
+
+        free(synced_lyrics);
+
+        // Move to next object
+        char *obj_end = strchr(obj_start, '}');
+        if (!obj_end) break;
+        search_pos = obj_end + 1;
+    }
+
+    return result;
+}
+
+// Extract and update metadata from matched result
+static void extract_metadata_from_result(char *obj_start, struct lyrics_data *data) {
+    if (!obj_start) return;
+
+    char *artist_name = extract_json_string(obj_start, "artistName");
+    char *album_name = extract_json_string(obj_start, "albumName");
+    char *track_name = extract_json_string(obj_start, "trackName");
+
+    if (artist_name && strlen(artist_name) > 0) {
+        free(data->metadata.artist);
+        data->metadata.artist = artist_name;
+        log_info("lrclib metadata: artist = %s", artist_name);
+    } else {
+        free(artist_name);
+    }
+
+    if (album_name && strlen(album_name) > 0) {
+        free(data->metadata.album);
+        data->metadata.album = album_name;
+        log_info("lrclib metadata: album = %s", album_name);
+    } else {
+        free(album_name);
+    }
+
+    if (track_name && strlen(track_name) > 0) {
+        free(data->metadata.title);
+        data->metadata.title = track_name;
+        log_info("lrclib metadata: title = %s", track_name);
+    } else {
+        free(track_name);
+    }
+}
+
 // Try search API when we have incomplete metadata (missing artist or album)
 // or when exact match fails. Select best match by duration.
 // Note: Album is intentionally excluded to avoid issues with incorrect album metadata.
@@ -39,170 +191,50 @@ static bool lrclib_search_fallback(const char *title, const char *artist,
     // Enforce TLS 1.2 or higher for security
     curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 
-    // Sanitize title to remove YouTube IDs and file extensions
-    char *clean_title = sanitize_title(title);
-    if (!clean_title || strlen(clean_title) == 0) {
-        free(clean_title);
-        curl_easy_cleanup(curl);
-        return false;
-    }
-
-    log_info("Sanitized title: '%s' -> '%s'", title, clean_title);
-
-    // Build search query - use track_name with sanitized title
+    // Build search request URL using helper function
     char request_url[URL_BUFFER_SIZE];
-    char *title_encoded = url_encode(curl, clean_title);
-    free(clean_title);
-
-    if (!title_encoded) {
+    if (!build_search_request_url(curl, title, artist, request_url, sizeof(request_url))) {
         curl_easy_cleanup(curl);
         return false;
     }
-
-    int offset = snprintf(request_url, sizeof(request_url),
-                         "https://lrclib.net/api/search?track_name=%s", title_encoded);
-    curl_free(title_encoded);
-
-    // Add artist if available
-    if (artist && strlen(artist) > 0) {
-        char *artist_encoded = url_encode(curl, artist);
-        if (artist_encoded) {
-            snprintf(request_url + offset, sizeof(request_url) - offset,
-                             "&artist_name=%s", artist_encoded);
-            curl_free(artist_encoded);
-        }
-    }
-
-    // Album is intentionally excluded to avoid issues with incorrect album metadata
 
     log_info("lrclib search API request: %s", request_url);
 
-    // Setup CURL request
+    // Perform CURL request using helper function
     struct curl_memory_buffer response;
-    curl_memory_buffer_init(&response);
-    curl_easy_setopt(curl, CURLOPT_URL, request_url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-    // Perform request
-    CURLcode res = curl_easy_perform(curl);
-    long http_code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    if (!perform_lrclib_request(curl, request_url, &response)) {
+        curl_easy_cleanup(curl);
+        return false;
+    }
     curl_easy_cleanup(curl);
 
-    if (res != CURLE_OK || http_code != HTTP_OK) {
-        log_warn("lrclib search API failed (HTTP %ld)", http_code);
-        curl_memory_buffer_free(&response);
-        return false;
-    }
-
-    // Parse JSON array response - find best match by duration
-    if (!response.data || response.size < 2) {
-        curl_memory_buffer_free(&response);
-        return false;
-    }
-
-    // Check if we got an array (starts with '[')
-    if (response.data[0] != '[') {
+    // Validate response format
+    if (!response.data || response.size < 2 || response.data[0] != '[') {
         log_info("lrclib search returned no results");
         curl_memory_buffer_free(&response);
         return false;
     }
 
-    // Find the best match by duration (if we have duration)
-    // Otherwise just take the first result with syncedLyrics
-    char *best_synced_lyrics = NULL;
-    char *best_obj_start = NULL;  // Track the JSON object for metadata extraction
-    int64_t best_duration_diff = INT64_MAX;
-    char *search_pos = response.data + 1; // Skip opening '['
-
-    while (search_pos && *search_pos) {
-        // Find next object in array
-        char *obj_start = strchr(search_pos, '{');
-        if (!obj_start) break;
-
-        // Extract duration and syncedLyrics for this result
-        int64_t result_duration = extract_json_int(response.data, "duration", obj_start);
-        char *synced_lyrics = extract_json_string(obj_start, "syncedLyrics");
-
-        // Only consider results with synced lyrics
-        if (synced_lyrics && strlen(synced_lyrics) > 0) {
-            if (duration_ms > 0 && result_duration > 0) {
-                // We have both durations - compare
-                int64_t duration_diff = llabs((result_duration * 1000) - duration_ms);
-                log_info("Found result with duration %ld s (diff: %ld ms)",
-                       result_duration, duration_diff);
-
-                if (duration_diff < best_duration_diff) {
-                    best_duration_diff = duration_diff;
-                    free(best_synced_lyrics);
-                    best_synced_lyrics = synced_lyrics;
-                    best_obj_start = obj_start;  // Remember this object for metadata
-                    synced_lyrics = NULL; // Prevent free below
-                }
-            } else if (!best_synced_lyrics) {
-                // No duration to compare, just take first result
-                best_synced_lyrics = synced_lyrics;
-                best_obj_start = obj_start;  // Remember this object for metadata
-                synced_lyrics = NULL; // Prevent free below
-                log_info("Found result (no duration comparison)");
-            }
-        }
-
-        free(synced_lyrics);
-
-        // Move to next object
-        char *obj_end = strchr(obj_start, '}');
-        if (!obj_end) break;
-        search_pos = obj_end + 1;
-    }
+    // Find best match using helper function
+    struct best_match_result match = find_best_match_in_results(response.data, duration_ms);
 
     bool success = false;
-    if (best_synced_lyrics && strlen(best_synced_lyrics) > 0) {
+    if (match.synced_lyrics && strlen(match.synced_lyrics) > 0) {
         if (duration_ms > 0) {
-            log_info("Selected best match with duration diff: %ld ms", best_duration_diff);
+            log_info("Selected best match with duration diff: %ld ms", match.duration_diff);
         }
         log_info("Found synced lyrics from lrclib search");
-        success = lrc_parse_string(best_synced_lyrics, data);
+        success = lrc_parse_string(match.synced_lyrics, data);
 
-        // Extract metadata from the matched result
-        if (success && best_obj_start) {
-            char *artist_name = extract_json_string(best_obj_start, "artistName");
-            char *album_name = extract_json_string(best_obj_start, "albumName");
-            char *track_name = extract_json_string(best_obj_start, "trackName");
-
-            if (artist_name && strlen(artist_name) > 0) {
-                free(data->metadata.artist);
-                data->metadata.artist = artist_name;
-                log_info("lrclib metadata: artist = %s", artist_name);
-            } else {
-                free(artist_name);
-            }
-
-            if (album_name && strlen(album_name) > 0) {
-                free(data->metadata.album);
-                data->metadata.album = album_name;
-                log_info("lrclib metadata: album = %s", album_name);
-            } else {
-                free(album_name);
-            }
-
-            if (track_name && strlen(track_name) > 0) {
-                free(data->metadata.title);
-                data->metadata.title = track_name;
-                log_info("lrclib metadata: title = %s", track_name);
-            } else {
-                free(track_name);
-            }
+        // Extract metadata from the matched result using helper function
+        if (success) {
+            extract_metadata_from_result(match.obj_start, data);
         }
     } else {
         log_info("No synced lyrics in search results");
     }
 
-    free(best_synced_lyrics);
+    free(match.synced_lyrics);
     curl_memory_buffer_free(&response);
     return success;
 }

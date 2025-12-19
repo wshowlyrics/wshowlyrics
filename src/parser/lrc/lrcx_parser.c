@@ -88,6 +88,90 @@ static const char* parse_first_text_segment(const char *pos, int64_t line_timest
     return pos;
 }
 
+// Ensure full_text buffer has enough capacity and append text with optional space
+// Returns false on allocation failure
+static bool ensure_and_append_to_full_text(char **full_text, size_t *full_text_len,
+                                            size_t *full_text_capacity, const char *text,
+                                            bool prepend_space) {
+    if (!text || text[0] == '\0') {
+        return true;
+    }
+
+    size_t text_len = strlen(text);
+    size_t space_len = (prepend_space && *full_text_len > 0) ? 1 : 0;
+    size_t required_capacity = *full_text_len + text_len + space_len + 1;
+
+    // Expand buffer if needed
+    if (required_capacity > *full_text_capacity) {
+        *full_text_capacity = required_capacity * 2;
+        char *new_full_text = realloc(*full_text, *full_text_capacity);
+        if (!new_full_text) {
+            return false;
+        }
+        *full_text = new_full_text;
+    }
+
+    // Add space if needed
+    if (space_len > 0) {
+        (*full_text)[(*full_text_len)++] = ' ';
+    }
+
+    // Copy text
+    memcpy(*full_text + *full_text_len, text, text_len);
+    *full_text_len += text_len;
+    (*full_text)[*full_text_len] = '\0';
+
+    return true;
+}
+
+// Add parsed word segments to line and update full_text
+// Returns false on error
+static bool add_parsed_word_segments(struct word_segment *word_segments, bool is_unfill,
+                                      struct lyrics_line *new_line,
+                                      struct word_segment ***next_segment_ptr,
+                                      char **full_text, size_t *full_text_len,
+                                      size_t *full_text_capacity) {
+    struct word_segment *ws = word_segments;
+    while (ws) {
+        ws->is_unfill = is_unfill;
+        **next_segment_ptr = ws;
+        *next_segment_ptr = &ws->next;
+        new_line->segment_count++;
+
+        // Add to full text (base text only)
+        if (ws->text && ws->text[0] != '\0') {
+            if (!ensure_and_append_to_full_text(full_text, full_text_len, full_text_capacity,
+                                                 ws->text, true)) {
+                return false;
+            }
+        }
+
+        ws = ws->next;
+    }
+
+    return true;
+}
+
+// Add raw text segment to line and update full_text
+// Returns false on error
+static bool add_raw_text_segment(struct word_segment *segment,
+                                  struct lyrics_line *new_line,
+                                  struct word_segment ***next_segment_ptr,
+                                  char **full_text, size_t *full_text_len,
+                                  size_t *full_text_capacity) {
+    **next_segment_ptr = segment;
+    *next_segment_ptr = &segment->next;
+    new_line->segment_count++;
+
+    // Add to full text
+    if (!ensure_and_append_to_full_text(full_text, full_text_len, full_text_capacity,
+                                         segment->text, true)) {
+        return false;
+    }
+
+    return true;
+}
+
 // Parse a single word segment with timestamp
 // Returns updated position, or NULL on error
 static const char* parse_word_timestamp_segment(const char *pos, struct lyrics_data *data,
@@ -147,62 +231,21 @@ static const char* parse_word_timestamp_segment(const char *pos, struct lyrics_d
             free(raw_text);
             free(segment);
 
-            // Add all parsed segments to the line
-            struct word_segment *ws = word_segments;
-            while (ws) {
-                ws->is_unfill = is_unfill;
-                **next_segment_ptr = ws;
-                *next_segment_ptr = &ws->next;
-                new_line->segment_count++;
-
-                // Add to full text (base text only)
-                if (ws->text && ws->text[0] != '\0') {
-                    size_t word_len = strlen(ws->text);
-                    if (*full_text_len + word_len + 1 > *full_text_capacity) {
-                        *full_text_capacity = (*full_text_len + word_len + 1) * 2;
-                        char *new_full_text = realloc(*full_text, *full_text_capacity);
-                        if (!new_full_text) {
-                            return NULL;  // Signal error
-                        }
-                        *full_text = new_full_text;
-                    }
-
-                    if (*full_text_len > 0) {
-                        (*full_text)[(*full_text_len)++] = ' ';
-                    }
-                    memcpy(*full_text + *full_text_len, ws->text, word_len);
-                    *full_text_len += word_len;
-                    (*full_text)[*full_text_len] = '\0';
-                }
-
-                ws = ws->next;
+            // Add all parsed segments using helper
+            if (!add_parsed_word_segments(word_segments, is_unfill, new_line, next_segment_ptr,
+                                           full_text, full_text_len, full_text_capacity)) {
+                return NULL;  // Signal error
             }
         } else {
             // No segments - use raw text directly
             segment->text = raw_text;  // Take ownership
             segment->ruby = NULL;
 
-            **next_segment_ptr = segment;
-            *next_segment_ptr = &segment->next;
-            new_line->segment_count++;
-
-            // Ensure full_text buffer is allocated with sufficient capacity
-            size_t word_len = strlen(segment->text);
-            if (*full_text_len + word_len + 1 > *full_text_capacity) {
-                *full_text_capacity = (*full_text_len + word_len + 1) * 2;
-                char *new_full_text = realloc(*full_text, *full_text_capacity);
-                if (!new_full_text) {
-                    return NULL;  // Signal error
-                }
-                *full_text = new_full_text;
+            // Add raw text segment using helper
+            if (!add_raw_text_segment(segment, new_line, next_segment_ptr,
+                                       full_text, full_text_len, full_text_capacity)) {
+                return NULL;  // Signal error
             }
-
-            if (*full_text_len > 0) {
-                (*full_text)[(*full_text_len)++] = ' ';
-            }
-            memcpy(*full_text + *full_text_len, segment->text, word_len);
-            *full_text_len += word_len;
-            (*full_text)[*full_text_len] = '\0';
         }
     } else {
         // Empty text for idle display

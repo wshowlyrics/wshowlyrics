@@ -439,6 +439,112 @@ void system_tray_send_notification(const char *artist, const char *title) {
     }
 }
 
+// Cache current artwork from ICON_PATH to cache_path
+static bool cache_current_artwork(const char *cache_path) {
+    GError *error = NULL;
+    GdkPixbuf *current = gdk_pixbuf_new_from_file(ICON_PATH, &error);
+
+    if (current) {
+        bool success = gdk_pixbuf_save(current, cache_path, "png", NULL, NULL);
+        g_object_unref(current);
+        if (success) {
+            log_info("Cached album art: %s", cache_path);
+        }
+        return success;
+    } else if (error) {
+        log_warn("Failed to cache album art: %s", error->message);
+        g_error_free(error);
+    }
+    return false;
+}
+
+// Load cached album art and set as icon
+static bool load_cached_album_art(const char *cache_path, const char *metadata_hash) {
+    struct stat st;
+    if (stat(cache_path, &st) != 0) {
+        return false;  // Cache doesn't exist
+    }
+
+    log_success("Found cached album art: %s", cache_path);
+
+    GError *error = NULL;
+    GdkPixbuf *cached = gdk_pixbuf_new_from_file(cache_path, &error);
+
+    if (cached) {
+        // Set the icon theme path and update
+        app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+
+        // Copy cached file to active icon path
+        GdkPixbuf *scaled = gdk_pixbuf_scale_simple(cached, 48, 48, GDK_INTERP_BILINEAR);
+        g_object_unref(cached);
+
+        if (gdk_pixbuf_save(scaled, ICON_PATH, "png", NULL, NULL)) {
+            g_object_unref(scaled);
+            app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
+
+            // Update state
+            snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
+            log_success("Loaded album art from cache");
+            return true;
+        } else {
+            g_object_unref(scaled);
+        }
+    } else if (error) {
+        log_warn("Failed to load cached album art: %s", error->message);
+        g_error_free(error);
+    }
+
+    return false;
+}
+
+// Try to get artwork from MPRIS art URL
+static bool try_mpris_artwork(const char *art_url, const char *cache_path, const char *metadata_hash) {
+    if (!art_url || strlen(art_url) == 0) {
+        return false;
+    }
+
+    log_info("Using MPRIS album art: %s", art_url);
+    bool success = system_tray_update_icon(art_url);
+
+    // Cache MPRIS artwork if successful
+    if (success && metadata_hash[0] != '\0') {
+        cache_current_artwork(cache_path);
+        snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
+    }
+
+    return success;
+}
+
+// Try to get artwork from iTunes API
+static bool try_itunes_artwork(const char *artist, const char *album, const char *track,
+                               const char *cache_path, const char *metadata_hash) {
+    if (!g_config.lyrics.enable_itunes || !track || strlen(track) == 0) {
+        if (!g_config.lyrics.enable_itunes) {
+            log_info("iTunes API disabled in config");
+        }
+        return false;
+    }
+
+    log_info("Trying iTunes Search API...");
+    char *itunes_url = itunes_search_artwork(artist, album, track);
+
+    if (itunes_url) {
+        bool success = system_tray_update_icon(itunes_url);
+        free(itunes_url);
+
+        // Cache iTunes artwork if successful
+        if (success && metadata_hash[0] != '\0') {
+            cache_current_artwork(cache_path);
+            snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
+        }
+
+        return success;
+    } else {
+        log_info("iTunes Search API did not return artwork");
+    }
+
+    return false;
+}
 
 bool system_tray_update_icon_with_fallback(const char *art_url, const char *artist, const char *album, const char *track) {
     // Calculate metadata hash for caching (using artist + track + album)
@@ -457,103 +563,25 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
     // Ensure cache directories exist
     ensure_cache_directories();
 
-    // Priority 1: Check cache first (fastest, no network request)
+    // Build cache path
     char cache_path[512];
-    if (metadata_hash[0] != '\0' && build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
-        struct stat st;
-        if (stat(cache_path, &st) == 0) {
-            log_success("Found cached album art: %s", cache_path);
+    if (metadata_hash[0] == '\0' || build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
+        cache_path[0] = '\0';  // No cache path available
+    }
 
-            // Load from cache
-            GError *error = NULL;
-            GdkPixbuf *cached = gdk_pixbuf_new_from_file(cache_path, &error);
-
-            if (cached) {
-                // Set the icon theme path and update
-                app_indicator_set_icon_theme_path(indicator, ICON_DIR);
-
-                // Copy cached file to active icon path
-                GdkPixbuf *scaled = gdk_pixbuf_scale_simple(cached, 48, 48, GDK_INTERP_BILINEAR);
-                g_object_unref(cached);
-
-                if (gdk_pixbuf_save(scaled, ICON_PATH, "png", NULL, NULL)) {
-                    g_object_unref(scaled);
-                    app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
-
-                    // Update state
-                    snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
-                    log_success("Loaded album art from cache");
-                    return true;
-                } else {
-                    g_object_unref(scaled);
-                }
-            } else if (error) {
-                log_warn("Failed to load cached album art: %s", error->message);
-                g_error_free(error);
-            }
-        }
+    // Priority 1: Try cache first (fastest, no network request)
+    if (cache_path[0] != '\0' && load_cached_album_art(cache_path, metadata_hash)) {
+        return true;
     }
 
     // Priority 2: Try MPRIS art URL (network request if cache miss)
-    bool success = false;
-    if (art_url && strlen(art_url) > 0) {
-        log_info("Using MPRIS album art: %s", art_url);
-        success = system_tray_update_icon(art_url);
-
-        // Cache MPRIS artwork if successful
-        if (success && metadata_hash[0] != '\0') {
-            GError *error = NULL;
-            GdkPixbuf *current = gdk_pixbuf_new_from_file(ICON_PATH, &error);
-
-            if (current) {
-                if (gdk_pixbuf_save(current, cache_path, "png", NULL, NULL)) {
-                    log_info("Cached MPRIS album art: %s", cache_path);
-                }
-                g_object_unref(current);
-            } else if (error) {
-                log_warn("Failed to cache MPRIS album art: %s", error->message);
-                g_error_free(error);
-            }
-
-            snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
-        }
-
-        return success;
+    if (try_mpris_artwork(art_url, cache_path, metadata_hash)) {
+        return true;
     }
 
     // Priority 3: Try iTunes API (network request)
-    if (g_config.lyrics.enable_itunes && track && strlen(track) > 0) {
-        log_info("Trying iTunes Search API...");
-        char *itunes_url = itunes_search_artwork(artist, album, track);
-
-        if (itunes_url) {
-            success = system_tray_update_icon(itunes_url);
-            free(itunes_url);
-
-            // Cache iTunes artwork if successful
-            if (success && metadata_hash[0] != '\0') {
-                GError *error = NULL;
-                GdkPixbuf *current = gdk_pixbuf_new_from_file(ICON_PATH, &error);
-
-                if (current) {
-                    if (gdk_pixbuf_save(current, cache_path, "png", NULL, NULL)) {
-                        log_info("Cached iTunes album art: %s", cache_path);
-                    }
-                    g_object_unref(current);
-                } else if (error) {
-                    log_warn("Failed to cache iTunes album art: %s", error->message);
-                    g_error_free(error);
-                }
-
-                snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
-            }
-
-            return success;
-        } else {
-            log_info("iTunes Search API did not return artwork");
-        }
-    } else if (!g_config.lyrics.enable_itunes) {
-        log_info("iTunes API disabled in config");
+    if (try_itunes_artwork(artist, album, track, cache_path, metadata_hash)) {
+        return true;
     }
 
     // No artwork available - reset to default icon
