@@ -59,7 +59,7 @@ bool calculate_file_md5(const char *filepath, char *checksum_out) {
 
     // Convert to hex string
     for (unsigned int i = 0; i < hash_len; i++) {
-        sprintf(checksum_out + (i * 2), "%02x", hash[i]);
+        snprintf(checksum_out + (i * 2), 3, "%02x", hash[i]);
     }
     checksum_out[hash_len * 2] = '\0';
 
@@ -214,7 +214,7 @@ bool calculate_metadata_md5(const char *artist, const char *title, const char *a
 
     // Convert to hex string
     for (unsigned int i = 0; i < hash_len; i++) {
-        sprintf(md5_out + (i * 2), "%02x", hash[i]);
+        snprintf(md5_out + (i * 2), 3, "%02x", hash[i]);
     }
     md5_out[hash_len * 2] = '\0';
 
