@@ -25,6 +25,22 @@ int calculate_max_ruby_height_ruby(cairo_t *cairo, const char *font,
     return max_ruby_height;
 }
 
+void render_ruby_segments_static(const struct ruby_static_params *params) {
+    if (!params) {
+        return;
+    }
+
+    cairo_t *cairo = params->base.cairo;
+    const char *font = params->base.font;
+    int scale = params->base.scale;
+    struct ruby_segment *segments = params->segments;
+    uint32_t foreground = params->base.foreground;
+    int *width = params->base.width;
+    int *height = params->base.height;
+
+    RENDER_SEGMENTS_IMPL(struct ruby_segment, calculate_max_ruby_height_ruby);
+}
+
 void render_ruby_segments(const struct ruby_params *params) {
     if (!params || !params->segments) {
         if (params && params->base.width && params->base.height) {
@@ -34,7 +50,33 @@ void render_ruby_segments(const struct ruby_params *params) {
         return;
     }
 
-    // Extract parameters for readability
+    // Check if any segment has translation
+    bool has_any_translation = false;
+    struct ruby_segment *check_seg = params->segments;
+    while (check_seg) {
+        if (check_seg->text && check_seg->text[0] == '\0' &&
+            check_seg->translation && check_seg->translation[0] != '\0') {
+            has_any_translation = true;
+            break;
+        }
+        check_seg = check_seg->next;
+    }
+
+    // If no translation, use static implementation (eliminates duplication)
+    if (!has_any_translation) {
+        cairo_t *cairo = params->base.cairo;
+        const char *font = params->base.font;
+        int scale = params->base.scale;
+        struct ruby_segment *segments = params->segments;
+        uint32_t foreground = params->base.foreground;
+        int *width = params->base.width;
+        int *height = params->base.height;
+
+        RENDER_SEGMENTS_IMPL(struct ruby_segment, calculate_max_ruby_height_ruby);
+        return;
+    }
+
+    // Extract parameters for translation rendering
     cairo_t *cairo = params->base.cairo;
     const char *font = params->base.font;
     int scale = params->base.scale;
@@ -53,13 +95,12 @@ void render_ruby_segments(const struct ruby_params *params) {
     // Calculate translation scale (70% of original)
     double translation_scale = scale * 0.7;
 
-    // Render all segments
+    // Render all segments with translation logic
     int x_offset = 0;
     int y_offset = 0;
     int total_width = 0;
     int line_width = 0;
     int line_count = 1;
-    bool has_translation = false;
 
     struct ruby_segment *seg = segments;
     while (seg) {
@@ -67,7 +108,6 @@ void render_ruby_segments(const struct ruby_params *params) {
         bool is_translation_seg = (seg->text && seg->text[0] == '\0' && seg->translation && seg->translation[0] != '\0');
 
         if (is_translation_seg) {
-            has_translation = true;
             // Render translation below main text
             if (line_width > total_width) {
                 total_width = line_width;
@@ -125,10 +165,8 @@ void render_ruby_segments(const struct ruby_params *params) {
     }
 
     int total_height = line_count * (base_text_h + max_ruby_height);
-    if (has_translation) {
-        // Translation line doesn't need ruby space
-        total_height -= max_ruby_height;
-    }
+    // Translation line doesn't need ruby space
+    total_height -= max_ruby_height;
 
     *params->base.width = total_width;
     *params->base.height = total_height;

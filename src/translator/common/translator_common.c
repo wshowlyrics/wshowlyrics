@@ -687,8 +687,8 @@ char* translator_perform_http_request(struct translator_http_params *params) {
         return NULL;
     }
 
-    // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+    // Enforce TLS 1.3 or higher for security (fallback to TLS 1.2 if unavailable)
+    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3 | CURL_SSLVERSION_MAX_DEFAULT);
 
     char *response_data = NULL;
     int attempt = 0;

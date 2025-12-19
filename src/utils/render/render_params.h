@@ -72,4 +72,11 @@ struct ruby_params {
     struct ruby_segment *segments;
 };
 
+// Parameters for static ruby segment rendering (no timing, no translation)
+// Used by: render_ruby_segments_static()
+struct ruby_static_params {
+    struct render_base_params base;
+    struct ruby_segment *segments;
+};
+
 #endif // RENDER_PARAMS_H
