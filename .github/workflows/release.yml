@@ -63,40 +63,10 @@ jobs:
         run: |
           GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git clone ssh://aur@aur.archlinux.org/wshowlyrics.git aur
 
-      - name: Create or Update PKGBUILD
+      - name: Update PKGBUILD version
         if: steps.get_version.outputs.has_tag == 'true'
         run: |
           cd aur
-
-          # If PKGBUILD doesn't exist, create it
-          if [ ! -f PKGBUILD ]; then
-            cat > PKGBUILD << 'EOF'
-          # Maintainer: unstable-code <assa0620@gmail.com>
-          pkgname=wshowlyrics
-          pkgver=0.1.0
-          pkgrel=1
-          pkgdesc="Wayland-native lyrics display for MPD with online fallback"
-          arch=('x86_64')
-          url="https://github.com/unstable-code/lyrics"
-          license=('GPL-3.0-or-later')
-          depends=('wayland' 'cairo' 'pango' 'curl' 'fontconfig' 'libappindicator-gtk3' 'gdk-pixbuf2' 'playerctl')
-          optdepends=('snixembed: System tray support for Swaybar')
-          makedepends=('meson' 'ninja' 'wayland-protocols')
-          source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-          sha256sums=('SKIP')  # Will be updated by updpkgsums
-
-          build() {
-              cd "lyrics-$pkgver"
-              arch-meson . build
-              meson compile -C build
-          }
-
-          package() {
-              cd "lyrics-$pkgver"
-              meson install -C build --destdir="$pkgdir"
-          }
-          EOF
-          fi
 
           # Update version and reset pkgrel
           sed -i "s/^pkgver=.*/pkgver=${{ steps.get_version.outputs.version }}/" PKGBUILD

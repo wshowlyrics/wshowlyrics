@@ -22,7 +22,15 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    name: Build and Test (${{ matrix.arch }})
     container:
       image: archlinux:latest
 
@@ -81,11 +89,27 @@ jobs:
     - name: Test version check
       run: |
         # Simple smoke test to ensure binary runs
-        if file build/lyrics | grep -q "ELF.*executable"; then
-          echo "Binary format verified: ELF executable"
-        else
+        FILE_OUTPUT=$(file build/lyrics)
+        echo "Binary info: $FILE_OUTPUT"
+
+        if ! echo "$FILE_OUTPUT" | grep -q "ELF.*executable"; then
           echo "Error: Invalid binary format"
           exit 1
+        fi
+
+        # Verify architecture matches
+        if [ "${{ matrix.arch }}" = "x86_64" ]; then
+          if ! echo "$FILE_OUTPUT" | grep -qE "x86-64|x86_64"; then
+            echo "Error: Expected x86_64 binary but got: $FILE_OUTPUT"
+            exit 1
+          fi
+          echo "Binary format verified: x86_64 ELF executable"
+        elif [ "${{ matrix.arch }}" = "aarch64" ]; then
+          if ! echo "$FILE_OUTPUT" | grep -qE "aarch64|ARM aarch64"; then
+            echo "Error: Expected aarch64 binary but got: $FILE_OUTPUT"
+            exit 1
+          fi
+          echo "Binary format verified: aarch64 ELF executable"
         fi
 
     - name: Verify installation files
