@@ -688,10 +688,9 @@ char* translator_perform_http_request(struct translator_http_params *params) {
         return NULL;
     }
 
-    // Enforce TLS 1.2 minimum with TLS 1.3 maximum for security
-    // Range: TLS 1.2, TLS 1.3 (excludes weak TLS 1.0, 1.1)
-    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION,
-                     CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_3);
+    // Enforce TLS 1.2 minimum (allows TLS 1.2, 1.3, and future versions)
+    // Excludes weak protocols: SSL 2.0/3.0, TLS 1.0/1.1
+    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 
     char *response_data = NULL;
     int attempt = 0;
