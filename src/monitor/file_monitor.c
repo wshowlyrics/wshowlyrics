@@ -42,11 +42,13 @@ bool file_monitor_check_and_reload(
 }
 
 void file_monitor_reload_lyrics(struct lyrics_state *state, const char *path) {
+    (void)path;  // Required by callback signature
     rendering_manager_render_transparent(state);
     lyrics_manager_load_lyrics(state);
 }
 
 void file_monitor_reload_config(struct lyrics_state *state, const char *path) {
+    (void)path;  // Required by callback signature
     // Save old config values for comparison
     char *old_api_key = g_config.translation.api_key ? strdup(g_config.translation.api_key) : NULL;
     char *old_provider = g_config.translation.provider ? strdup(g_config.translation.provider) : NULL;

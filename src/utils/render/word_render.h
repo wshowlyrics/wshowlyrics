@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "../../lyrics_types.h"
+#include "render_params.h"
 
 // Calculate maximum ruby text height from word segments
 // Returns the maximum height needed to display ruby text
@@ -18,21 +19,15 @@ double calculate_fill_progress(int64_t current_time, int64_t start_time,
 
 // Render karaoke-style lyrics with word segments (single line with timing)
 // NOTE: For LRCX format, prefer render_karaoke_multiline() for better UX
-void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
-                             struct word_segment *segments, uint32_t foreground,
-                             int64_t position_us, int *width, int *height);
+// Reduced from 8 parameters to 1 struct pointer
+void render_karaoke_segments(const struct karaoke_params *params);
 
 // Render LRCX word segments without karaoke effect (static display)
-void render_word_segments_static(cairo_t *cairo, const char *font, int scale,
-                                 struct word_segment *segments, uint32_t foreground,
-                                 int *width, int *height);
+// Reduced from 7 parameters to 1 struct pointer
+void render_word_segments_static(const struct word_static_params *params);
 
 // Render multi-line LRCX display (prev, current, next)
-void render_karaoke_multiline(cairo_t *cairo, const char *font, int scale,
-                              struct lyrics_line *prev_line,
-                              struct lyrics_line *current_line,
-                              struct lyrics_line *next_line,
-                              uint32_t foreground, int64_t position_us,
-                              int *width, int *height);
+// Reduced from 10 parameters to 1 struct pointer
+void render_karaoke_multiline(const struct multiline_params *params);
 
 #endif // WORD_RENDER_H

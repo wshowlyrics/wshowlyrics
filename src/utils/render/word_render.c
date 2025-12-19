@@ -1,5 +1,6 @@
 #include "word_render.h"
 #include "render_common.h"
+#include "render_params.h"
 #include "../pango/pango_utils.h"
 #include "../../constants.h"
 #include <string.h>
@@ -27,8 +28,15 @@ static struct word_segment* find_active_unfill_segment(struct word_segment *star
 // Calculate unfill ratio (opacity reduction) based on elapsed time
 // Returns value between 0.0 and 0.5 for oscillating effect
 static double calculate_unfill_ratio(struct word_segment *unfill_seg, int64_t position_us) {
-    int64_t unfill_end = unfill_seg->end_timestamp_us ? unfill_seg->end_timestamp_us :
-                         (unfill_seg->next ? unfill_seg->next->timestamp_us : 0);
+    int64_t unfill_end;
+    if (unfill_seg->end_timestamp_us) {
+        unfill_end = unfill_seg->end_timestamp_us;
+    } else if (unfill_seg->next) {
+        unfill_end = unfill_seg->next->timestamp_us;
+    } else {
+        unfill_end = 0;
+    }
+
     if (unfill_end > 0) {
         int64_t duration = unfill_end - unfill_seg->timestamp_us;
         if (duration > 0) {
@@ -75,14 +83,22 @@ double calculate_fill_progress(int64_t current_time, int64_t start_time,
     return is_unfill ? (1.0 - progress) : progress;
 }
 
-void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
-                             struct word_segment *segments, uint32_t foreground,
-                             int64_t position_us, int *width, int *height) {
-    if (!segments) {
-        *width = 0;
-        *height = 0;
+void render_karaoke_segments(const struct karaoke_params *params) {
+    if (!params || !params->segments) {
+        if (params && params->base.width && params->base.height) {
+            *params->base.width = 0;
+            *params->base.height = 0;
+        }
         return;
     }
+
+    // Extract parameters for readability
+    cairo_t *cairo = params->base.cairo;
+    const char *font = params->base.font;
+    int scale = params->base.scale;
+    struct word_segment *segments = params->segments;
+    uint32_t foreground = params->base.foreground;
+    int64_t position_us = params->position_us;
 
     // Calculate maximum ruby height
     int max_ruby_height = calculate_max_ruby_height_word(cairo, font, segments, scale);
@@ -240,8 +256,8 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
         size_iter = size_iter->next;
     }
 
-    *width = total_w;
-    *height = total_h;
+    *params->base.width = total_w;
+    *params->base.height = total_h;
 }
 
 // Generic segment rendering macro to avoid code duplication
@@ -309,25 +325,42 @@ void render_karaoke_segments(cairo_t *cairo, const char *font, int scale,
         *height = total_height; \
     } while (0)
 
-void render_word_segments_static(cairo_t *cairo, const char *font, int scale,
-                                 struct word_segment *segments, uint32_t foreground,
-                                 int *width, int *height) {
+void render_word_segments_static(const struct word_static_params *params) {
+    if (!params) {
+        return;
+    }
+
+    cairo_t *cairo = params->base.cairo;
+    const char *font = params->base.font;
+    int scale = params->base.scale;
+    struct word_segment *segments = params->segments;
+    uint32_t foreground = params->base.foreground;
+    int *width = params->base.width;
+    int *height = params->base.height;
+
     RENDER_SEGMENTS_IMPL(struct word_segment, calculate_max_ruby_height_word);
 }
 
-void render_karaoke_multiline(cairo_t *cairo, const char *font, int scale,
-                              struct lyrics_line *prev_line,
-                              struct lyrics_line *current_line,
-                              struct lyrics_line *next_line,
-                              uint32_t foreground, int64_t position_us,
-                              int *width, int *height) {
+void render_karaoke_multiline(const struct multiline_params *params) {
     // For LRCX, we render prev/next lines even during instrumental breaks (current_line = NULL)
     // This provides context during silent sections
-    if (!prev_line && !current_line && !next_line) {
-        *width = 0;
-        *height = 0;
+    if (!params || (!params->prev_line && !params->current_line && !params->next_line)) {
+        if (params && params->base.width && params->base.height) {
+            *params->base.width = 0;
+            *params->base.height = 0;
+        }
         return;
     }
+
+    // Extract parameters for readability
+    cairo_t *cairo = params->base.cairo;
+    const char *font = params->base.font;
+    int scale = params->base.scale;
+    uint32_t foreground = params->base.foreground;
+    int64_t position_us = params->position_us;
+    struct lyrics_line *prev_line = params->prev_line;
+    struct lyrics_line *current_line = params->current_line;
+    struct lyrics_line *next_line = params->next_line;
 
     const double context_scale = 0.7;  // 70% for prev/next (matches translation scale)
     int total_width = 0;
@@ -370,8 +403,22 @@ void render_karaoke_multiline(cairo_t *cairo, const char *font, int scale,
 
         cairo_save(cairo);
         cairo_translate(cairo, 0, y_offset);
-        render_karaoke_segments(cairo, font, scale, current_line->segments,
-                               foreground, position_us, &w, &h);
+
+        // Call render_karaoke_segments with struct params
+        struct karaoke_params seg_params = {
+            .base = {
+                .cairo = cairo,
+                .font = font,
+                .scale = scale,
+                .foreground = foreground,
+                .width = &w,
+                .height = &h
+            },
+            .segments = current_line->segments,
+            .position_us = position_us
+        };
+        render_karaoke_segments(&seg_params);
+
         cairo_restore(cairo);
 
         if (w > total_width) total_width = w;
@@ -403,6 +450,6 @@ void render_karaoke_multiline(cairo_t *cairo, const char *font, int scale,
         free(stripped);
     }
 
-    *width = total_width;
-    *height = total_height;
+    *params->base.width = total_width;
+    *params->base.height = total_height;
 }

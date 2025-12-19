@@ -123,10 +123,8 @@ int main(int argc, char *argv[]) {
     // Store config file path and checksum for hot reload
     state.config_file_path = config_loaded_path;  // Transfer ownership
     state.config_md5_checksum[0] = '\0';
-    if (config_loaded_path) {
-        if (!calculate_file_md5(config_loaded_path, state.config_md5_checksum)) {
-            log_warn("Failed to calculate MD5 for config file: %s", config_loaded_path);
-        }
+    if (config_loaded_path && !calculate_file_md5(config_loaded_path, state.config_md5_checksum)) {
+        log_warn("Failed to calculate MD5 for config file: %s", config_loaded_path);
     }
 
     // Convert hex colors to uint32 format
@@ -335,12 +333,10 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        if (pollfds[0].revents & POLLIN) {
-            if (!wayland_manager_dispatch(&wl_conn)) {
-                // Connection lost, attempt full reconnection
-                wayland_events_handle_reconnection(&state, &wl_conn, pollfds);
-                continue;
-            }
+        if ((pollfds[0].revents & POLLIN) && !wayland_manager_dispatch(&wl_conn)) {
+            // Connection lost, attempt full reconnection
+            wayland_events_handle_reconnection(&state, &wl_conn, pollfds);
+            continue;
         }
 
         // During instrumental break (idle time), handle lyrics file status

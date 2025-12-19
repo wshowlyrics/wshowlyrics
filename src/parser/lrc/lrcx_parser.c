@@ -139,11 +139,10 @@ static bool add_parsed_word_segments(struct word_segment *word_segments, bool is
         new_line->segment_count++;
 
         // Add to full text (base text only)
-        if (ws->text && ws->text[0] != '\0') {
-            if (!ensure_and_append_to_full_text(full_text, full_text_len, full_text_capacity,
-                                                 ws->text, true)) {
-                return false;
-            }
+        if (ws->text && ws->text[0] != '\0' &&
+            !ensure_and_append_to_full_text(full_text, full_text_len, full_text_capacity,
+                                             ws->text, true)) {
+            return false;
         }
 
         ws = ws->next;

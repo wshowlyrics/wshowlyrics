@@ -291,11 +291,9 @@ void translator_prepare_cache_resume(struct lyrics_data *data, int *already_tran
     while (line) {
         if (line->text && strlen(line->text) > 0) {
             // Clear translation if in re-validation range
-            if (index >= new_already_translated && index < *already_translated) {
-                if (line->translation) {
-                    free(line->translation);
-                    line->translation = NULL;
-                }
+            if (index >= new_already_translated && index < *already_translated && line->translation) {
+                free(line->translation);
+                line->translation = NULL;
             }
             index++;
         }

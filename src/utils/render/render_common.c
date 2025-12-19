@@ -1,4 +1,5 @@
 #include "render_common.h"
+#include "render_params.h"
 #include "../pango/pango_utils.h"
 #include "../../constants.h"
 #include <string.h>
@@ -39,26 +40,33 @@ char* strip_ruby_notation(const char *text) {
     return result;
 }
 
-int render_segment_with_ruby(cairo_t *cairo, const char *font, int scale,
-                             int x_offset, int y_offset, int max_ruby_height,
+int render_segment_with_ruby(const struct segment_params *params,
                              const char *text, const char *ruby) {
+    if (!params) {
+        return 0;
+    }
+
     int seg_w, seg_h;
-    get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, text, ruby);
+    get_ruby_text_size(params->cairo, params->font, &seg_w, &seg_h,
+                      params->scale, text, ruby);
 
     // Bottom-align: position at y_offset so base text aligns with plain text
-    cairo_move_to(cairo, x_offset, y_offset);
-    pango_printf_ruby(cairo, font, scale, text, ruby);
+    cairo_move_to(params->cairo, params->x_offset, params->y_offset);
+    pango_printf_ruby(params->cairo, params->font, params->scale, text, ruby);
     return seg_w;
 }
 
-int render_segment_plain(cairo_t *cairo, const char *font, int scale,
-                        int x_offset, int y_offset, int max_ruby_height,
-                        const char *text) {
+int render_segment_plain(const struct segment_params *params, const char *text) {
+    if (!params) {
+        return 0;
+    }
+
     int seg_w, seg_h;
-    get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, text);
+    get_text_size(params->cairo, params->font, &seg_w, &seg_h, NULL,
+                 params->scale, text);
     // Bottom-align: position at same y as ruby text's base text would be
-    cairo_move_to(cairo, x_offset, y_offset);
-    pango_printf(cairo, font, scale, text);
+    cairo_move_to(params->cairo, params->x_offset, params->y_offset);
+    pango_printf(params->cairo, params->font, params->scale, text);
     return seg_w;
 }
 
@@ -73,17 +81,23 @@ uint32_t create_color_with_opacity(uint32_t color, double opacity) {
     return (color & 0xFFFFFF00) | new_alpha;
 }
 
-void render_plain_text(cairo_t *cairo, const char *font, int scale,
-                      const char *text, uint32_t foreground,
-                      int *width, int *height) {
-    cairo_set_source_u32(cairo, foreground);
+void render_plain_text(const struct render_base_params *params, const char *text) {
+    if (!params || !text) {
+        if (params && params->width && params->height) {
+            *params->width = 0;
+            *params->height = 0;
+        }
+        return;
+    }
+
+    cairo_set_source_u32(params->cairo, params->foreground);
 
     int w, h;
-    get_text_size(cairo, font, &w, &h, NULL, scale, text);
+    get_text_size(params->cairo, params->font, &w, &h, NULL, params->scale, text);
 
-    cairo_move_to(cairo, 0, 0);
-    pango_printf(cairo, font, scale, text);
+    cairo_move_to(params->cairo, 0, 0);
+    pango_printf(params->cairo, params->font, params->scale, text);
 
-    *width = w;
-    *height = h;
+    *params->width = w;
+    *params->height = h;
 }

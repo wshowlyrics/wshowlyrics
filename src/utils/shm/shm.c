@@ -59,6 +59,7 @@ int allocate_shm_file(size_t size) {
 }
 
 static void buffer_release(void *data, struct wl_buffer *wl_buffer) {
+    (void)wl_buffer;  // Required by Wayland callback signature
     struct pool_buffer *buffer = data;
     buffer->busy = false;
 }

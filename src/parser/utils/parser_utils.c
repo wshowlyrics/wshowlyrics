@@ -226,7 +226,7 @@ char* parse_ruby_text(const char *text, char **ruby_text) {
 }
 
 // Helper: Check if position p starts with a space character (ASCII or Japanese)
-static bool is_space_char(const char *p, const char *text_start, const char *text_end) {
+static bool is_space_char(const char *p, const char *text_end) {
     if (p >= text_end) {
         return false;
     }
@@ -305,7 +305,7 @@ static const char* find_word_start(const char *limit, const char *end, const cha
             while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
                 prev--;
             }
-            if (is_space_char(prev, limit, text_end)) {
+            if (is_space_char(prev, text_end)) {
                 return (p >= limit && p <= end) ? p : limit;
             }
             p = prev;
@@ -324,7 +324,7 @@ static const char* find_word_start(const char *limit, const char *end, const cha
         }
 
         // Check if previous character is a space or not a kanji
-        if (is_space_char(prev, limit, text_end) || !is_cjk_ideograph(prev, limit, text_end)) {
+        if (is_space_char(prev, text_end) || !is_cjk_ideograph(prev, limit, text_end)) {
             return (p >= limit && p <= end) ? p : limit; // Found word boundary
         }
 
@@ -579,7 +579,6 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
         seg->ruby = NULL;
         seg->translation = NULL;
         *next_seg = seg;
-        next_seg = &seg->next;
         count++;
     }
 

@@ -31,13 +31,11 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
 
     // Remove file extension
     char *ext = strrchr(dest, '.');
-    if (ext) {
-        if (strcmp(ext, ".mkv") == 0 || strcmp(ext, ".mp4") == 0 ||
-            strcmp(ext, ".webm") == 0 || strcmp(ext, ".mp3") == 0 ||
-            strcmp(ext, ".flac") == 0 || strcmp(ext, ".opus") == 0 ||
-            strcmp(ext, ".ogg") == 0 || strcmp(ext, ".m4a") == 0) {
-            *ext = '\0';
-        }
+    if (ext && (strcmp(ext, ".mkv") == 0 || strcmp(ext, ".mp4") == 0 ||
+                strcmp(ext, ".webm") == 0 || strcmp(ext, ".mp3") == 0 ||
+                strcmp(ext, ".flac") == 0 || strcmp(ext, ".opus") == 0 ||
+                strcmp(ext, ".ogg") == 0 || strcmp(ext, ".m4a") == 0)) {
+        *ext = '\0';
     }
 
     // Remove YouTube ID pattern [xxxxx]
@@ -264,13 +262,11 @@ void lyrics_manager_update_current_line(struct lyrics_state *state) {
 
     // Check if we should clear the lyrics for SRT/WEBVTT formats
     // SRT/WEBVTT have explicit end timestamps, unlike LRC/LRCX
-    if (new_line && new_line->end_timestamp_us > 0) {
-        if (lyrics_manager_is_format(state, ".srt") || lyrics_manager_is_format(state, ".vtt")) {
-            // SRT/WEBVTT: Clear line when end timestamp is reached
-            if (position_us > new_line->end_timestamp_us) {
-                new_line = NULL;
-            }
-        }
+    if (new_line && new_line->end_timestamp_us > 0 &&
+        (lyrics_manager_is_format(state, ".srt") || lyrics_manager_is_format(state, ".vtt")) &&
+        position_us > new_line->end_timestamp_us) {
+        // SRT/WEBVTT: Clear line when end timestamp is reached
+        new_line = NULL;
     }
 
     // Check if line text is empty or whitespace-only (instrumental break in LRC/LRCX)

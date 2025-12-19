@@ -679,10 +679,8 @@ static bool validate_config_path(const char *path) {
 
     // Check current directory (only for local builds)
     char cwd[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd))) {
-        if (strncmp(resolved_path, cwd, strlen(cwd)) == 0) {
-            is_safe = true;
-        }
+    if (getcwd(cwd, sizeof(cwd)) && strncmp(resolved_path, cwd, strlen(cwd)) == 0) {
+        is_safe = true;
     }
 
     return is_safe;
@@ -898,21 +896,20 @@ static struct config_key* find_unknown_config_entries(
     if (user_keys) {
         for (struct config_key *node = user_keys; node != NULL; node = node->next) {
             // Only check keys in sections that exist in example
-            if (section_exists_in_example(example_keys, node->section)) {
-                if (!key_exists_in_example(example_keys, node->section, node->key)) {
-                    // Known section but unknown key
-                    struct config_key *unknown = malloc(sizeof(struct config_key));
-                    if (unknown) {
-                        snprintf(unknown->section, sizeof(unknown->section), "%s", node->section);
-                        snprintf(unknown->key, sizeof(unknown->key), "%s", node->key);
-                        unknown->next = NULL;
+            if (section_exists_in_example(example_keys, node->section) &&
+                !key_exists_in_example(example_keys, node->section, node->key)) {
+                // Known section but unknown key
+                struct config_key *unknown = malloc(sizeof(struct config_key));
+                if (unknown) {
+                    snprintf(unknown->section, sizeof(unknown->section), "%s", node->section);
+                    snprintf(unknown->key, sizeof(unknown->key), "%s", node->key);
+                    unknown->next = NULL;
 
-                        if (!unknown_head) {
-                            unknown_head = unknown_tail = unknown;
-                        } else {
-                            unknown_tail->next = unknown;
-                            unknown_tail = unknown;
-                        }
+                    if (!unknown_head) {
+                        unknown_head = unknown_tail = unknown;
+                    } else {
+                        unknown_tail->next = unknown;
+                        unknown_tail = unknown;
                     }
                 }
             }
@@ -1004,12 +1001,9 @@ static void display_missing_keys_warning(struct config_key *missing_keys, const 
 
     // Add "and X more..." if there are more than 5 missing keys
     if (total_count > 5 && offset < sizeof(missing_keys_list)) {
-        int written = snprintf(missing_keys_list + offset,
-                              sizeof(missing_keys_list) - offset,
-                              "...and %d more", total_count - 5);
-        if (written > 0) {
-            offset += written;
-        }
+        snprintf(missing_keys_list + offset,
+                sizeof(missing_keys_list) - offset,
+                "...and %d more", total_count - 5);
     }
 
     log_warn("");

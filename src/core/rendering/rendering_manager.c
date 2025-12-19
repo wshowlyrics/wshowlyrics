@@ -72,15 +72,36 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
         // Use multi-line rendering if enabled and context lines are available
         if (g_config.display.enable_multiline_lrcx &&
             (state->prev_line || state->next_line)) {
-            render_karaoke_multiline(cairo, state->font, scale,
-                                    state->prev_line, state->current_line,
-                                    state->next_line, state->foreground,
-                                    position_us, &w, &h);
+            struct multiline_params params = {
+                .base = {
+                    .cairo = cairo,
+                    .font = state->font,
+                    .scale = scale,
+                    .foreground = state->foreground,
+                    .width = &w,
+                    .height = &h
+                },
+                .prev_line = state->prev_line,
+                .current_line = state->current_line,
+                .next_line = state->next_line,
+                .position_us = position_us
+            };
+            render_karaoke_multiline(&params);
         } else {
             // Fallback to single-line karaoke
-            render_karaoke_segments(cairo, state->font, scale,
-                                   state->current_line->segments,
-                                   state->foreground, position_us, &w, &h);
+            struct karaoke_params params = {
+                .base = {
+                    .cairo = cairo,
+                    .font = state->font,
+                    .scale = scale,
+                    .foreground = state->foreground,
+                    .width = &w,
+                    .height = &h
+                },
+                .segments = state->current_line->segments,
+                .position_us = position_us
+            };
+            render_karaoke_segments(&params);
         }
 
         *width = w;
@@ -103,9 +124,18 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
 
             if (has_seg_trans) {
                 // SRT with <sub> tags - use segment-level translation
-                render_ruby_segments(cairo, state->font, scale,
-                                    state->current_line->ruby_segments,
-                                    state->foreground, &w, &h);
+                struct ruby_params params = {
+                    .base = {
+                        .cairo = cairo,
+                        .font = state->font,
+                        .scale = scale,
+                        .foreground = state->foreground,
+                        .width = &w,
+                        .height = &h
+                    },
+                    .segments = state->current_line->ruby_segments
+                };
+                render_ruby_segments(&params);
             } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->current_line->translation) {
                 // LRC or SRT without <sub> - use line-level translation
                 // If translation is still in progress, show icon based on cache status
@@ -132,12 +162,20 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                             "%s", state->current_line->translation);
                 }
 
-                render_ruby_segments_with_translation(cairo, state->font, scale,
-                                                     state->current_line->ruby_segments,
-                                                     state->foreground,
-                                                     g_config.translation.translation_display,
-                                                     translation_text,
-                                                     &w, &h);
+                struct translation_params params = {
+                    .base = {
+                        .cairo = cairo,
+                        .font = state->font,
+                        .scale = scale,
+                        .foreground = state->foreground,
+                        .width = &w,
+                        .height = &h
+                    },
+                    .segments = state->current_line->ruby_segments,
+                    .translation_mode = g_config.translation.translation_display,
+                    .translation = translation_text
+                };
+                render_ruby_segments_with_translation(&params);
             } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->lyrics.translation_in_progress) {
                 // Translation in progress - show enhanced progress
                 // T: translation_current, C: current line, A: translation_total
@@ -163,17 +201,34 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                             R, T, C);
                 }
 
-                render_ruby_segments_with_translation(cairo, state->font, scale,
-                                                     state->current_line->ruby_segments,
-                                                     state->foreground,
-                                                     g_config.translation.translation_display,
-                                                     progress_text,
-                                                     &w, &h);
+                struct translation_params params = {
+                    .base = {
+                        .cairo = cairo,
+                        .font = state->font,
+                        .scale = scale,
+                        .foreground = state->foreground,
+                        .width = &w,
+                        .height = &h
+                    },
+                    .segments = state->current_line->ruby_segments,
+                    .translation_mode = g_config.translation.translation_display,
+                    .translation = progress_text
+                };
+                render_ruby_segments_with_translation(&params);
             } else {
                 // No translation
-                render_ruby_segments(cairo, state->font, scale,
-                                    state->current_line->ruby_segments,
-                                    state->foreground, &w, &h);
+                struct ruby_params params = {
+                    .base = {
+                        .cairo = cairo,
+                        .font = state->font,
+                        .scale = scale,
+                        .foreground = state->foreground,
+                        .width = &w,
+                        .height = &h
+                    },
+                    .segments = state->current_line->ruby_segments
+                };
+                render_ruby_segments(&params);
             }
             *width = w;
             *height = h;
@@ -182,16 +237,32 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
             // This shouldn't happen normally (LRCX uses karaoke mode above)
             // But we handle it for completeness
             int w, h;
-            render_word_segments_static(cairo, state->font, scale,
-                                       state->current_line->segments,
-                                       state->foreground, &w, &h);
+            struct word_static_params params = {
+                .base = {
+                    .cairo = cairo,
+                    .font = state->font,
+                    .scale = scale,
+                    .foreground = state->foreground,
+                    .width = &w,
+                    .height = &h
+                },
+                .segments = state->current_line->segments
+            };
+            render_word_segments_static(&params);
             *width = w;
             *height = h;
         } else {
             // No segments - simple text rendering
             int w, h;
-            render_plain_text(cairo, state->font, scale,
-                            text_to_display, state->foreground, &w, &h);
+            struct render_base_params params = {
+                .cairo = cairo,
+                .font = state->font,
+                .scale = scale,
+                .foreground = state->foreground,
+                .width = &w,
+                .height = &h
+            };
+            render_plain_text(&params, text_to_display);
             *width = w;
             *height = h;
         }

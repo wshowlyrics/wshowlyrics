@@ -131,27 +131,21 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
     bool success = false;
 
     // Try LRCX only for .lrcx files
-    if (strcasecmp(ext, ".lrcx") == 0) {
-        if (lrcx_parse_file(path, data)) {
-            log_success("Loaded LRCX file: %s", path);
-            success = true;
-        }
+    if (strcasecmp(ext, ".lrcx") == 0 && lrcx_parse_file(path, data)) {
+        log_success("Loaded LRCX file: %s", path);
+        success = true;
     }
 
     // Try LRC for .lrc files
-    if (strcasecmp(ext, ".lrc") == 0) {
-        if (lrc_parse_file(path, data)) {
-            log_success("Loaded LRC file: %s", path);
-            success = true;
-        }
+    if (strcasecmp(ext, ".lrc") == 0 && lrc_parse_file(path, data)) {
+        log_success("Loaded LRC file: %s", path);
+        success = true;
     }
 
     // Try SRT for .srt and .vtt files
-    if (strcasecmp(ext, ".srt") == 0 || strcasecmp(ext, ".vtt") == 0) {
-        if (srt_parse_file(path, data)) {
-            log_success("Loaded %s file: %s", strcasecmp(ext, ".vtt") == 0 ? "VTT" : "SRT", path);
-            success = true;
-        }
+    if ((strcasecmp(ext, ".srt") == 0 || strcasecmp(ext, ".vtt") == 0) && srt_parse_file(path, data)) {
+        log_success("Loaded %s file: %s", strcasecmp(ext, ".vtt") == 0 ? "VTT" : "SRT", path);
+        success = true;
     }
 
     if (success) {
@@ -387,10 +381,8 @@ static int build_search_directories(const char **search_dirs, int max_dirs,
 
     // Priority 4: ~/.lyrics directory
     const char *home = getenv("HOME");
-    if (home && dir_count < max_dirs) {
-        if (build_path(lyrics_dir_buf, buf_size, "%s/.lyrics", home) >= 0) {
-            search_dirs[dir_count++] = lyrics_dir_buf;
-        }
+    if (home && dir_count < max_dirs && build_path(lyrics_dir_buf, buf_size, "%s/.lyrics", home) >= 0) {
+        search_dirs[dir_count++] = lyrics_dir_buf;
     }
 
     // Priority 5: Home directory
@@ -441,17 +433,15 @@ static bool try_title_patterns(const char *dir, const char *title_safe,
 
         if (artist_safe) {
             // Pattern 2: Artist - Title.ext
-            if (build_path(path, sizeof(path), "%s/%s - %s.%s", dir, artist_safe, title_safe, ext) >= 0) {
-                if (try_load_lyrics_file(path, data)) {
-                    return true;
-                }
+            if (build_path(path, sizeof(path), "%s/%s - %s.%s", dir, artist_safe, title_safe, ext) >= 0 &&
+                try_load_lyrics_file(path, data)) {
+                return true;
             }
 
             // Pattern 3: Artist/Title.ext
-            if (build_path(path, sizeof(path), "%s/%s/%s.%s", dir, artist_safe, title_safe, ext) >= 0) {
-                if (try_load_lyrics_file(path, data)) {
-                    return true;
-                }
+            if (build_path(path, sizeof(path), "%s/%s/%s.%s", dir, artist_safe, title_safe, ext) >= 0 &&
+                try_load_lyrics_file(path, data)) {
+                return true;
             }
         }
     }

@@ -1,5 +1,6 @@
 #include "ruby_render.h"
 #include "render_common.h"
+#include "render_params.h"
 #include "../pango/pango_utils.h"
 #include "../../constants.h"
 #include "../../user_experience/config/config.h"
@@ -24,14 +25,21 @@ int calculate_max_ruby_height_ruby(cairo_t *cairo, const char *font,
     return max_ruby_height;
 }
 
-void render_ruby_segments(cairo_t *cairo, const char *font, int scale,
-                         struct ruby_segment *segments, uint32_t foreground,
-                         int *width, int *height) {
-    if (!segments) {
-        *width = 0;
-        *height = 0;
+void render_ruby_segments(const struct ruby_params *params) {
+    if (!params || !params->segments) {
+        if (params && params->base.width && params->base.height) {
+            *params->base.width = 0;
+            *params->base.height = 0;
+        }
         return;
     }
+
+    // Extract parameters for readability
+    cairo_t *cairo = params->base.cairo;
+    const char *font = params->base.font;
+    int scale = params->base.scale;
+    struct ruby_segment *segments = params->segments;
+    uint32_t foreground = params->base.foreground;
 
     cairo_set_source_u32(cairo, foreground);
 
@@ -122,8 +130,8 @@ void render_ruby_segments(cairo_t *cairo, const char *font, int scale,
         total_height -= max_ruby_height;
     }
 
-    *width = total_width;
-    *height = total_height;
+    *params->base.width = total_width;
+    *params->base.height = total_height;
 }
 
 bool has_segment_translation(struct ruby_segment *segments) {
@@ -143,15 +151,23 @@ bool has_segment_translation(struct ruby_segment *segments) {
     return false;
 }
 
-void render_ruby_segments_with_translation(cairo_t *cairo, const char *font, int scale,
-                                          struct ruby_segment *segments, uint32_t foreground,
-                                          const char *translation_mode, const char *translation,
-                                          int *width, int *height) {
-    if (!segments) {
-        *width = 0;
-        *height = 0;
+void render_ruby_segments_with_translation(const struct translation_params *params) {
+    if (!params || !params->segments) {
+        if (params && params->base.width && params->base.height) {
+            *params->base.width = 0;
+            *params->base.height = 0;
+        }
         return;
     }
+
+    // Extract parameters for readability
+    cairo_t *cairo = params->base.cairo;
+    const char *font = params->base.font;
+    int scale = params->base.scale;
+    struct ruby_segment *segments = params->segments;
+    uint32_t foreground = params->base.foreground;
+    const char *translation_mode = params->translation_mode;
+    const char *translation = params->translation;
 
     // Determine what to render
     bool show_original = strcmp(translation_mode, "translation_only") != 0;
@@ -250,6 +266,6 @@ void render_ruby_segments_with_translation(cairo_t *cairo, const char *font, int
         total_height = translation_h;
     }
 
-    *width = total_width;
-    *height = total_height;
+    *params->base.width = total_width;
+    *params->base.height = total_height;
 }

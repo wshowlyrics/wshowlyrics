@@ -377,16 +377,57 @@ void render_word(struct render_params *params);
 - [ ] 공통 로직 translator_common.c로 추출 (선택사항, Phase 6에서 고려)
 - [x] 빌드 검증 완료
 
-### Phase 5: Rendering 파라미터 리팩토링
-**예상**: 2-3시간
-- [ ] render_params.h 구조체 정의
-- [ ] word_render.c, ruby_render.c, render_common.c 적용
+### Phase 5: Rendering 파라미터 리팩토링 ✅
+**예상**: 2-3시간 → **실제**: 1시간 ✅
+- [x] render_params.h 구조체 정의
+  - struct render_base_params (모든 render 함수 공통 파라미터)
+  - struct karaoke_params (timing + segments)
+  - struct multiline_params (3-line LRCX 렌더링)
+  - struct translation_params (번역 렌더링)
+  - struct word_static_params (정적 word segment 렌더링)
+  - struct ruby_params (ruby segment 렌더링)
+  - struct segment_params (segment 단위 렌더링)
+- [x] word_render.c 리팩토링
+  - render_karaoke_multiline: 10 parameters → 1 struct (90% 감소)
+  - render_karaoke_segments: 8 parameters → 1 struct (87.5% 감소)
+  - render_word_segments_static: 7 parameters → 1 struct (85.7% 감소)
+- [x] ruby_render.c 리팩토링
+  - render_ruby_segments_with_translation: 9 parameters → 1 struct (88.9% 감소)
+  - render_ruby_segments: 7 parameters → 1 struct (85.7% 감소)
+- [x] render_common.c 리팩토링
+  - render_segment_with_ruby: 8 parameters → 1 struct + 2 text params (62.5% 감소)
+  - render_segment_plain: 7 parameters → 1 struct + 1 text param (71.4% 감소)
+  - render_plain_text: 7 parameters → 1 struct + 1 text param (71.4% 감소)
+- [x] 헤더 파일 업데이트 (word_render.h, ruby_render.h, render_common.h)
+- [x] rendering_manager.c 적용 (모든 render 함수 호출 부분 struct 전환)
+- [x] 빌드 검증 완료
 
-### Phase 6: 코드 정리
-**예상**: 2-4시간
-- [ ] 사용되지 않는 파라미터/변수 제거
-- [ ] 병합 가능한 if문 통합 (9개)
-- [ ] 기타 MAJOR 이슈 해결
+### Phase 6: 코드 정리 ✅
+**예상**: 2-4시간 → **실제**: 1시간 ✅
+- [x] **사용되지 않는 파라미터 제거 (3개)**
+  - shm.c:61 - wl_buffer (Wayland callback, `(void)wl_buffer;` 추가)
+  - file_monitor.c:44, 49 - path (콜백 시그니처, `(void)path;` 추가)
+  - parser_utils.c:229 - text_start (파라미터 제거 + 호출부 2곳 수정)
+- [x] **사용되지 않는 변수 제거 (3개)**
+  - config.c:1011 - `offset += written;` 제거
+  - srt_parser.c:214 - `next_line = &new_line->next;` 제거
+  - parser_utils.c:582 - `next_seg = &seg->next;` 제거
+- [x] **병합 가능한 if문 통합 (15개)**
+  - lyrics_manager.c:35 - 확장자 체크 (1개)
+  - lyrics_manager.c:268-270 - SRT/VTT 타임스탬프 (3중 중첩 → 1개로 병합)
+  - lyrics_provider.c:135, 143, 151 - 포맷별 파싱 (3개)
+  - lyrics_provider.c:391 - 디렉토리 경로 구성 (1개)
+  - lyrics_provider.c:445, 452 - 가사 파일 로드 시도 (2개)
+  - lrcx_parser.c:143 - 전체 텍스트 추가 (1개)
+  - translator_common.c:295 - 번역 재검증 범위 (1개)
+  - main.c:127 - MD5 체크섬 계산 (1개)
+  - main.c:339 - Wayland 이벤트 디스패치 (1개)
+  - srt_parser.c:171 - SRT 타임스탬프 파싱 (1개)
+  - config.c:683 - 현재 디렉토리 체크 (1개)
+  - config.c:902 - 설정 키 검증 (1개)
+- [x] **중첩 삼항 연산자 개선 (1개)**
+  - word_render.c:31 - unfill_end 계산을 명시적 if-else로 변환
+- [x] **빌드 검증 완료** (12개 파일 컴파일 성공)
 
 ## 테스트 전략
 
@@ -451,7 +492,39 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ## 상태
 
 - **생성일**: 2025-12-19
-- **현재 Phase**: 미시작
+- **현재 Phase**: Phase 6 완료 ✅
+- **완료 Phases**: 1, 2, 3, 4, 5, 6
 - **우선순위**: High (코드 품질 및 보안)
 - **SonarCloud 현재 등급**: (확인 필요)
 - **목표 등급**: A
+
+## Phase 6 완료 요약
+
+### 수정된 파일 (12개)
+1. src/utils/shm/shm.c
+2. src/monitor/file_monitor.c
+3. src/parser/utils/parser_utils.c
+4. src/user_experience/config/config.c
+5. src/parser/srt/srt_parser.c
+6. src/lyrics/lyrics_manager.c
+7. src/provider/lyrics/lyrics_provider.c
+8. src/parser/lrc/lrcx_parser.c
+9. src/translator/common/translator_common.c
+10. src/main.c
+11. src/utils/render/word_render.c
+
+### 총 수정 개수
+- 사용되지 않는 파라미터: 3개 수정
+- 사용되지 않는 변수: 3개 제거
+- 병합 가능한 if문: 15개 병합
+- 중첩 삼항 연산자: 1개 개선
+- **총 22개 MAJOR 이슈 해결**
+
+### 보류된 항목 (2개)
+- shm.c:137 - 병합하면 의미 변경 가능성 (명확성 우선)
+- lang_detect.c:12 - 조건부 #include 위치 (복잡도 고려)
+
+### 예상 SonarCloud 개선
+- MAJOR 이슈 22개 해결
+- 코드 가독성 및 유지보수성 향상
+- 복잡도 감소 및 명확성 개선
