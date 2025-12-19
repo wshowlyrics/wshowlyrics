@@ -114,4 +114,123 @@ void translator_rate_limit_delay(int delay_ms);
 void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_ms,
                                         int64_t track_length_us);
 
+// --- Common CURL and Threading Utilities ---
+
+/**
+ * Common CURL response buffer structure.
+ * Used by all translator implementations to collect API responses.
+ */
+struct translator_curl_response {
+    char *data;
+    size_t size;
+};
+
+/**
+ * CURL write callback for collecting API responses.
+ * Compatible with CURLOPT_WRITEFUNCTION.
+ *
+ * @param contents Response data chunk
+ * @param size Size of each element
+ * @param nmemb Number of elements
+ * @param userp Pointer to translator_curl_response structure
+ * @return Number of bytes processed
+ */
+size_t translator_curl_write_callback(void *contents, size_t size, size_t nmemb, void *userp);
+
+/**
+ * Initialize translator CURL response buffer.
+ *
+ * @param response Response buffer to initialize
+ */
+void translator_curl_response_init(struct translator_curl_response *response);
+
+/**
+ * Free translator CURL response buffer.
+ *
+ * @param response Response buffer to free
+ */
+void translator_curl_response_free(struct translator_curl_response *response);
+
+/**
+ * Function pointer type for single line translation.
+ * Each translator provides its own API-specific implementation.
+ *
+ * @param text Text to translate (ruby notation already stripped)
+ * @param target_lang Target language code
+ * @param api_key API key for authentication
+ * @param model_name Model name (may be NULL for some providers)
+ * @return Translated text (caller must free), or NULL on error
+ */
+typedef char* (*translator_line_fn)(const char *text, const char *target_lang,
+                                     const char *api_key, const char *model_name);
+
+/**
+ * Thread arguments for async translation.
+ * Used by all translator implementations.
+ */
+struct translator_thread_args {
+    struct lyrics_data *data;
+    char *target_lang;
+    char *api_key;
+    char *model_name;       // Optional (NULL for DeepL)
+    char *cache_path;
+    int64_t track_length_us;
+    const char *provider_name;  // "claude", "openai", "gemini", "deepl"
+    translator_line_fn translate_line_fn;  // API-specific translation function
+};
+
+/**
+ * Handle cache loading and validation (common logic).
+ * Returns true if translation should continue, false if already complete.
+ *
+ * @param args Thread arguments with cache path
+ * @param data Lyrics data to populate
+ * @param translatable_count Total number of translatable lines
+ * @param already_translated Output: number of already translated lines
+ * @return true to continue translation, false if complete
+ */
+bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
+                                          struct lyrics_data *data,
+                                          int translatable_count,
+                                          int *already_translated);
+
+/**
+ * Process single line translation with all validation steps (common logic).
+ * Returns true to continue iteration, false to break.
+ *
+ * @param line Lyrics line to translate
+ * @param args Thread arguments with translation function
+ * @param data Lyrics data for cancellation check
+ * @param current Current translation counter (input/output)
+ * @param translatable_count Total number of translatable lines
+ * @return true to continue, false to break
+ */
+bool translator_process_line_translation_ex(struct lyrics_line *line,
+                                              struct translator_thread_args *args,
+                                              struct lyrics_data *data,
+                                              int *current,
+                                              int translatable_count);
+
+/**
+ * Save translation to cache with provider name in logs (common logic).
+ *
+ * @param cache_path Path to cache file
+ * @param data Lyrics data with translations
+ * @param target_lang Target language code
+ * @param provider_name Provider name for logging
+ */
+void translator_save_to_cache_ex(const char *cache_path,
+                                   struct lyrics_data *data,
+                                   const char *target_lang,
+                                   const char *provider_name);
+
+/**
+ * Async translation thread worker (common logic).
+ * Calls provider-specific translation function via callback.
+ *
+ * @param arg Pointer to translator_thread_args
+ * @return NULL
+ */
+void* translator_async_worker(void *arg);
+
 #endif // TRANSLATOR_COMMON_H

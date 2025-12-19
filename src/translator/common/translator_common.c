@@ -1,6 +1,7 @@
 #include "translator_common.h"
 #include "../../constants.h"
 #include "../../utils/lang_detect/lang_detect.h"
+#include "../../utils/render/render_common.h"
 #include "../../user_experience/config/config.h"
 #include <json-c/json.h>
 #include <stdio.h>
@@ -388,4 +389,230 @@ void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_
                      required_rate_ms);
         }
     }
+}
+
+// --- Common CURL and Threading Utilities Implementation ---
+
+size_t translator_curl_write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;
+    struct translator_curl_response *response = (struct translator_curl_response *)userp;
+
+    char *ptr = realloc(response->data, response->size + realsize + 1);
+    if (!ptr) {
+        log_error("translator: Memory allocation failed in CURL callback");
+        return 0;
+    }
+
+    response->data = ptr;
+    memcpy(&(response->data[response->size]), contents, realsize);
+    response->size += realsize;
+    response->data[response->size] = 0;
+
+    return realsize;
+}
+
+void translator_curl_response_init(struct translator_curl_response *response) {
+    if (response) {
+        response->data = NULL;
+        response->size = 0;
+    }
+}
+
+void translator_curl_response_free(struct translator_curl_response *response) {
+    if (response && response->data) {
+        free(response->data);
+        response->data = NULL;
+        response->size = 0;
+    }
+}
+
+bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
+                                          struct lyrics_data *data,
+                                          int translatable_count,
+                                          int *already_translated) {
+    bool cache_loaded = translator_load_from_cache(args->cache_path, data);
+
+    if (!cache_loaded) {
+        data->translation_current = 0;
+        log_info("%s: Starting translation of %d lines",
+                 args->provider_name, translatable_count);
+        return true;  // Continue translation
+    }
+
+    // Cache loaded - check if complete
+    if (translator_check_cache_complete(data, translatable_count, already_translated)) {
+        log_success("Found cached translation: %s", args->cache_path);
+        log_success("%s: Loaded complete translation from cache (%d lines)",
+                   args->provider_name, *already_translated);
+        data->translation_current = *already_translated;
+        data->translation_in_progress = false;
+        return false;  // Translation complete
+    }
+
+    // Partial cache - continue translation
+    struct config *cfg = config_get();
+    int revalidate_count = cfg->translation.revalidate_count;
+    translator_prepare_cache_resume(data, already_translated, revalidate_count);
+    log_info("Found cached translation: %s", args->cache_path);
+    log_info("%s: Loaded partial cache (%d/%d), re-validating last %d lines",
+            args->provider_name, *already_translated, translatable_count, revalidate_count);
+    data->translation_current = *already_translated;
+    return true;  // Continue translation
+}
+
+bool translator_process_line_translation_ex(struct lyrics_line *line,
+                                              struct translator_thread_args *args,
+                                              struct lyrics_data *data,
+                                              int *current,
+                                              int translatable_count) {
+    // Check cancellation
+    if (data->translation_should_cancel) {
+        log_info("%s: Translation cancelled (%d/%d completed)",
+                 args->provider_name, *current, translatable_count);
+        return false;  // Break
+    }
+
+    // Skip empty lines
+    if (!line->text || strlen(line->text) == 0) {
+        return true;  // Continue
+    }
+
+    // Skip already translated lines
+    if (line->translation && strlen(line->translation) > 0) {
+        return true;  // Continue
+    }
+
+    // Update counter
+    (*current)++;
+    data->translation_current = *current;
+
+    // Strip ruby notation
+    char *stripped = strip_ruby_notation(line->text);
+    if (!stripped || stripped[0] == '\0') {
+        free(stripped);
+        return true;  // Continue
+    }
+
+    // Check if already in target language
+    char *skipped_translation = NULL;
+    if (translator_should_skip_translation(stripped, args->target_lang, &skipped_translation)) {
+        line->translation = skipped_translation;
+        log_info("%s: [%d/%d] Already in target language: %s",
+               args->provider_name, *current, translatable_count, stripped);
+        free(stripped);
+        return true;  // Continue
+    }
+
+    // Translate using provider-specific function
+    char *translation = args->translate_line_fn(stripped, args->target_lang,
+                                                args->api_key, args->model_name);
+    if (translation) {
+        // Language validation
+        if (is_same_language(stripped, translation)) {
+            log_warn("%s: [%d/%d] Skipped (same language after translation) - API cost wasted",
+                   args->provider_name, *current, translatable_count);
+            free(translation);
+            free(line->translation);
+            line->translation = NULL;
+        } else {
+            free(line->translation);
+            line->translation = translation;
+            log_info("%s: [%d/%d] Translated: %s",
+                   args->provider_name, *current, translatable_count, translation);
+        }
+    } else {
+        log_warn("%s: [%d/%d] Translation failed",
+               args->provider_name, *current, translatable_count);
+    }
+
+    free(stripped);
+
+    return true;  // Continue
+}
+
+void translator_save_to_cache_ex(const char *cache_path,
+                                   struct lyrics_data *data,
+                                   const char *target_lang,
+                                   const char *provider_name) {
+    struct config *cfg = config_get();
+    float cache_threshold = config_get_cache_threshold(cfg->translation.cache_policy);
+    float completion_ratio = (float)data->translation_current / (float)data->translation_total;
+
+    if (data->translation_current == data->translation_total) {
+        translator_save_to_cache(cache_path, data, target_lang);
+        log_success("%s: Translation completed", provider_name);
+        return;
+    }
+
+    if (completion_ratio >= cache_threshold) {
+        translator_save_to_cache(cache_path, data, target_lang);
+        log_warn("%s: Translation incomplete but cached (%d/%d, %.0f%%)",
+                 provider_name, data->translation_current, data->translation_total,
+                 completion_ratio * 100);
+        return;
+    }
+
+    // Below threshold - delete cache
+    log_warn("%s: Translation incomplete (%d/%d, %.0f%%), not cached (threshold: %.0f%%)",
+             provider_name, data->translation_current, data->translation_total,
+             completion_ratio * 100, cache_threshold * 100);
+    unlink(cache_path);
+}
+
+void* translator_async_worker(void *arg) {
+    struct translator_thread_args *args = (struct translator_thread_args *)arg;
+    struct lyrics_data *data = args->data;
+
+    // Count translatable lines
+    int translatable_count = translator_count_translatable_lines(data);
+    data->translation_total = translatable_count;
+    data->translation_in_progress = true;
+
+    // Check if translation can complete before song ends
+    struct config *cfg_time = config_get();
+    translator_check_time_feasibility(data, cfg_time->translation.rate_limit_ms,
+                                       args->track_length_us);
+
+    // Try loading from cache
+    int already_translated = 0;
+    if (!translator_handle_cache_loading_ex(args, data, translatable_count, &already_translated)) {
+        // Translation already complete from cache
+        free(args->target_lang);
+        free(args->api_key);
+        free(args->model_name);
+        free(args->cache_path);
+        free(args);
+        return NULL;
+    }
+
+    // Translate each line
+    struct lyrics_line *line = data->lines;
+    int current = already_translated;
+    while (line) {
+        if (!translator_process_line_translation_ex(line, args, data, &current, translatable_count)) {
+            break;  // Cancelled
+        }
+
+        // Rate limiting
+        if (line->next) {
+            struct config *cfg = config_get();
+            translator_rate_limit_delay(cfg->translation.rate_limit_ms);
+        }
+
+        line = line->next;
+    }
+
+    // Save to cache
+    translator_save_to_cache_ex(args->cache_path, data, args->target_lang,
+                                  args->provider_name);
+
+    data->translation_in_progress = false;
+
+    // Free thread args
+    free(args->target_lang);
+    free(args->api_key);
+    free(args->model_name);
+    free(args->cache_path);
+    free(args);
+    return NULL;
 }
