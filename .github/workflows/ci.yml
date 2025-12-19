@@ -27,12 +27,14 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-latest
+            container: archlinux:latest
           - arch: aarch64
             runner: ubuntu-24.04-arm
+            container: menci/archlinuxarm:latest
     runs-on: ${{ matrix.runner }}
     name: Build and Test (${{ matrix.arch }})
     container:
-      image: archlinux:latest
+      image: ${{ matrix.container }}
 
     steps:
     - name: Checkout code
