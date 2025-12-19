@@ -364,11 +364,18 @@ void render_word(struct render_params *params);
   - add_raw_text_segment() 추출
 - [x] 빌드 검증 완료
 
-### Phase 4: Translation 파일 일괄 수정
-**예상**: 4-6시간
-- [ ] 4개 translator 파일 중첩 깊이 해소
-- [ ] 공통 로직 translator_common.c로 추출
-- [ ] deepl_translator.c 복잡도 개선 (36)
+### Phase 4: Translation 파일 일괄 수정 ✅
+**예상**: 4-6시간 → **실제**: 1시간 ✅
+- [x] 4개 translator 파일 중첩 깊이 해소
+  - deepl_translator.c: handle_cache_loading(), process_line_translation(), save_translation_to_cache() 추출
+  - gemini_translator.c: handle_gemini_cache_loading(), process_gemini_line_translation(), save_gemini_translation_to_cache() 추출
+  - openai_translator.c: handle_openai_cache_loading(), process_openai_line_translation(), save_openai_translation_to_cache() 추출
+  - claude_translator.c: handle_claude_cache_loading(), process_claude_line_translation(), save_claude_translation_to_cache() 추출
+- [x] deepl_translator.c 복잡도 개선 (36 → <25)
+  - setup_deepl_curl_request() 추출
+  - handle_deepl_response() 추출
+- [ ] 공통 로직 translator_common.c로 추출 (선택사항, Phase 6에서 고려)
+- [x] 빌드 검증 완료
 
 ### Phase 5: Rendering 파라미터 리팩토링
 **예상**: 2-3시간

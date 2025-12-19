@@ -240,11 +240,89 @@ static bool parse_and_populate_translations(struct curl_memory_buffer *response,
 }
 #endif
 
+// Setup CURL request for DeepL API
+// Returns true on success, false on failure
+static bool setup_deepl_curl_request(CURL **curl_out,
+                                      struct curl_slist **headers_out,
+                                      const char *endpoint,
+                                      const char *api_key,
+                                      const char *request_body,
+                                      struct curl_memory_buffer *response) {
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        return false;
+    }
+
+    // Enforce TLS 1.2 or higher
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+
+    // Build headers
+    struct curl_slist *headers = NULL;
+    char auth_header[512];
+    snprintf(auth_header, sizeof(auth_header),
+             "Authorization: DeepL-Auth-Key %s", api_key);
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, auth_header);
+
+    // Configure request
+    curl_easy_setopt(curl, CURLOPT_URL, endpoint);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    *curl_out = curl;
+    *headers_out = headers;
+    return true;
+}
+
+// Handle DeepL API response and errors
+// Returns: 0 = success, 1 = retry, -1 = fatal error (no retry)
+static int handle_deepl_response(CURLcode res, long http_code,
+                                  struct curl_memory_buffer *response,
+                                  char **translation_out,
+                                  int attempt, int max_retries) {
+    if (res == CURLE_OK && http_code == HTTP_OK && response->data) {
+        // Success - parse response
+        char *raw_translation = json_extract_string_from(response->data, "text", response->data);
+        if (raw_translation) {
+            *translation_out = translator_extract_last_line(raw_translation);
+            free(raw_translation);
+        }
+        return 0;  // Success
+    }
+
+    if (http_code == HTTP_UNAUTHORIZED || http_code == 403) {
+        // Authentication error - don't retry
+        log_error("deepl_translator: Authentication error (HTTP %ld)", http_code);
+        return -1;  // Fatal error
+    }
+
+    // Temporary error - retry
+    int retry_delay_ms = 5000 * attempt;  // Exponential backoff
+    log_warn("deepl_translator: HTTP error %ld, retrying in %dms (attempt %d/%d)",
+            http_code, retry_delay_ms, attempt, max_retries);
+
+    if (attempt < max_retries) {
+        struct timespec delay = {
+            .tv_sec = retry_delay_ms / 1000,
+            .tv_nsec = (retry_delay_ms % 1000) * 1000000L
+        };
+        nanosleep(&delay, NULL);
+    }
+
+    return 1;  // Retry
+}
+
 // Translate a single line (for individual requests)
 static char* translate_single_line(const char *text, const char *target_lang, const char *api_key) {
-    if (!text || !target_lang || !api_key) return NULL;
+    if (!text || !target_lang || !api_key) {
+        return NULL;
+    }
 
-    // Get retry settings from config
     struct config *cfg = config_get();
     const int max_retries = cfg->translation.max_retries;
 
@@ -254,45 +332,32 @@ static char* translate_single_line(const char *text, const char *target_lang, co
     while (attempt < max_retries && !translation) {
         attempt++;
 
-        // Build JSON request for single line
+        // Build JSON request
         char request_body[4096];
         char *escaped = json_escape_string(text);
-        if (!escaped) return NULL;
+        if (!escaped) {
+            return NULL;
+        }
 
         snprintf(request_body, sizeof(request_body),
                  "{\"text\":[\"%s\"],\"target_lang\":\"%s\"}",
                  escaped, target_lang);
         free(escaped);
 
-        // Get API endpoint
         const char *endpoint = get_deepl_endpoint(api_key);
 
-        // Perform CURL request
+        // Setup CURL request using helper
         struct curl_memory_buffer response;
         curl_memory_buffer_init(&response);
 
-        CURL *curl = curl_easy_init();
-        if (!curl) return NULL;
-
-        // Enforce TLS 1.2 or higher for security
-        curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
-
+        CURL *curl = NULL;
         struct curl_slist *headers = NULL;
-        char auth_header[512];
-        snprintf(auth_header, sizeof(auth_header),
-                 "Authorization: DeepL-Auth-Key %s", api_key);
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-        headers = curl_slist_append(headers, auth_header);
+        if (!setup_deepl_curl_request(&curl, &headers, endpoint, api_key,
+                                       request_body, &response)) {
+            return NULL;
+        }
 
-        curl_easy_setopt(curl, CURLOPT_URL, endpoint);
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
+        // Perform request
         CURLcode res = curl_easy_perform(curl);
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
@@ -300,49 +365,155 @@ static char* translate_single_line(const char *text, const char *target_lang, co
         curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
 
-        if (res == CURLE_OK && http_code == HTTP_OK && response.data) {
-            // Success - parse response
-            char *raw_translation = json_extract_string_from(response.data, "text", response.data);
-            if (raw_translation) {
-                translation = translator_extract_last_line(raw_translation);
-                free(raw_translation);
-            }
-            curl_memory_buffer_free(&response);
-            break;
-        } else if (http_code == HTTP_UNAUTHORIZED || http_code == 403) {
-            // Authentication/permission error - don't retry
-            log_error("deepl_translator: Authentication error (HTTP %ld)", http_code);
-            curl_memory_buffer_free(&response);
-            return NULL;
-        } else {
-            // Temporary error - retry with delay
-            int retry_delay_ms = 5000 * attempt; // Exponential backoff
+        // Handle response using helper
+        int result = handle_deepl_response(res, http_code, &response,
+                                            &translation, attempt, max_retries);
+        curl_memory_buffer_free(&response);
 
-            log_warn("deepl_translator: HTTP error %ld, retrying in %dms (attempt %d/%d)",
-                    http_code, retry_delay_ms, attempt, max_retries);
-
-            curl_memory_buffer_free(&response);
-
-            if (attempt < max_retries) {
-                struct timespec delay = {
-                    .tv_sec = retry_delay_ms / 1000,
-                    .tv_nsec = (retry_delay_ms % 1000) * 1000000L
-                };
-                nanosleep(&delay, NULL);
-            }
+        if (result == 0) {
+            break;  // Success
+        } else if (result == -1) {
+            return NULL;  // Fatal error
         }
+        // result == 1: retry
     }
 
     return translation;
+}
+
+// Handle cache loading and validation
+// Returns true if translation should continue, false if already complete
+static bool handle_cache_loading(struct translation_thread_args *args,
+                                  struct lyrics_data *data,
+                                  int translatable_count,
+                                  int *already_translated) {
+    bool cache_loaded = translator_load_from_cache(args->cache_path, data);
+
+    if (!cache_loaded) {
+        data->translation_current = 0;
+        log_info("deepl_translator: Starting translation of %d lines", translatable_count);
+        return true;  // Continue translation
+    }
+
+    // Cache loaded - check if complete
+    if (translator_check_cache_complete(data, translatable_count, already_translated)) {
+        log_success("deepl_translator: Loaded complete translation from cache (%d lines)",
+                   *already_translated);
+        data->translation_current = *already_translated;
+        data->translation_in_progress = false;
+        return false;  // Translation complete
+    }
+
+    // Partial cache - continue translation
+    struct config *cfg = config_get();
+    int revalidate_count = cfg->translation.revalidate_count;
+    translator_prepare_cache_resume(data, already_translated, revalidate_count);
+    log_info("deepl_translator: Loaded partial cache (%d/%d), re-validating last %d lines",
+            *already_translated, translatable_count, revalidate_count);
+    data->translation_current = *already_translated;
+    return true;  // Continue translation
+}
+
+// Process single line translation with all validation steps
+// Returns true to continue iteration, false to break
+static bool process_line_translation(struct lyrics_line *line,
+                                      struct translation_thread_args *args,
+                                      struct lyrics_data *data,
+                                      int *current,
+                                      int translatable_count) {
+    // Check cancellation
+    if (data->translation_should_cancel) {
+        log_info("deepl_translator: Translation cancelled (%d/%d completed)",
+                 *current, translatable_count);
+        return false;  // Break
+    }
+
+    // Skip empty lines
+    if (!line->text || strlen(line->text) == 0) {
+        return true;  // Continue
+    }
+
+    // Skip already translated lines
+    if (line->translation && strlen(line->translation) > 0) {
+        return true;  // Continue
+    }
+
+    // Strip ruby notation
+    char *stripped = strip_ruby_notation(line->text);
+    if (!stripped || stripped[0] == '\0') {
+        free(stripped);
+        return true;  // Continue
+    }
+
+    // Update counter
+    (*current)++;
+    data->translation_current = *current;
+
+    // Check if already in target language
+    char *skipped_translation = NULL;
+    if (translator_should_skip_translation(stripped, args->target_lang, &skipped_translation)) {
+        line->translation = skipped_translation;
+        log_info("deepl_translator: [%d/%d] Already in target language: %s",
+                 *current, translatable_count, stripped);
+        free(stripped);
+        return true;  // Continue
+    }
+
+    // Translate
+    char *translation = translate_single_line(stripped, args->target_lang, args->api_key);
+
+    if (translation) {
+        // Language validation
+        if (is_same_language(stripped, translation)) {
+            log_warn("deepl_translator: Possible translation failure - same language detected");
+            log_warn("  Original: [%.30s...] → Translation: [%.30s...]",
+                     stripped, translation);
+        }
+
+        line->translation = translation;
+        log_info("deepl_translator: [%d/%d] Translated: %s",
+               *current, translatable_count, translation);
+    } else {
+        log_warn("deepl_translator: [%d/%d] Translation failed",
+               *current, translatable_count);
+    }
+
+    free(stripped);
+
+    return true;  // Continue
+}
+
+// Save translation to cache based on completion ratio and policy
+static void save_translation_to_cache(const char *cache_path,
+                                       struct lyrics_data *data,
+                                       const char *target_lang) {
+    struct config *cfg = config_get();
+    float cache_threshold = config_get_cache_threshold(cfg->translation.cache_policy);
+    float completion_ratio = (float)data->translation_current / (float)data->translation_total;
+
+    if (data->translation_current == data->translation_total) {
+        translator_save_to_cache(cache_path, data, target_lang);
+        log_success("deepl_translator: Translation completed");
+        return;
+    }
+
+    if (completion_ratio >= cache_threshold) {
+        translator_save_to_cache(cache_path, data, target_lang);
+        log_warn("deepl_translator: Translation incomplete but cached (%d/%d, %.0f%%)",
+                 data->translation_current, data->translation_total, completion_ratio * 100);
+        return;
+    }
+
+    // Below threshold - delete cache
+    log_warn("deepl_translator: Translation incomplete (%d/%d, %.0f%%), not cached (threshold: %.0f%%)",
+             data->translation_current, data->translation_total, completion_ratio * 100, cache_threshold * 100);
+    unlink(cache_path);
 }
 
 // Async translation thread function
 static void* translate_lyrics_async(void *arg) {
     struct translation_thread_args *args = (struct translation_thread_args*)arg;
     struct lyrics_data *data = args->data;
-    const char *target_lang = args->target_lang;
-    const char *api_key = args->api_key;
-    const char *cache_path = args->cache_path;
 
     // Count translatable lines
     int translatable_count = translator_count_translatable_lines(data);
@@ -353,125 +524,35 @@ static void* translate_lyrics_async(void *arg) {
     struct config *cfg_check = config_get();
     translator_check_time_feasibility(data, cfg_check->translation.rate_limit_ms, args->track_length_us);
 
-    // Try loading from cache first
+    // Try loading from cache using helper
     int already_translated = 0;
-    bool cache_loaded = translator_load_from_cache(cache_path, data);
-
-    if (cache_loaded) {
-        if (translator_check_cache_complete(data, translatable_count, &already_translated)) {
-            // Cache is complete
-            log_success("deepl_translator: Loaded complete translation from cache (%d lines)",
-                       already_translated);
-            data->translation_current = already_translated;
-            data->translation_in_progress = false;
-            free(args->target_lang);
-            free(args->api_key);
-            free(args->cache_path);
-            free(args);
-            return NULL;
-        } else {
-            // Partial cache - continue translation
-            // Re-validate last N lines to ensure they were fully translated
-            struct config *cfg = config_get();
-            int revalidate_count = cfg->translation.revalidate_count;
-            translator_prepare_cache_resume(data, &already_translated, revalidate_count);
-            log_info("deepl_translator: Loaded partial cache (%d/%d), re-validating last %d lines",
-                    already_translated, translatable_count, revalidate_count);
-            data->translation_current = already_translated;
-        }
-    } else {
-        data->translation_current = 0;
-        log_info("deepl_translator: Starting translation of %d lines", translatable_count);
+    if (!handle_cache_loading(args, data, translatable_count, &already_translated)) {
+        // Translation already complete from cache
+        free(args->target_lang);
+        free(args->api_key);
+        free(args->cache_path);
+        free(args);
+        return NULL;
     }
 
-    // Translate each line (skip already translated lines from cache)
+    // Translate each line using helper
     struct lyrics_line *line = data->lines;
     int current = already_translated;
     while (line) {
-        // Check if translation should be cancelled
-        if (data->translation_should_cancel) {
-            log_info("deepl_translator: Translation cancelled (%d/%d completed)",
-                     current, translatable_count);
-            break;
+        if (!process_line_translation(line, args, data, &current, translatable_count)) {
+            break;  // Cancelled
         }
 
-        if (line->text && strlen(line->text) > 0) {
-            // Skip if already translated from cache
-            if (line->translation && strlen(line->translation) > 0) {
-                line = line->next;
-                continue;
-            }
-
-            // Strip ruby notation
-            char *stripped = strip_ruby_notation(line->text);
-            if (!stripped || stripped[0] == '\0') {
-                free(stripped);
-                line = line->next;
-                continue;
-            }
-
-            // Translate this line
-            current++;
-            data->translation_current = current;
-
-            // Skip if text is already in target language
-            char *skipped_translation = NULL;
-            if (translator_should_skip_translation(stripped, target_lang, &skipped_translation)) {
-                line->translation = skipped_translation;
-                log_info("deepl_translator: [%d/%d] Already in target language: %s",
-                         current, translatable_count, stripped);
-                free(stripped);
-                line = line->next;
-                continue;
-            }
-
-            char *translation = translate_single_line(stripped, target_lang, api_key);
-
-            if (translation) {
-                // Language validation: warn if original and translation are in same language
-                if (is_same_language(stripped, translation)) {
-                    log_warn("deepl_translator: Possible translation failure - same language detected");
-                    log_warn("  Original: [%.30s...] → Translation: [%.30s...]",
-                             stripped, translation);
-                    // Translation is still displayed - user decides
-                }
-
-                line->translation = translation;
-                log_info("deepl_translator: [%d/%d] Translated: %s",
-                       current, translatable_count, translation);
-            } else {
-                log_warn("deepl_translator: [%d/%d] Translation failed",
-                       current, translatable_count);
-            }
-
-            free(stripped);
-
-            // Rate limit delay
-            if (line->next) {
-                translator_rate_limit_delay(RATE_LIMIT_DELAY_MS);
-            }
+        // Rate limit delay
+        if (line->next) {
+            translator_rate_limit_delay(RATE_LIMIT_DELAY_MS);
         }
+
         line = line->next;
     }
 
-    // Save to cache if translation is complete or threshold reached
-    struct config *cfg = config_get();
-    float cache_threshold = config_get_cache_threshold(cfg->translation.cache_policy);
-    float completion_ratio = (float)data->translation_current / (float)data->translation_total;
-
-    if (data->translation_current == data->translation_total) {
-        translator_save_to_cache(cache_path, data, target_lang);
-        log_success("deepl_translator: Translation completed");
-    } else if (completion_ratio >= cache_threshold) {
-        translator_save_to_cache(cache_path, data, target_lang);
-        log_warn("deepl_translator: Translation incomplete but cached (%d/%d, %.0f%%)",
-                 data->translation_current, data->translation_total, completion_ratio * 100);
-    } else {
-        log_warn("deepl_translator: Translation incomplete (%d/%d, %.0f%%), not cached (threshold: %.0f%%)",
-                 data->translation_current, data->translation_total, completion_ratio * 100, cache_threshold * 100);
-        // Delete incomplete cache file if it exists
-        unlink(cache_path);
-    }
+    // Save to cache using helper
+    save_translation_to_cache(args->cache_path, data, args->target_lang);
 
     // Mark translation complete
     data->translation_in_progress = false;
