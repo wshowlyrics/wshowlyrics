@@ -98,7 +98,7 @@ static struct best_match_result find_best_match_in_results(
     const char *response_data, int64_t target_duration_ms) {
 
     struct best_match_result result = {NULL, NULL, INT64_MAX};
-    char *search_pos = (char *)response_data + 1; // Skip opening '['
+    const char *search_pos = response_data + 1; // Skip opening '['
 
     while (search_pos && *search_pos) {
         // Find next object in array
