@@ -42,8 +42,8 @@ jobs:
 
     - name: Install base dependencies
       run: |
-        pacman -Syu --noconfirm
-        pacman -S --noconfirm base-devel git sudo
+        pacman -Syu --noconfirm --disable-sandbox
+        pacman -S --noconfirm --disable-sandbox base-devel git sudo
 
     - name: Build using makepkg (AUR method)
       run: |
