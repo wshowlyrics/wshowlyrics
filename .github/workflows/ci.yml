@@ -43,8 +43,10 @@ jobs:
     - name: Install base dependencies
       run: |
         # Disable sandbox globally for Docker container compatibility
-        echo 'DisableSandbox' >> /etc/pacman.conf
+        sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
         pacman -Syu --noconfirm
+        # Re-add DisableSandbox after pacman upgrade (pacman.conf may be replaced)
+        grep -q '^DisableSandbox' /etc/pacman.conf || sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
         pacman -S --noconfirm base-devel git sudo
 
     - name: Build using makepkg (AUR method)
