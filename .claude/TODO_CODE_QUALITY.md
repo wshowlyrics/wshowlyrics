@@ -1,538 +1,420 @@
 # TODO: SonarCloud Code Quality Improvements
 
-## 개요
+## 현재 상태 (2025-12-19)
 
-SonarCloud에서 감지된 HIGH+ 코드 스멜 개선 작업
-
-### 최신 상태 (2025-12-19 19:40 업데이트) ✅
-- **총 Code Smells**: 172개 (이전: 189개, -17개 개선 / 전체: 247개 → 172개, -75개 개선!)
-- **CRITICAL 이슈**: 24개 (이전: 38개, -14개 개선!)
-- **MAJOR 이슈**: 2개 (이전: 5개, -3개 개선!)
-- **중복률**:
-  - Overall: 6.5%
-  - New Code: 4.95% (목표: ≤3%, 거의 달성!)
-- **전체 등급**: ⭐ **A등급 달성!**
-  - Maintainability: A (1.0)
-  - Reliability: A (1.0)
-  - Security: A (1.0)
+### ✅ 완료된 작업 (Phase 1-7)
+- **Security Hotspots**: 100% Reviewed (107개 전체 처리)
+- **Phase 1-7 완료**: 보안, 복잡도, 파라미터, 중복 제거
+- **총 개선**: 75개 이슈 해결 (247개 → 172개)
+- **전체 등급**: ⭐ A등급 달성 (Maintainability, Reliability, Security)
 - **Bugs**: 0개
 - **Vulnerabilities**: 0개
 
-### Phase 5-7 완료 후 해결된 이슈 ✅
-- ✅ c:S107 (파라미터 과다): 8개 → 0개
-- ✅ c:S1172 (미사용 파라미터): 5개 → 0개
-- ✅ c:S1854 (미사용 변수): 3개 → 0개
-- ✅ c:S1066 (병합 가능 if): 16개 → 0개
-- ✅ c:S3358 (중첩 삼항): 1개 → 0개
-- ✅ **코드 중복 감소** (Phase 7):
-  - translator 파일 중복률 50%+ → 대폭 감소
-  - JSON 파싱 로직 106줄 → 33줄 (-73줄)
-  - 공통 프롬프트/retry 로직 추출 (-60줄)
-  - 총 133줄 중복 코드 제거
-- **총 33+ 이슈 해결**
+### 📊 남은 작업
+- **HIGH Severity**: 57개 (브라우저 확인 기준)
+- **총 예상 시간**: ~16시간 (968분)
 
-## Priority 1: 복잡도 리팩토링 (CRITICAL) ⚠️
+---
 
-### 🔥 최우선: config.c 복잡도 개선
-**파일**: `src/user_experience/config/config.c`
-**이슈**: 3개 (복잡도 129, 84 + 기타)
-**예상 시간**: 6-8시간
+## Phase 8: HIGH Severity 이슈 해결 (57개)
 
-- [ ] **라인 219: 복잡도 129 → 25 이하** (c:S3776)
-  - 현재: 단일 함수에서 모든 설정 섹션 파싱
-  - 목표: 섹션별 함수 분리
-  ```c
-  // Before: parse_config() - 복잡도 129
-  // After:
-  parse_display_section()
-  parse_lyrics_section()
-  parse_translation_section()
-  parse_monitor_section()
-  ```
+### Priority 1: 최우선 복잡도 개선 (3개) 🔥
+**예상 시간**: 3h 36min
 
-- [ ] **라인 824: 복잡도 84 → 25 이하** (c:S3776)
-  - 현재: 단일 함수에서 모든 검증 로직
-  - 목표: 검증 로직 분리 또는 함수 포인터 테이블 사용
-  ```c
-  // Switch-case를 함수 포인터 테이블로 리팩토링
-  typedef bool (*validator_fn)(const char *value);
-  struct {
-      const char *key;
-      validator_fn validate;
-  } validators[] = { ... };
-  ```
+#### 1. main.c:21 - 복잡도 106 → 25 이하
+**이슈 키**: AZsw3M-lHpp0TbwUWQbn
+**Rule**: c:S3776 (Cognitive Complexity)
+**예상 시간**: 1h 26min
 
-- [ ] 라인 910, 660: 병합 가능한 if문 통합 (c:S1066)
-- [ ] 라인 1005: 사용되지 않는 'offset' 변수 제거 (c:S1854)
+**현재 상태**:
+- 단일 main() 함수에서 모든 로직 처리
+- 초기화, 이벤트 루프, 렌더링 혼재
 
-### 🔥 Provider 복잡도 개선
-**파일**: `src/provider/lrclib/lrclib_provider.c`
-**이슈**: 3개 (복잡도 54 + 중첩 깊이 + 중첩 break)
-**예상 시간**: 3-4시간
-
-- [ ] **라인 31: 복잡도 54 → 25 이하** (c:S3776)
-  - 현재: JSON 파싱 + 에러 핸들링 + 데이터 추출이 하나의 함수
-  - 목표: 로직 분리
-  ```c
-  parse_lrclib_response() {
-      json_object *root = parse_json_string(response);
-      if (!root) return NULL;
-
-      return extract_lyrics_data(root); // 별도 함수
-  }
-  ```
-
-- [ ] **라인 139: 중첩 깊이 3단계 초과** (c:S134)
-  - Early return 패턴 적용
-  - Guard clauses로 중첩 제거
-
-- [ ] **라인 122: 중첩 break문 2개 → 1개** (c:S924)
-  - 중첩 루프를 별도 함수로 추출
-  - `goto cleanup` 또는 flag 변수 사용
-
-### 🎯 System Tray 복잡도 개선
-**파일**: `src/user_experience/system_tray/system_tray.c`
-**이슈**: 2개 (복잡도 49 + 병합 가능 if)
-**예상 시간**: 2-3시간
-
-- [ ] **라인 443: 복잡도 49 → 25 이하** (c:S3776)
-  - 앨범 아트 처리 로직 분리
-  - 에러 핸들링을 별도 함수로 추출
-
-- [ ] 라인 408: 병합 가능한 if문 통합 (c:S1066)
-
-### 📝 Parser 복잡도 개선
-**파일**: `src/parser/lrc/lrcx_parser.c`
-**이슈**: 1개 (복잡도 48)
-**예상 시간**: 2-3시간
-
-- [ ] **라인 93: 복잡도 48 → 25 이하** (c:S3776)
-  - LRCX 파싱 로직 단계별 함수 분리
-  - Word segment 파싱을 별도 함수로 추출
-
-## Priority 2: Translation 파일 중첩 깊이 해소 (CRITICAL) 🔴
-
-**공통 패턴**: 모든 translator 파일에서 동일한 중첩 깊이 문제
-**이슈**: 5개 (c:S134)
-**예상 시간**: 4-6시간
-
-### 전략: Early Return 패턴 + 공통 로직 추출
-
-- [ ] **deepl_translator.c**
-  - 라인 340: 복잡도 36 → 25 이하 (c:S3776)
-  - 라인 432: 중첩 깊이 3단계 초과 (c:S134)
-
-- [ ] **gemini_translator.c**
-  - 라인 371: 중첩 깊이 3단계 초과 (c:S134)
-
-- [ ] **openai_translator.c**
-  - 라인 372: 중첩 깊이 3단계 초과 (c:S134)
-
-- [ ] **claude_translator.c**
-  - 라인 361: 중첩 깊이 3단계 초과 (c:S134)
-
-### 리팩토링 방법
+**리팩토링 방법**:
 ```c
-// Before: 중첩된 if문
-if (response) {
-    if (json) {
-        if (content) {
-            // 실제 로직
+// 로직 분리
+initialize_application()
+setup_wayland_and_mpris()
+main_event_loop()
+cleanup_application()
+```
+
+---
+
+#### 2. word_render.c:86 - 복잡도 94 → 25 이하
+**이슈 키**: AZs1J-D1HL_6RtSCbLsS
+**Rule**: c:S3776 (Cognitive Complexity)
+**예상 시간**: 1h 14min
+
+**현재 상태**:
+- 카라오케 렌더링 로직이 단일 함수에 집중
+- 타이밍 계산, 색상 처리, 세그먼트 렌더링 혼재
+
+**리팩토링 방법**:
+```c
+// 기능별 분리
+calculate_segment_timing()
+determine_segment_color()
+render_segment_with_timing()
+handle_unfill_effect()
+```
+
+---
+
+#### 3. lyrics_provider.c:559 - 복잡도 76 → 25 이하
+**이슈 키**: AZsw3M9EHpp0TbwUWQaM
+**Rule**: c:S3776 (Cognitive Complexity)
+**예상 시간**: 56min
+
+**현재 상태**:
+- 로컬 가사 파일 검색 로직이 복잡
+- 11개 경로 순회 + 포맷 체크 혼재
+
+**리팩토링 방법**:
+```c
+// 경로 검색 전략 패턴
+search_in_music_directory()
+search_in_current_directory()
+search_in_standard_locations()
+```
+
+---
+
+### Priority 2: 중간 복잡도 개선 (7개) ⚠️
+**예상 시간**: 2h 49min
+
+#### 4. lrc_parser.c:11 - 복잡도 84 → 25 이하
+**이슈 키**: AZsw3M7UHpp0TbwUWQYD
+**Rule**: c:S3776
+**예상 시간**: 1h 4min
+
+**리팩토링**:
+- LRC 파싱 로직 단계별 분리
+- 타임스탬프 파싱, 가사 추출을 별도 함수로
+
+---
+
+#### 5. rendering_manager.c:43 - 복잡도 56 → 25 이하
+**이슈 키**: AZsw3M-THpp0TbwUWQbc
+**Rule**: c:S3776
+**예상 시간**: 36min
+
+**리팩토링**:
+- 포맷별 렌더링 분기를 Strategy 패턴으로
+- `render_lrcx()`, `render_lrc()`, `render_srt()` 분리
+
+---
+
+#### 6. lyrics_manager.c:250 - 복잡도 50 → 25 이하
+**이슈 키**: AZsw3M-5Hpp0TbwUWQb6
+**Rule**: c:S3776
+**예상 시간**: 30min
+
+---
+
+#### 7. lrcx_parser.c:13 - 복잡도 44 → 25 이하
+**이슈 키**: AZsw3M7KHpp0TbwUWQXx
+**Rule**: c:S3776
+**예상 시간**: 24min
+
+---
+
+#### 8. file_monitor.c:50 - 복잡도 42 → 25 이하
+**이슈 키**: AZsw3M96Hpp0TbwUWQbQ
+**Rule**: c:S3776
+**예상 시간**: 22min
+
+---
+
+#### 9. srt_parser.c:114 - 복잡도 40 → 25 이하
+**이슈 키**: AZsw3M7fHpp0TbwUWQYS
+**Rule**: c:S3776
+**예상 시간**: 20min
+
+---
+
+#### 10. translator_common.c:855 - 복잡도 38 → 25 이하
+**이슈 키**: AZs1aCa59_pDiePoGieh
+**Rule**: c:S3776
+**예상 시간**: 18min
+
+---
+
+### Priority 3: 소규모 복잡도 개선 (13개) 📝
+**예상 시간**: 2h 15min
+
+#### Config.c (4개)
+11. **config.c:697** - 복잡도 36 → 25 (16min) | AZsw3M9THpp0TbwUWQas
+12. **config.c:827** - 복잡도 33 → 25 (13min) | AZsyKnUoJ8Ufg4bNhRkS
+13. **config.c:1059** - 복잡도 28 → 25 (8min) | AZsw3M9THpp0TbwUWQa1
+
+#### Ruby Render (2개)
+14. **ruby_render.c:192** - 복잡도 34 → 25 (14min) | AZs1J-BMHL_6RtSCbLsR
+15. **ruby_render.c:44** - 복잡도 30 → 25 (10min) | AZs1J-BMHL_6RtSCbLsQ
+
+#### Lyrics Manager (1개)
+16. **lyrics_manager.c:54** - 복잡도 33 → 25 (13min) | AZsw3M-5Hpp0TbwUWQb1
+
+#### Parser Utils (3개)
+17. **parser_utils.c:410** - 복잡도 57 → 25 (37min) | AZsw3M7sHpp0TbwUWQYe
+18. **parser_utils.c:291** - 복잡도 28 → 25 (8min) | AZsxJYoWqE2ErzW5x-dz
+
+#### Provider (1개)
+19. **lyrics_provider.c:203** - 복잡도 28 → 25 (8min) | AZsw3M9EHpp0TbwUWQaB
+
+#### Word Render (1개)
+20. **word_render.c:281** - 복잡도 26 → 25 (6min) | AZs1J-D1HL_6RtSCbLsT
+
+#### File Utils (1개)
+21. **file_utils.c:88** - Remove ellipsis notation (30min) | AZsw3M62Hpp0TbwUWQXn
+
+---
+
+### Priority 4: 중첩 깊이 해소 (32개) 🔧
+**예상 시간**: 5h 20min
+
+**Rule**: c:S134 (Nesting Depth > 3)
+**공통 해결 방법**: Early return, Guard clauses
+
+#### Config.c (8개)
+22. Line 374 - AZsw3M9THpp0TbwUWQaU (10min)
+23. Line 649 - AZsw3M9THpp0TbwUWQan (10min)
+24. Line 729 - AZsw3M9THpp0TbwUWQat (10min)
+25. Line 737 - AZsw3M9THpp0TbwUWQau (10min)
+26. Line 841 - AZsw3M9THpp0TbwUWQaw (10min)
+27. Line 865 - AZs1J-IlHL_6RtSCbLsZ (10min)
+28. Line 901 - AZsw3M9THpp0TbwUWQay (10min)
+29. Line 1098 - AZsxJYtZqE2ErzW5x-d4 (10min)
+
+#### LRC Parser (5개)
+30. Line 43 - AZsw3M7UHpp0TbwUWQYE (10min)
+31. Line 52 - AZsw3M7UHpp0TbwUWQYF (10min)
+32. Line 59 - AZsw3M7UHpp0TbwUWQYG (10min)
+33. Line 73 - AZsw3M7UHpp0TbwUWQYH (10min)
+34. Line 130 - AZsw3M7UHpp0TbwUWQYI (10min)
+
+#### LRCX Parser (4개)
+35. Line 49 - AZsw3M7KHpp0TbwUWQXy (10min)
+36. Line 59 - AZsw3M7KHpp0TbwUWQXz (10min)
+37. Line 68 - AZsw3M7KHpp0TbwUWQX0 (10min)
+38. Line 73 - AZsw3M7KHpp0TbwUWQX1 (10min)
+
+#### Parser Utils (4개)
+39. Line 31 - AZsw3M7sHpp0TbwUWQYZ (10min)
+40. Line 62 - AZsw3M7sHpp0TbwUWQYa (10min)
+41. Line 489 - AZsw3M7sHpp0TbwUWQYf (10min)
+42. Line 536 - AZsw3M7sHpp0TbwUWQYg (10min)
+
+#### Main.c (2개)
+43. Line 58 - AZsw3M-lHpp0TbwUWQbo (10min)
+44. Line 355 - AZsw3M-lHpp0TbwUWQbp (10min)
+
+#### Rendering Manager (2개)
+45. Line 136 - AZsw3M-THpp0TbwUWQbd (10min)
+46. Line 180 - AZsw3M-THpp0TbwUWQbe (10min)
+
+#### Lyrics Provider (2개)
+47. Line 597 - AZsw3M9EHpp0TbwUWQaN (10min)
+48. Line 643 - AZsw3M9EHpp0TbwUWQaO (10min)
+
+#### SRT Parser (2개)
+49. Line 156 - AZsw3M7fHpp0TbwUWQYT (10min)
+50. Line 181 - AZsw3M7fHpp0TbwUWQYV (10min)
+
+#### Translator Common (1개)
+51. Line 886 - AZs1aCa59_pDiePoGiei (10min)
+
+#### LRCLib Provider (1개)
+52. Line 120 - AZs08litjzW8D2rZBAU7 (10min)
+
+#### Ruby Render (1개)
+53. Line 243 - AZsw3M5rHpp0TbwUWQWs (10min)
+
+#### Word Render (1개)
+54. Line 183 - AZsw3M6BHpp0TbwUWQW8 (10min)
+
+**리팩토링 패턴**:
+```c
+// Before: 중첩 if
+if (a) {
+    if (b) {
+        if (c) {
+            // logic
         }
     }
 }
 
-// After: Early return + Guard clauses
-if (!response) return false;
-if (!json) {
-    cleanup_response(response);
-    return false;
-}
-if (!content) {
-    cleanup_json(json);
-    cleanup_response(response);
-    return false;
-}
-
-// 실제 로직
+// After: Early return
+if (!a) return;
+if (!b) return;
+if (!c) return;
+// logic
 ```
 
-### 공통 로직 추출
-- [ ] `src/translator/common/translator_common.c`에 공통 함수 추가
-  - `validate_translation_response()`
-  - `parse_api_error()`
-  - `cleanup_translation_resources()`
+---
 
-## Priority 3: 보안 수정 (CRITICAL) 🔒
+### Priority 5: 보안/품질 이슈 (3개) 🔒
+**예상 시간**: 45min
 
-### 🚨 즉시 수정 필요
-**예상 시간**: 2-3시간 → **실제**: 1.5시간 ✅
+#### 55. parser_utils.c:152 - 0바이트 malloc
+**이슈 키**: AZs1J-GZHL_6RtSCbLsX
+**Rule**: c:S5488
+**예상 시간**: 5min
 
-- [x] **system() 호출 제거 - AUR 빌드 땜빵 근본 해결**
-  - **위치**: 3개 translator 파일
-  - **예상 시간**: 30분
-  - **배경**: 커밋 d7b1fa2에서 system() 반환값 체크로 땜빵 처리 (CI 빌드 경고)
-  - **근본 해결**: file_utils.c의 ensure_cache_directories() 사용
-
-  **수정 대상**:
-  - openai_translator.c:495
-  - gemini_translator.c:494
-  - claude_translator.c:484
-
-  ```c
-  // Before: system() 호출 (AUR 빌드 땜빵)
-  if (system("mkdir -p /tmp/wshowlyrics/translated") != 0) {
-      log_warn("translator: Failed to create cache directory");
-  }
-
-  // After: 기존 mkdir_p() 활용
-  // file_utils.h에 ensure_cache_directories() 이미 있음
-  if (!ensure_cache_directories()) {
-      log_error("translator: Failed to create cache directories");
-      return false;
-  }
-  ```
-
-- [x] **pango_utils.c:36 - 포맷 스트링 보안** (c:S5281)
-  ```c
-  // Before: get_text_size(..., const char *fmt, ...)
-  // After: get_text_size(..., const char *text)
-  // 가변 인자 제거로 포맷 스트링 보안 문제 근본 해결
-  ```
-
-- [x] **pango_utils.c:31 - 가변 인자 제거** (c:S923)
-  - 현재: `void create_pango_layout(cairo_t *cr, ...)`
-  - 목표: 고정 파라미터 또는 구조체 사용
-  ```c
-  struct pango_layout_params {
-      const char *text;
-      const char *font_desc;
-      int alignment;
-  };
-  void create_pango_layout(cairo_t *cr, struct pango_layout_params *params);
-  ```
-
-- [x] **parser_utils.c:151 - 0바이트 malloc** (c:S5488)
-  ```c
-  // Before: malloc(size + 1) without validation
-  // After: 파일 크기 검증 추가
-  if (size < 0) return false;  // ftell 실패
-  if (size == 0) return false; // 빈 파일은 유효하지 않음
-  char *content = malloc(size + 1);
-  ```
-
-## Priority 4: 함수 파라미터 감소 (MAJOR) 📦
-
-**공통 문제**: Rendering 함수들의 과다 파라미터 (7개 초과)
-**이슈**: 4개 (c:S107)
-**예상 시간**: 2-3시간
-
-### 전략: 구조체로 파라미터 묶기
-
-- [ ] **word_render.c:318 - 파라미터 10개 → 구조체**
-- [ ] **ruby_render.c:146 - 파라미터 9개 → 구조체**
-- [ ] **word_render.c:78 - 파라미터 8개 → 구조체**
-- [ ] **render_common.c:42 - 파라미터 8개 → 구조체**
-
-### 리팩토링 방법
+**수정**:
 ```c
-// Before: 10개 파라미터
-void render_word(
-    cairo_t *cr,
-    struct word_segment *seg,
-    int x, int y,
-    int width, int height,
-    double opacity,
-    PangoFontDescription *font_desc,
-    const char *color,
-    bool show_ruby
-);
-
-// After: 구조체 사용
-struct render_params {
-    cairo_t *cr;
-    struct word_segment *seg;
-    struct {
-        int x, y, width, height;
-    } rect;
-    double opacity;
-    PangoFontDescription *font_desc;
-    const char *color;
-    bool show_ruby;
-};
-
-void render_word(struct render_params *params);
+// 파일 크기 검증 추가
+if (size <= 0) {
+    log_error("Invalid file size: %ld", size);
+    return NULL;
+}
+char *content = malloc(size + 1);
 ```
 
-### 수정 파일
-- [ ] `src/utils/render/render_params.h` (신규)
-  - `struct render_params` 정의
-  - `struct ruby_render_params` 정의
-  - `struct word_render_params` 정의
+---
 
-- [ ] `src/utils/render/word_render.c` - 구조체 적용
-- [ ] `src/utils/render/ruby_render.c` - 구조체 적용
-- [ ] `src/utils/render/render_common.c` - 구조체 적용
+#### 56. file_utils.c:88 - Remove ellipsis notation
+**이슈 키**: AZsw3M62Hpp0TbwUWQXn
+**Rule**: c:S923
+**예상 시간**: 30min
 
-## Priority 5: 코드 정리 (MAJOR) 🧹
+**수정**:
+- 가변 인자 제거
+- 고정 파라미터 또는 구조체 사용
 
-**예상 시간**: 2-4시간
+---
 
-### 사용되지 않는 파라미터 제거 (c:S1172)
+#### 57. file_utils.c:95 - format string not literal
+**이슈 키**: AZsw3M62Hpp0TbwUWQXk
+**Rule**: c:S5281
+**예상 시간**: 10min
 
-- [ ] **render_common.c:55, 43 - max_ruby_height 파라미터**
-  ```c
-  // Option 1: 제거
-  void render_plain_text(cairo_t *cr, const char *text, int x, int y);
+**수정**:
+- 포맷 스트링을 리터럴로 변경
+- 또는 적절한 검증 추가
 
-  // Option 2: [[maybe_unused]] 표시 (나중에 사용 예정인 경우)
-  void render_plain_text(
-      cairo_t *cr,
-      const char *text,
-      int x, int y,
-      [[maybe_unused]] int max_ruby_height
-  );
-  ```
+---
 
-- [ ] **shm.c:61 - wl_buffer 파라미터**
-  - Wayland callback 시그니처이므로 [[maybe_unused]] 표시
+## 구현 계획
 
-### 사용되지 않는 변수 제거 (c:S1854)
+### Phase 8-1: 최우선 복잡도 (1-3번) 🔥
+**예상 시간**: 3h 36min
 
-- [ ] **config.c:1005 - offset 변수**
-- [ ] **srt_parser.c:214 - next_line 변수**
+- [ ] main.c:21 리팩토링 (1h 26min)
+- [ ] word_render.c:86 리팩토링 (1h 14min)
+- [ ] lyrics_provider.c:559 리팩토링 (56min)
+- [ ] 빌드 검증
+- [ ] 기능 회귀 테스트
 
-### 병합 가능한 if문 통합 (c:S1066)
+---
 
-총 9개의 중첩 if문 병합
+### Phase 8-2: 중간 복잡도 (4-10번) ⚠️
+**예상 시간**: 2h 49min
 
-- [ ] **lyrics_manager.c**: 라인 268, 270, 35
-  ```c
-  // Before:
-  if (data) {
-      if (data->lines) {
-          // 로직
-      }
-  }
+- [ ] lrc_parser.c:11 (1h 4min)
+- [ ] rendering_manager.c:43 (36min)
+- [ ] lyrics_manager.c:250 (30min)
+- [ ] lrcx_parser.c:13 (24min)
+- [ ] file_monitor.c:50 (22min)
+- [ ] srt_parser.c:114 (20min)
+- [ ] translator_common.c:855 (18min)
+- [ ] 빌드 검증
 
-  // After:
-  if (data && data->lines) {
-      // 로직
-  }
-  ```
+---
 
-- [ ] **config.c**: 라인 910, 660
-- [ ] **system_tray.c**: 라인 408
-- [ ] **shm.c**: 라인 137
-- [ ] **srt_parser.c**: 라인 171
+### Phase 8-3: 소규모 복잡도 (11-21번) 📝
+**예상 시간**: 2h 15min
 
-### 기타
+- [ ] Config.c 복잡도 3개 (37min)
+- [ ] Ruby Render 2개 (24min)
+- [ ] Lyrics Manager 1개 (13min)
+- [ ] Parser Utils 2개 (45min)
+- [ ] Provider 1개 (8min)
+- [ ] Word Render 1개 (6min)
+- [ ] File Utils 1개 (30min)
+- [ ] 빌드 검증
 
-- [ ] **word_render.c:31 - 중첩 삼항 연산자** (c:S3358)
-  ```c
-  // Before: 중첩 삼항 연산자
-  int value = (a ? (b ? c : d) : e);
+---
 
-  // After: 명시적 if문
-  int value;
-  if (a) {
-      value = b ? c : d;
-  } else {
-      value = e;
-  }
-  ```
+### Phase 8-4: 중첩 깊이 일괄 해소 (22-54번) 🔧
+**예상 시간**: 5h 20min
 
-- [ ] **lang_detect.c:12 - #include 위치** (c:S954)
-  - 조건부 #include를 파일 상단으로 이동
+- [ ] Config.c 8개 (1h 20min)
+- [ ] LRC Parser 5개 (50min)
+- [ ] LRCX Parser 4개 (40min)
+- [ ] Parser Utils 4개 (40min)
+- [ ] Main.c 2개 (20min)
+- [ ] Rendering Manager 2개 (20min)
+- [ ] Lyrics Provider 2개 (20min)
+- [ ] SRT Parser 2개 (20min)
+- [ ] 나머지 4개 (40min)
+- [ ] 빌드 검증
 
-## 구현 단계
+---
 
-### Phase 1: 보안 수정 (즉시) 🚨
-**예상**: 2-3시간 → **완료** ✅
-- [x] system() 호출 제거 (3개 translator 파일)
-- [x] pango_utils.c 포맷 스트링 + 가변 인자
-- [x] parser_utils.c 0바이트 malloc
+### Phase 8-5: 보안/품질 이슈 (55-57번) 🔒
+**예상 시간**: 45min
 
-### Phase 2: 복잡도 최우선 (config.c) ✅
-**예상**: 6-8시간 → **실제**: 2시간 ✅
-- [x] config.c:219 함수 분리 (복잡도 129 → 25 이하)
-  - parse_rate_limit_value() 추출
-  - parse_display_section() 추출
-  - parse_lyrics_section() 추출
-  - parse_translation_section() 추출
-  - parse_deprecated_deepl_section() 추출
-- [x] config.c:824 검증 로직 리팩토링 (복잡도 84 → 25 이하)
-  - find_example_config_path() 추출
-  - find_unknown_config_entries() 추출
-  - find_missing_config_entries() 추출
-  - display_unknown_keys_warning() 추출
-  - display_missing_keys_warning() 추출
-- [x] 빌드 검증 완료
+- [ ] parser_utils.c:152 0바이트 malloc 수정 (5min)
+- [ ] file_utils.c:88 ellipsis 제거 (30min)
+- [ ] file_utils.c:95 format string 수정 (10min)
+- [ ] 빌드 검증
 
-### Phase 3: Provider 및 Parser 복잡도 ✅
-**예상**: 5-7시간 → **실제**: 1시간 ✅
-- [x] lrclib_provider.c 복잡도 개선 (54 → <25)
-  - build_search_request_url() 추출
-  - perform_lrclib_request() 추출
-  - find_best_match_in_results() 추출
-  - extract_metadata_from_result() 추출
-- [x] system_tray.c 복잡도 개선 (49 → <25)
-  - cache_current_artwork() 추출
-  - load_cached_album_art() 추출
-  - try_mpris_artwork() 추출
-  - try_itunes_artwork() 추출
-- [x] lrcx_parser.c 복잡도 개선 (48 → <25)
-  - ensure_and_append_to_full_text() 추출
-  - add_parsed_word_segments() 추출
-  - add_raw_text_segment() 추출
-- [x] 빌드 검증 완료
+---
 
-### Phase 4: Translation 파일 일괄 수정 ✅
-**예상**: 4-6시간 → **실제**: 1시간 ✅
-- [x] 4개 translator 파일 중첩 깊이 해소
-  - deepl_translator.c: handle_cache_loading(), process_line_translation(), save_translation_to_cache() 추출
-  - gemini_translator.c: handle_gemini_cache_loading(), process_gemini_line_translation(), save_gemini_translation_to_cache() 추출
-  - openai_translator.c: handle_openai_cache_loading(), process_openai_line_translation(), save_openai_translation_to_cache() 추출
-  - claude_translator.c: handle_claude_cache_loading(), process_claude_line_translation(), save_claude_translation_to_cache() 추출
-- [x] deepl_translator.c 복잡도 개선 (36 → <25)
-  - setup_deepl_curl_request() 추출
-  - handle_deepl_response() 추출
-- [ ] 공통 로직 translator_common.c로 추출 (선택사항, Phase 6에서 고려)
-- [x] 빌드 검증 완료
+## 총 예상 시간
 
-### Phase 5: Rendering 파라미터 리팩토링 ✅
-**예상**: 2-3시간 → **실제**: 1시간 ✅
-- [x] render_params.h 구조체 정의
-  - struct render_base_params (모든 render 함수 공통 파라미터)
-  - struct karaoke_params (timing + segments)
-  - struct multiline_params (3-line LRCX 렌더링)
-  - struct translation_params (번역 렌더링)
-  - struct word_static_params (정적 word segment 렌더링)
-  - struct ruby_params (ruby segment 렌더링)
-  - struct segment_params (segment 단위 렌더링)
-- [x] word_render.c 리팩토링
-  - render_karaoke_multiline: 10 parameters → 1 struct (90% 감소)
-  - render_karaoke_segments: 8 parameters → 1 struct (87.5% 감소)
-  - render_word_segments_static: 7 parameters → 1 struct (85.7% 감소)
-- [x] ruby_render.c 리팩토링
-  - render_ruby_segments_with_translation: 9 parameters → 1 struct (88.9% 감소)
-  - render_ruby_segments: 7 parameters → 1 struct (85.7% 감소)
-- [x] render_common.c 리팩토링
-  - render_segment_with_ruby: 8 parameters → 1 struct + 2 text params (62.5% 감소)
-  - render_segment_plain: 7 parameters → 1 struct + 1 text param (71.4% 감소)
-  - render_plain_text: 7 parameters → 1 struct + 1 text param (71.4% 감소)
-- [x] 헤더 파일 업데이트 (word_render.h, ruby_render.h, render_common.h)
-- [x] rendering_manager.c 적용 (모든 render 함수 호출 부분 struct 전환)
-- [x] 빌드 검증 완료
+| Phase | 작업 | 이슈 수 | 예상 시간 |
+|-------|------|---------|----------|
+| 8-1 | 최우선 복잡도 | 3 | 3h 36min |
+| 8-2 | 중간 복잡도 | 7 | 2h 49min |
+| 8-3 | 소규모 복잡도 | 11 | 2h 15min |
+| 8-4 | 중첩 깊이 | 32 | 5h 20min |
+| 8-5 | 보안/품질 | 3 | 45min |
+| **합계** | | **57** | **14h 45min** |
 
-### Phase 6: 코드 정리 ✅
-**예상**: 2-4시간 → **실제**: 1시간 ✅
-- [x] **사용되지 않는 파라미터 제거 (3개)**
-  - shm.c:61 - wl_buffer (Wayland callback, `(void)wl_buffer;` 추가)
-  - file_monitor.c:44, 49 - path (콜백 시그니처, `(void)path;` 추가)
-  - parser_utils.c:229 - text_start (파라미터 제거 + 호출부 2곳 수정)
-- [x] **사용되지 않는 변수 제거 (3개)**
-  - config.c:1011 - `offset += written;` 제거
-  - srt_parser.c:214 - `next_line = &new_line->next;` 제거
-  - parser_utils.c:582 - `next_seg = &seg->next;` 제거
-- [x] **병합 가능한 if문 통합 (15개)**
-  - lyrics_manager.c:35 - 확장자 체크 (1개)
-  - lyrics_manager.c:268-270 - SRT/VTT 타임스탬프 (3중 중첩 → 1개로 병합)
-  - lyrics_provider.c:135, 143, 151 - 포맷별 파싱 (3개)
-  - lyrics_provider.c:391 - 디렉토리 경로 구성 (1개)
-  - lyrics_provider.c:445, 452 - 가사 파일 로드 시도 (2개)
-  - lrcx_parser.c:143 - 전체 텍스트 추가 (1개)
-  - translator_common.c:295 - 번역 재검증 범위 (1개)
-  - main.c:127 - MD5 체크섬 계산 (1개)
-  - main.c:339 - Wayland 이벤트 디스패치 (1개)
-  - srt_parser.c:171 - SRT 타임스탬프 파싱 (1개)
-  - config.c:683 - 현재 디렉토리 체크 (1개)
-  - config.c:902 - 설정 키 검증 (1개)
-- [x] **중첩 삼항 연산자 개선 (1개)**
-  - word_render.c:31 - unfill_end 계산을 명시적 if-else로 변환
-- [x] **빌드 검증 완료** (12개 파일 컴파일 성공)
+**버퍼 포함**: ~16-18시간 (테스트 및 디버깅)
 
-### Phase 7: 코드 중복 제거 (Duplication) ✅
-**예상**: 3-4시간 → **실제**: 2시간 ✅
-**목표**: New Code 중복률 4.95% → <3% (SonarCloud Quality Gate)
+---
 
-#### 커밋 1: 공통 Translator 로직 추출
-- [x] **translator_common.c 공통 함수 추가**
-  - translator_build_translation_prompt() - 표준 번역 프롬프트 생성
-  - translator_parse_retry_delay() - API 에러 응답 retry delay 파싱
-- [x] **4개 translator 파일 리팩토링**
-  - claude_translator.c: 330 → 306 lines (-24)
-  - openai_translator.c: 342 → 329 lines (-13)
-  - gemini_translator.c: 341 → 318 lines (-23)
-  - translator_common.c: 618 → 671 lines (+53)
-- [x] **중복 제거 효과**: 60줄 순 감소
+## 예상 개선 효과
 
-#### 커밋 2: Generic JSON Path Parser 구현
-- [x] **json_extract_text_by_path() 구현**
-  - 중첩 객체 접근: "field.nested"
-  - 배열 인덱싱: "array[0]"
-  - 복합 경로: "candidates[0].content.parts[0].text"
-  - 통합 에러 처리 + provider별 로깅
-- [x] **parse_response_json() 통합**
-  - Claude: "content[0].text"
-  - OpenAI: "choices[0].message.content"
-  - Gemini: "candidates[0].content.parts[0].text"
-  - 각 함수 37-59줄 → 11줄 (73% 감소)
-- [x] **파일별 변화**
-  - claude_translator.c: 306 → 282 lines (-24)
-  - openai_translator.c: 329 → 298 lines (-31)
-  - gemini_translator.c: 318 → 273 lines (-45)
-  - translator_common.c: 671 → 789 lines (+118)
-- [x] **중복 제거 효과**: 73줄 중복 제거
+### Before (현재)
+- **HIGH Severity**: 57개
+- **전체 등급**: A (유지)
+- **복잡도**: 일부 함수 100+ 초과
 
-#### 총 Phase 7 성과
-- **코드 감소**: 133줄 중복 코드 제거
-- **향후 확장성**: 새 translator API 추가 시 JSON path만 지정
-- **유지보수성**: 에러 처리 일관성, 프롬프트 변경 용이
-- **빌드 검증**: 완료 ✅
+### After (Phase 8 완료 시)
+- **HIGH Severity**: 0개 예상
+- **전체 등급**: A (유지)
+- **복잡도**: 모든 함수 25 이하
+- **유지보수성**: 대폭 향상
+- **가독성**: 향상
+- **테스트 용이성**: 향상
+
+---
 
 ## 테스트 전략
 
 ### 각 Phase별 테스트
-1. 빌드 성공 확인: `meson compile -C build`
-2. 기능 회귀 테스트: 설정 로드, 가사 표시, 번역 동작
-3. SonarCloud 재검사: 해결된 이슈 확인
+1. **빌드 검증**: `meson compile -C build`
+2. **기능 회귀 테스트**:
+   - Config 로드
+   - 가사 표시 (LRCX, LRC, SRT)
+   - 번역 (4개 provider)
+   - Wayland 렌더링
+   - System tray
 
-### 통합 테스트
-- [ ] 전체 워크플로우 테스트
-  - Config 파일 로드
-  - MPRIS 연동
-  - 로컬/온라인 가사 검색
-  - 번역 (4개 provider)
-  - Wayland 렌더링
-  - System tray 표시
+3. **SonarCloud 검증**:
+   - 이슈 해결 확인
+   - 새로운 이슈 발생 여부
 
-## 예상 개선 효과
-
-| Phase | 해결 이슈 | SonarCloud 점수 개선 |
-|-------|----------|-------------------|
-| Phase 1 | 3개 CRITICAL | 보안 취약점 제거 |
-| Phase 2 | 5개 CRITICAL + 3개 MAJOR | A등급 진입 가능 |
-| Phase 3 | 6개 CRITICAL | 복잡도 50% 감소 |
-| Phase 4 | 5개 CRITICAL | 중첩 문제 완전 해소 |
-| Phase 5 | 4개 MAJOR | API 개선 |
-| Phase 6 | 13개 MAJOR | 코드 품질 향상 |
-
-**총 예상**: 34+ 이슈 해결, SonarCloud A등급 달성
-
-## 참고 자료
-
-- **SonarCloud Dashboard**: https://sonarcloud.io/project/overview?id=unstable-code_lyrics
-- **SonarCloud Issues API**: https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics
-- **C++ Core Guidelines**: https://isocpp.github.io/CppCoreGuidelines/
-- **Cognitive Complexity**: https://www.sonarsource.com/docs/CognitiveComplexity.pdf
+---
 
 ## 커밋 메시지 형식
 
-각 Phase별 커밋 시 다음 형식 사용:
-
 ```
-refactor: [Phase 번호] [요약 제목]
+refactor: [Phase 8-N] [요약 제목]
 
 [상세 설명]
 
@@ -551,78 +433,24 @@ Fixes: SonarCloud issues [issue-key-1], [issue-key-2]
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ```
 
-## 상태
+---
 
-- **생성일**: 2025-12-19
-- **최종 업데이트**: 2025-12-19 19:40
-- **현재 Phase**: Phase 7 완료 ✅ → **중복 제거 진행 중!** 🚀
-- **완료 Phases**: 1, 2, 3, 4, 5, 6, 7
-- **우선순위**: High (코드 품질, 보안, 중복 제거)
-- **SonarCloud 현재 등급**: ⭐ **A등급** (Maintainability, Reliability, Security 모두 A)
-- **목표**: Quality Gate 통과 (New Code 중복률 <3%)
-- **현재 중복률**: 4.95% → **거의 달성!** (0.95% 차이)
+## 참고 자료
 
-## Phase 6 완료 요약
-
-### 수정된 파일 (12개)
-1. src/utils/shm/shm.c
-2. src/monitor/file_monitor.c
-3. src/parser/utils/parser_utils.c
-4. src/user_experience/config/config.c
-5. src/parser/srt/srt_parser.c
-6. src/lyrics/lyrics_manager.c
-7. src/provider/lyrics/lyrics_provider.c
-8. src/parser/lrc/lrcx_parser.c
-9. src/translator/common/translator_common.c
-10. src/main.c
-11. src/utils/render/word_render.c
-
-### 총 수정 개수
-- 사용되지 않는 파라미터: 3개 수정
-- 사용되지 않는 변수: 3개 제거
-- 병합 가능한 if문: 15개 병합
-- 중첩 삼항 연산자: 1개 개선
-- **총 22개 MAJOR 이슈 해결**
-
-### 보류된 항목 (2개)
-- shm.c:137 - 병합하면 의미 변경 가능성 (명확성 우선)
-- lang_detect.c:12 - 조건부 #include 위치 (복잡도 고려)
-
-### 실제 SonarCloud 개선 ✅
-- **MAJOR 이슈 33개 해결** (예상 22개 → 실제 33개!)
-- **전체 Code Smells 58개 감소** (247개 → 189개)
-- **A등급 달성** (Maintainability, Reliability, Security)
-- 코드 가독성 및 유지보수성 향상
-- 복잡도 감소 및 명확성 개선
+- **SonarCloud Dashboard**: https://sonarcloud.io/project/overview?id=unstable-code_lyrics
+- **SonarCloud Issues API**: https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics
+- **Cognitive Complexity**: https://www.sonarsource.com/docs/CognitiveComplexity.pdf
+- **C Refactoring**: https://refactoring.guru/refactoring/catalog
 
 ---
 
-## 남은 주요 이슈 (참고용)
+## 상태
 
-### CRITICAL 이슈 (24개) - 이전 38개에서 14개 개선! ✅
-
-**복잡도 초과 (c:S3776)**:
-- main.c:21 - 복잡도 106 (가장 높음, 1h26m 예상)
-- word_render.c:86 - 복잡도 94 (1h14m 예상)
-- lyrics_provider.c:559 - 복잡도 76
-- rendering_manager.c:29 - 복잡도 56
-- lyrics_manager.c:250 - 복잡도 50
-- 기타 다수
-
-**중첩 깊이 초과 (c:S134)**:
-- config.c에 다수 집중
-- rendering_manager.c, 기타 파일
-
-**기타 CRITICAL**:
-- c:S5488 - parser_utils.c:152 (0바이트 malloc)
-- c:S859 - lrclib_provider.c:101 (const 제거)
-
-### MAJOR 이슈 (2개) - 이전 5개에서 3개 개선! ✅
-- c:S924 - translator_common.c:254 (중첩 break)
-- c:S1871 - state_helpers.c:24 (중복 코드)
-
-### MINOR 이슈 (146개)
-- 주로 코드 스타일 및 Best Practice 관련
-
-**참고**: 현재 A등급을 유지하고 있으며, 추가 개선은 선택적입니다.
-**중복률 목표**: New Code 4.95% → <3% (거의 달성, 0.95% 차이)
+- **생성일**: 2025-12-19
+- **최종 업데이트**: 2025-12-19 21:15
+- **현재 Phase**: Phase 8 시작 전
+- **완료 Phases**: 1-7 (보안, 복잡도, 파라미터, 중복 제거)
+- **남은 이슈**: 57개 HIGH Severity
+- **우선순위**: High (코드 품질, 유지보수성)
+- **목표**: 모든 HIGH Severity 이슈 해결, A등급 유지
+- **예상 소요 시간**: 14h 45min (버퍼 포함 16-18시간)
