@@ -83,7 +83,7 @@ jobs:
           optdepends=('snixembed: System tray support for Swaybar')
           makedepends=('meson' 'ninja' 'wayland-protocols')
           source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-          sha256sums=('SKIP')
+          sha256sums=('SKIP')  # Will be updated by updpkgsums
 
           build() {
               cd "lyrics-$pkgver"
@@ -102,16 +102,17 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=${{ steps.get_version.outputs.version }}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
-      - name: Generate .SRCINFO
+      - name: Update checksums and generate .SRCINFO
         if: steps.get_version.outputs.has_tag == 'true'
         run: |
           USER_ID=$(id -u)
           GROUP_ID=$(id -g)
           docker run --rm -v "${{ github.workspace }}/aur:/pkg" archlinux:latest bash -c "
-            pacman -Sy --noconfirm --needed base-devel git sudo
+            pacman -Sy --noconfirm --needed base-devel git sudo pacman-contrib
             useradd -m builder
             chown -R builder:builder /pkg
             cd /pkg
+            sudo -u builder updpkgsums
             sudo -u builder makepkg --printsrcinfo > .SRCINFO
             chown -R $USER_ID:$GROUP_ID /pkg
           "
