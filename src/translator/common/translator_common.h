@@ -233,4 +233,26 @@ void translator_save_to_cache_ex(const char *cache_path,
  */
 void* translator_async_worker(void *arg);
 
+/**
+ * Build standard translation prompt for all providers.
+ * Creates a consistent prompt instructing the AI to translate text.
+ *
+ * @param buffer Output buffer for the prompt
+ * @param buffer_size Size of the output buffer
+ * @param text Text to translate
+ * @param target_lang Target language code
+ * @return Number of characters written, or -1 on error
+ */
+int translator_build_translation_prompt(char *buffer, size_t buffer_size,
+                                         const char *text, const char *target_lang);
+
+/**
+ * Parse retry delay from API error response.
+ * Common logic for extracting retry delay from error messages.
+ *
+ * @param response_json JSON error response from API
+ * @return Retry delay in milliseconds, or 0 if not found
+ */
+int translator_parse_retry_delay(const char *response_json);
+
 #endif // TRANSLATOR_COMMON_H

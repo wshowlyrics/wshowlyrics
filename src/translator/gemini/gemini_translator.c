@@ -30,13 +30,11 @@ static char* build_request_json(const char *text, const char *target_lang) {
     json_object *parts_array = json_object_new_array();
     json_object *part_obj = json_object_new_object();
 
-    // Build prompt: clear instruction for translation only
+    // Build standard translation prompt
     char prompt[8192];
-    snprintf(prompt, sizeof(prompt),
-             "You are a professional translator. "
-             "Translate the following text to %s. "
-             "Output ONLY the translated text with no additional explanations:\n\n%s",
-             target_lang, text);
+    if (translator_build_translation_prompt(prompt, sizeof(prompt), text, target_lang) < 0) {
+        return NULL;
+    }
 
     json_object_object_add(part_obj, "text", json_object_new_string(prompt));
     json_object_array_add(parts_array, part_obj);
@@ -111,27 +109,6 @@ static char* parse_response_json(const char *json_str) {
     json_object_put(root);
 
     return result;
-}
-
-/**
- * Parse retry delay from error response
- * Returns delay in milliseconds, or 0 if not found
- */
-static int parse_retry_delay(const char *response_json) {
-    if (!response_json) {
-        return 0;
-    }
-
-    // Look for "Please retry in X.XXs" pattern
-    const char *retry_str = strstr(response_json, "Please retry in ");
-    if (retry_str) {
-        float seconds = 0;
-        if (sscanf(retry_str, "Please retry in %fs", &seconds) == 1) {
-            return (int)(seconds * 1000) + 1000; // Add 1 second buffer
-        }
-    }
-
-    return 0;
 }
 
 /**
@@ -215,7 +192,7 @@ static char* translate_single_line(const char *text, const char *target_lang,
             return NULL;
         } else {
             // Temporary error - retry with delay
-            int retry_delay_ms = parse_retry_delay(response.data);
+            int retry_delay_ms = translator_parse_retry_delay(response.data);
             if (retry_delay_ms == 0) {
                 retry_delay_ms = 5000 * attempt; // Exponential backoff
             }

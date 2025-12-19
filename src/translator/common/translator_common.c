@@ -616,3 +616,56 @@ void* translator_async_worker(void *arg) {
     free(args);
     return NULL;
 }
+
+/**
+ * Build standard translation prompt for all providers
+ */
+int translator_build_translation_prompt(char *buffer, size_t buffer_size,
+                                         const char *text, const char *target_lang) {
+    if (!buffer || !text || !target_lang || buffer_size == 0) {
+        return -1;
+    }
+
+    int written = snprintf(buffer, buffer_size,
+                           "You are a professional translator. "
+                           "Translate the following text to %s. "
+                           "Output ONLY the translated text with no additional explanations:\n\n%s",
+                           target_lang, text);
+
+    if (written < 0 || written >= (int)buffer_size) {
+        return -1;
+    }
+
+    return written;
+}
+
+/**
+ * Parse retry delay from API error response
+ * Supports multiple patterns: "retry in X.XXs", "retry after X.XXs", "Please retry in X.XXs"
+ */
+int translator_parse_retry_delay(const char *response_json) {
+    if (!response_json) {
+        return 0;
+    }
+
+    // Pattern 1: "Please retry in X.XXs" (Gemini)
+    const char *please_retry = strstr(response_json, "Please retry in ");
+    if (please_retry) {
+        float seconds = 0;
+        if (sscanf(please_retry, "Please retry in %fs", &seconds) == 1) {
+            return (int)(seconds * 1000) + 1000; // Add 1 second buffer
+        }
+    }
+
+    // Pattern 2: "retry in X.XXs" or "retry after X.XXs" (Claude, others)
+    const char *retry_str = strstr(response_json, "retry");
+    if (retry_str) {
+        float seconds = 0;
+        if (sscanf(retry_str, "retry in %fs", &seconds) == 1 ||
+            sscanf(retry_str, "retry after %fs", &seconds) == 1) {
+            return (int)(seconds * 1000) + 1000; // Add 1 second buffer
+        }
+    }
+
+    return 0;
+}

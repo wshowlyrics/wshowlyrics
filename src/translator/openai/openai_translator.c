@@ -29,13 +29,11 @@ static char* build_request_json(const char *text, const char *target_lang, const
     json_object *messages_array = json_object_new_array();
     json_object *message_obj = json_object_new_object();
 
-    // Build prompt: clear instruction for translation only
+    // Build standard translation prompt
     char prompt[8192];
-    snprintf(prompt, sizeof(prompt),
-             "You are a professional translator. "
-             "Translate the following text to %s. "
-             "Output ONLY the translated text with no additional explanations:\n\n%s",
-             target_lang, text);
+    if (translator_build_translation_prompt(prompt, sizeof(prompt), text, target_lang) < 0) {
+        return NULL;
+    }
 
     json_object_object_add(root, "model", json_object_new_string(model_name));
 
@@ -120,18 +118,7 @@ static int parse_retry_delay(const char *response_json, struct curl_slist *heade
     }
 
     // Fallback: check response body for retry information
-    if (response_json) {
-        const char *retry_str = strstr(response_json, "retry");
-        if (retry_str) {
-            float seconds = 0;
-            if (sscanf(retry_str, "retry in %fs", &seconds) == 1 ||
-                sscanf(retry_str, "retry after %fs", &seconds) == 1) {
-                return (int)(seconds * 1000) + 1000;
-            }
-        }
-    }
-
-    return 0;
+    return translator_parse_retry_delay(response_json);
 }
 
 /**

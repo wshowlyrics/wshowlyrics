@@ -31,13 +31,11 @@ static char* build_request_json(const char *text, const char *target_lang, const
     json_object *messages_array = json_object_new_array();
     json_object *message_obj = json_object_new_object();
 
-    // Build prompt: clear instruction for translation only
+    // Build standard translation prompt
     char prompt[8192];
-    snprintf(prompt, sizeof(prompt),
-             "You are a professional translator. "
-             "Translate the following text to %s. "
-             "Output ONLY the translated text with no additional explanations:\n\n%s",
-             target_lang, text);
+    if (translator_build_translation_prompt(prompt, sizeof(prompt), text, target_lang) < 0) {
+        return NULL;
+    }
 
     json_object_object_add(root, "model", json_object_new_string(model_name));
     json_object_object_add(root, "max_tokens", json_object_new_int(1024));
@@ -94,28 +92,6 @@ static char* parse_response_json(const char *json_str) {
     json_object_put(root);
 
     return result;
-}
-
-/**
- * Parse retry delay from error response (similar to Gemini)
- */
-static int parse_retry_delay_claude(const char *response_json) {
-    if (!response_json) {
-        return 0;
-    }
-
-    // Look for retry-related patterns in Claude error responses
-    const char *retry_str = strstr(response_json, "retry");
-    if (retry_str) {
-        // Try to find seconds value
-        float seconds = 0;
-        if (sscanf(retry_str, "retry in %fs", &seconds) == 1 ||
-            sscanf(retry_str, "retry after %fs", &seconds) == 1) {
-            return (int)(seconds * 1000) + 1000;
-        }
-    }
-
-    return 0;
 }
 
 /**
@@ -204,7 +180,7 @@ static char* translate_single_line(const char *text, const char *target_lang,
             return NULL;
         } else {
             // Temporary error - retry with delay
-            int retry_delay_ms = parse_retry_delay_claude(response.data);
+            int retry_delay_ms = translator_parse_retry_delay(response.data);
             if (retry_delay_ms == 0) {
                 retry_delay_ms = 5000 * attempt; // Exponential backoff
             }
