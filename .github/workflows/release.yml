@@ -18,6 +18,15 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Security check - Reject forks
+        run: |
+          if [ "${{ github.event.workflow_run.head_repository.full_name }}" != "${{ github.repository }}" ]; then
+            echo "::error::Security: Refusing to run workflow from fork"
+            echo "Fork repository: ${{ github.event.workflow_run.head_repository.full_name }}"
+            echo "Expected repository: ${{ github.repository }}"
+            exit 1
+          fi
+
       - name: Checkout lyrics repository
         uses: actions/checkout@v4
         with:
