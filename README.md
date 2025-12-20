@@ -88,10 +88,17 @@ sudo apt-get install -f  # Install dependencies
 
 ### Fedora/RHEL (COPR)
 
-Enable the COPR repository and install:
+**Stable releases:**
 
 ```bash
 sudo dnf copr enable unstable-code/wshowlyrics
+sudo dnf install wshowlyrics
+```
+
+**Nightly builds (latest development):**
+
+```bash
+sudo dnf copr enable unstable-code/wshowlyrics-nightly
 sudo dnf install wshowlyrics
 ```
 
@@ -108,6 +115,26 @@ Install dependencies:
 ```bash
 sudo pacman -S cairo curl fontconfig pango wayland wayland-protocols meson ninja playerctl \
                libappindicator-gtk3 gdk-pixbuf2
+```
+
+Build and install:
+
+```bash
+meson setup build
+meson compile -C build
+sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
+```
+
+### Manual Installation (Fedora)
+
+Install dependencies:
+
+```bash
+sudo dnf install cairo-devel curl libcurl-devel fontconfig-devel pango-devel \
+                 wayland-devel wayland-protocols-devel \
+                 libappindicator-gtk3-devel gdk-pixbuf2-devel \
+                 json-c-devel openssl-devel \
+                 meson ninja-build playerctl
 ```
 
 Build and install:

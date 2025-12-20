@@ -86,10 +86,17 @@ sudo apt-get install -f  # 의존성 설치
 
 ### Fedora/RHEL (COPR)
 
-COPR 저장소를 활성화하고 설치:
+**안정 버전:**
 
 ```bash
 sudo dnf copr enable unstable-code/wshowlyrics
+sudo dnf install wshowlyrics
+```
+
+**나이틀리 빌드 (최신 개발 버전):**
+
+```bash
+sudo dnf copr enable unstable-code/wshowlyrics-nightly
 sudo dnf install wshowlyrics
 ```
 
@@ -106,6 +113,26 @@ sudo dnf install wshowlyrics-*.rpm
 ```bash
 sudo pacman -S cairo curl fontconfig pango wayland wayland-protocols meson ninja playerctl \
                libappindicator-gtk3 gdk-pixbuf2
+```
+
+빌드 및 설치:
+
+```bash
+meson setup build
+meson compile -C build
+sudo install -Dm755 build/lyrics /usr/bin/wshowlyrics
+```
+
+### 수동 설치 (Fedora)
+
+의존성 설치:
+
+```bash
+sudo dnf install cairo-devel curl libcurl-devel fontconfig-devel pango-devel \
+                 wayland-devel wayland-protocols-devel \
+                 libappindicator-gtk3-devel gdk-pixbuf2-devel \
+                 json-c-devel openssl-devel \
+                 meson ninja-build playerctl
 ```
 
 빌드 및 설치:
