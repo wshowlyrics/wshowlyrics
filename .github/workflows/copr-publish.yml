@@ -1,0 +1,198 @@
+name: Publish to COPR
+
+on:
+  workflow_run:
+    workflows: ["Security Scan"]
+    types:
+      - completed
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: copr-nightly
+  cancel-in-progress: false
+
+jobs:
+  copr-nightly:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Security check - Reject forks
+        run: |
+          if [ "${{ github.event.workflow_run.head_repository.full_name }}" != "${{ github.repository }}" ]; then
+            echo "::error::Security: Refusing to run workflow from fork"
+            echo "Fork repository: ${{ github.event.workflow_run.head_repository.full_name }}"
+            echo "Expected repository: ${{ github.repository }}"
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Check if this is a release tag
+        id: check_tag
+        run: |
+          # Check if current commit has a version tag
+          TAG=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+
+          if [ -z "$TAG" ]; then
+            echo "is_release=false" >> $GITHUB_OUTPUT
+            echo "Not a release tag, proceeding with COPR nightly upload"
+          else
+            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "Release tag found ($TAG), skipping nightly upload"
+          fi
+
+      - name: Get package version
+        if: steps.check_tag.outputs.is_release == 'false'
+        id: pkgver
+        run: |
+          VER=$(printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)")
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "Nightly version: $VER"
+
+      - name: Install COPR CLI
+        if: steps.check_tag.outputs.is_release == 'false'
+        run: |
+          sudo dnf install -y copr-cli
+
+      - name: Setup COPR config
+        if: steps.check_tag.outputs.is_release == 'false'
+        run: |
+          mkdir -p ~/.config
+          echo "${{ secrets.COPR_CONFIG }}" > ~/.config/copr
+          chmod 600 ~/.config/copr
+
+      - name: Create .spec file
+        if: steps.check_tag.outputs.is_release == 'false'
+        run: |
+          VERSION="${{ steps.pkgver.outputs.version }}"
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+
+          cat > wshowlyrics.spec << 'SPECEOF'
+          Name:           wshowlyrics
+          Version:        VERSION_PLACEHOLDER
+          Release:        1%{?dist}
+          Summary:        Wayland-native lyrics display with online fallback (nightly build)
+
+          License:        GPL-3.0-or-later
+          URL:            https://github.com/unstable-code/lyrics
+          Source0:        wshowlyrics-VERSION_PLACEHOLDER.tar.gz
+
+          BuildRequires:  meson >= 0.48.0
+          BuildRequires:  ninja-build
+          BuildRequires:  gcc
+          BuildRequires:  wayland-devel
+          BuildRequires:  wayland-protocols-devel
+          BuildRequires:  cairo-devel
+          BuildRequires:  pango-devel
+          BuildRequires:  libcurl-devel
+          BuildRequires:  fontconfig-devel
+          BuildRequires:  libappindicator-gtk3-devel
+          BuildRequires:  gdk-pixbuf2-devel
+          BuildRequires:  json-c-devel
+          BuildRequires:  openssl-devel
+
+          Requires:       wayland
+          Requires:       cairo
+          Requires:       pango
+          Requires:       libcurl
+          Requires:       fontconfig
+          Requires:       libappindicator-gtk3
+          Requires:       gdk-pixbuf2
+          Requires:       playerctl
+          Requires:       json-c
+          Requires:       openssl-libs
+
+          Recommends:     sway
+
+          Provides:       wshowlyrics = %{version}-%{release}
+          Conflicts:      wshowlyrics
+
+          %description
+          wshowlyrics is a lightweight lyrics overlay for Wayland compositors
+          that displays synchronized lyrics for currently playing music.
+
+          This is a nightly build from the latest master branch (commit COMMIT_SHORT_PLACEHOLDER).
+
+          Features:
+          - MPRIS2 integration for music player detection
+          - Local lyrics file support (.lrc, .lrcx, .srt)
+          - Online lyrics fetching from lrclib.net
+          - Karaoke-style word-level timing
+          - AI-powered translation support
+          - System tray integration with album art
+
+          %prep
+          %autosetup -n lyrics-VERSION_PLACEHOLDER
+
+          %build
+          %meson
+          %meson_build
+
+          %install
+          %meson_install
+
+          %post
+          %systemd_user_post wshowlyrics.service
+
+          %preun
+          %systemd_user_preun wshowlyrics.service
+
+          %files
+          %license LICENSE
+          %doc README.md
+          %{_bindir}/wshowlyrics
+          %config(noreplace) %{_sysconfdir}/wshowlyrics/settings.ini
+          %{_userunitdir}/wshowlyrics.service
+
+          %changelog
+          * $(date +"%a %b %d %Y") unstable-code <assa0620@gmail.com> - VERSION_PLACEHOLDER-1
+          - Nightly build from master branch (commit COMMIT_SHORT_PLACEHOLDER)
+          SPECEOF
+
+          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" wshowlyrics.spec
+          sed -i "s/COMMIT_SHORT_PLACEHOLDER/${COMMIT_SHORT}/g" wshowlyrics.spec
+
+      - name: Create source tarball
+        if: steps.check_tag.outputs.is_release == 'false'
+        run: |
+          VERSION="${{ steps.pkgver.outputs.version }}"
+          git archive --format=tar.gz --prefix="lyrics-${VERSION}/" \
+            -o "wshowlyrics-${VERSION}.tar.gz" HEAD
+
+      - name: Build SRPM
+        if: steps.check_tag.outputs.is_release == 'false'
+        run: |
+          VERSION="${{ steps.pkgver.outputs.version }}"
+
+          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          cp "wshowlyrics-${VERSION}.tar.gz" ~/rpmbuild/SOURCES/
+          cp wshowlyrics.spec ~/rpmbuild/SPECS/
+
+          rpmbuild -bs ~/rpmbuild/SPECS/wshowlyrics.spec
+
+      - name: Upload to COPR
+        if: steps.check_tag.outputs.is_release == 'false'
+        run: |
+          VERSION="${{ steps.pkgver.outputs.version }}"
+          SRPM=$(find ~/rpmbuild/SRPMS -name "wshowlyrics-${VERSION}-*.src.rpm")
+
+          echo "Uploading SRPM to COPR: $SRPM"
+          copr-cli build unstable-code/wshowlyrics-nightly "${SRPM}"
+
+      - name: COPR build status
+        if: steps.check_tag.outputs.is_release == 'false'
+        run: |
+          echo "COPR nightly build submitted (version: ${{ steps.pkgver.outputs.version }})"
+          echo "Build status: https://copr.fedorainfracloud.org/coprs/unstable-code/wshowlyrics-nightly/builds/"
+          echo ""
+          echo "This build will be available for installation with:"
+          echo "  sudo dnf copr enable unstable-code/wshowlyrics-nightly"
+          echo "  sudo dnf install wshowlyrics"

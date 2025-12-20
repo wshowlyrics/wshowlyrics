@@ -1,4 +1,4 @@
-name: Release to AUR
+name: Update AUR Stable
 
 on:
   workflow_run:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  aur-release:
+  aur-stable:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -96,19 +96,3 @@ jobs:
           git add PKGBUILD .SRCINFO
           git diff --staged --quiet || git commit -m "Update to version ${{ steps.get_version.outputs.version }}"
           GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git push origin master
-
-      - name: Create GitHub Release
-        if: steps.get_version.outputs.has_tag == 'true'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.get_version.outputs.tag }}
-          body: |
-            ## Release ${{ steps.get_version.outputs.version }}
-
-            This release has been automatically deployed to AUR as `wshowlyrics`.
-
-            ### Installation
-            ```bash
-            yay -S wshowlyrics
-            ```
-          generate_release_notes: true
