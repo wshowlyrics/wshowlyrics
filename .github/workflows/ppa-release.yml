@@ -191,8 +191,8 @@ jobs:
           git archive --format=tar.gz --prefix="wshowlyrics-${VERSION}/" \
             -o "../wshowlyrics_${VERSION}.orig.tar.gz" HEAD
 
-          # Build source package
-          debuild -S -sa -kB4CD9B155AA3124C
+          # Build source package (skip dependency check with -d)
+          debuild -S -sa -d -kB4CD9B155AA3124C
 
       - name: Setup dput configuration
         if: steps.check_tag.outputs.has_tag == 'true'

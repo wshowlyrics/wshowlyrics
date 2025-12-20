@@ -320,6 +320,9 @@ jobs:
             rpmbuild -ba ~/rpmbuild/SPECS/wshowlyrics.spec
 
             cp ~/rpmbuild/RPMS/${ARCH}/wshowlyrics-*.rpm /workspace/
+
+            # Fix permissions for files created in container
+            chmod 644 /workspace/wshowlyrics-*.rpm
           "
 
       - name: Import GPG key and sign RPM
@@ -369,14 +372,14 @@ jobs:
             meson setup build --prefix=/usr
             meson compile -C build
             DESTDIR=/workspace/AppDir meson install -C build
+
+            # Fix permissions for files created in container
+            chmod -R 777 /workspace/AppDir
           "
 
       - name: Download playerctl and linuxdeploy
         run: |
           ARCH="${{ matrix.arch }}"
-
-          # Ensure AppDir/usr/bin exists
-          mkdir -p AppDir/usr/bin
 
           # Rename lyrics to wshowlyrics
           if [ -f AppDir/usr/bin/lyrics ]; then
