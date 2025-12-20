@@ -102,9 +102,12 @@ static bool save_default_icon(const char *output_path) {
         return false;
     }
 
-    // Save to file
+    // Save to file (owner-only access for privacy)
     g_clear_error(&error);
-    if (!gdk_pixbuf_save(icon, output_path, "png", &error, NULL)) {
+    mode_t old_mask = umask(0077);
+    bool save_result = gdk_pixbuf_save(icon, output_path, "png", &error, NULL);
+    umask(old_mask);
+    if (!save_result) {
         log_error("Failed to save default icon: %s", error->message);
         g_error_free(error);
         g_object_unref(icon);
@@ -259,7 +262,7 @@ bool system_tray_init(void) {
 
     // Set initial default icon
     log_info("Setting initial default icon");
-    mkdir(ICON_DIR, 0755);
+    mkdir(ICON_DIR, 0700);  // Owner-only access for privacy
     if (save_default_icon(ICON_PATH)) {
         app_indicator_set_icon_theme_path(indicator, ICON_DIR);
         app_indicator_set_icon_full(indicator, ICON_NAME, "Music Player");
@@ -299,7 +302,7 @@ bool system_tray_update_icon(const char *art_url) {
     log_info("Image loaded successfully");
 
     // Create directory if it doesn't exist
-    mkdir(ICON_DIR, 0755);
+    mkdir(ICON_DIR, 0700);  // Owner-only access for privacy
 
     // Scale to reasonable size (48x48)
     GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf, 48, 48, GDK_INTERP_BILINEAR);
@@ -314,9 +317,12 @@ bool system_tray_update_icon(const char *art_url) {
         return false;
     }
 
-    // Save as PNG (overwrites previous)
+    // Save as PNG (overwrites previous, owner-only access for privacy)
     GError *error = NULL;
-    if (!gdk_pixbuf_save(rounded, ICON_PATH, "png", &error, NULL)) {
+    mode_t old_mask = umask(0077);
+    bool save_result = gdk_pixbuf_save(rounded, ICON_PATH, "png", &error, NULL);
+    umask(old_mask);
+    if (!save_result) {
         log_error("Failed to save icon: %s", error->message);
         g_error_free(error);
         g_object_unref(rounded);
@@ -355,7 +361,7 @@ void system_tray_reset_icon(void) {
     last_metadata_hash[0] = '\0';
 
     // Create directory if it doesn't exist
-    mkdir(ICON_DIR, 0755);
+    mkdir(ICON_DIR, 0700);  // Owner-only access for privacy
 
     // Save default icon to file
     if (!save_default_icon(ICON_PATH)) {
@@ -445,7 +451,9 @@ static bool cache_current_artwork(const char *cache_path) {
     GdkPixbuf *current = gdk_pixbuf_new_from_file(ICON_PATH, &error);
 
     if (current) {
+        mode_t old_mask = umask(0077);
         bool success = gdk_pixbuf_save(current, cache_path, "png", NULL, NULL);
+        umask(old_mask);
         g_object_unref(current);
         if (success) {
             log_info("Cached album art: %s", cache_path);
@@ -478,7 +486,10 @@ static bool load_cached_album_art(const char *cache_path, const char *metadata_h
         GdkPixbuf *scaled = gdk_pixbuf_scale_simple(cached, 48, 48, GDK_INTERP_BILINEAR);
         g_object_unref(cached);
 
-        if (gdk_pixbuf_save(scaled, ICON_PATH, "png", NULL, NULL)) {
+        mode_t old_mask = umask(0077);
+        bool save_result = gdk_pixbuf_save(scaled, ICON_PATH, "png", NULL, NULL);
+        umask(old_mask);
+        if (save_result) {
             g_object_unref(scaled);
             app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
 

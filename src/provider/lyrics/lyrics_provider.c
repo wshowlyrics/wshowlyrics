@@ -595,7 +595,7 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
             if (strcmp(providers[i]->name, "lrclib") == 0 && has_hash) {
                 char cache_path[512];
                 if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
-                    mode_t old_mask = umask(0022);  // Ensure rw-r--r-- permissions
+                    mode_t old_mask = umask(0077);  // Ensure rw------- permissions (privacy)
                     FILE *f = fopen(cache_path, "w");
                     umask(old_mask);
                     if (f) {

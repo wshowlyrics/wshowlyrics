@@ -107,7 +107,8 @@ static bool mkdir_p(const char *path) {
     struct stat st;
 
     // Try to create directory first to avoid TOCTOU race condition
-    if (mkdir(path, 0755) == 0) {
+    // Use 0700 for privacy (owner-only access)
+    if (mkdir(path, 0700) == 0) {
         return true;  // Successfully created
     }
 
