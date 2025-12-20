@@ -194,18 +194,13 @@ jobs:
       - name: Setup dput configuration
         if: steps.check_tag.outputs.has_tag == 'true'
         run: |
-          mkdir -p ~/.dput.d
-
-          cat > ~/.dput.d/wshowlyrics-ppa.json << 'EOF'
-          {
-            "wshowlyrics-ppa": {
-              "fqdn": "ppa.launchpad.net",
-              "method": "ftp",
-              "incoming": "~unstable-code/ubuntu/wshowlyrics/",
-              "login": "anonymous",
-              "allow_unsigned_uploads": false
-            }
-          }
+          cat > ~/.dput.cf << 'EOF'
+          [wshowlyrics-ppa]
+          fqdn = ppa.launchpad.net
+          method = ftp
+          incoming = ~unstable-code/ubuntu/wshowlyrics/
+          login = anonymous
+          allow_unsigned_uploads = 0
           EOF
 
       - name: Upload to PPA

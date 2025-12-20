@@ -215,6 +215,9 @@ jobs:
           VERSION="${{ needs.prepare-build.outputs.version }}"
 
           cat > wshowlyrics.spec << 'SPECEOF'
+          # Disable debug packages
+          %global debug_package %{nil}
+
           Name:           wshowlyrics
           Version:        VERSION_PLACEHOLDER
           Release:        1%{?dist}
