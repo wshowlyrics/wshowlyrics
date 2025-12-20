@@ -1,9 +1,9 @@
 project(
 	'lyrics',
 	'c',
-	version: '0.6.5',
+	version: '0.7.0',
 	license: 'GPL',
-	meson_version: '>=0.48.0',
+	meson_version: '>=0.51.0',
 	default_options: [
 		'c_std=c11',
 		'warning_level=2',
