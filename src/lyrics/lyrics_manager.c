@@ -181,6 +181,9 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     state->prev_line = NULL;
     state->next_line = NULL;
 
+    // Reset timing offset for new track
+    state->timing_offset_ms = 0;
+
     // Try to find lyrics
     if (!lyrics_find_for_track(&state->current_track, &state->lyrics)) {
         log_info("No lyrics found for current track");
@@ -254,8 +257,10 @@ void lyrics_manager_update_current_line(struct lyrics_state *state) {
         return;
     }
 
-    // Get current playback position
+    // Get current playback position with timing offset applied
+    // Positive offset = delay lyrics (slower), Negative offset = advance lyrics (faster)
     int64_t position_us = mpris_get_position();
+    position_us -= (int64_t)state->timing_offset_ms * 1000LL;
 
     // Find the appropriate line for current position
     struct lyrics_line *new_line = lrc_find_line_at_time(&state->lyrics, position_us);

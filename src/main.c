@@ -10,6 +10,7 @@
 #include "utils/wayland/wayland_manager.h"
 #include "utils/curl/curl_utils.h"
 #include "utils/lang_detect/lang_detect.h"
+#include "utils/lock/lock_file.h"
 #include "translator/deepl/deepl_translator.h"
 #include "translator/gemini/gemini_translator.h"
 #include "translator/claude/claude_translator.h"
@@ -17,6 +18,21 @@
 #include <ctype.h>
 #include <strings.h>
 #include <curl/curl.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <signal.h>
+
+// Global state for signal handler
+static struct lyrics_state *g_state = NULL;
+
+// Signal handler for cleanup
+static void signal_handler(int signum) {
+    log_info("Received signal %d, cleaning up...", signum);
+
+    if (g_state) {
+        g_state->run = false;
+    }
+}
 
 int main(int argc, char *argv[]) {
     int ret = 0;
@@ -119,6 +135,20 @@ int main(int argc, char *argv[]) {
     int margin = g_config.display.margin;
     struct lyrics_state state = { 0 };
     state.current_line_index = -1; // No current line initially
+    state.timing_offset_ms = 0; // No timing offset initially
+    state.fifo_fd = -1; // No FIFO initially
+
+    // Set global state for signal handler
+    g_state = &state;
+
+    // Register signal handlers for graceful cleanup
+    struct sigaction sa = {0};
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGINT, &sa, NULL);  // Ctrl+C
+    sigaction(SIGTERM, &sa, NULL); // Termination request
+    sigaction(SIGHUP, &sa, NULL);  // Terminal hangup
 
     // Store config file path and checksum for hot reload
     state.config_file_path = config_loaded_path;  // Transfer ownership
@@ -218,6 +248,29 @@ int main(int argc, char *argv[]) {
     // Initialize language detection for translation validation
     lang_detect_init();
 
+    // Try to acquire lock file (prevent multiple instances)
+    if (!lock_file_acquire()) {
+        log_error("Another instance of wshowlyrics is already running");
+        log_error("If you're sure no other instance is running, remove: %s", LOCK_FILE_PATH);
+        ret = 1;
+        goto exit_no_lock;
+    }
+
+    // Create FIFO for timing offset control
+    #define FIFO_PATH "/tmp/wshowlyrics.fifo"
+    unlink(FIFO_PATH); // Remove old FIFO if exists
+    if (mkfifo(FIFO_PATH, 0666) == -1 && errno != EEXIST) {
+        log_warn("Failed to create FIFO %s: %s", FIFO_PATH, strerror(errno));
+    } else {
+        // Open FIFO in non-blocking mode
+        state.fifo_fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
+        if (state.fifo_fd < 0) {
+            log_warn("Failed to open FIFO %s: %s", FIFO_PATH, strerror(errno));
+        } else {
+            log_info("FIFO created at %s for timing offset control", FIFO_PATH);
+        }
+    }
+
     // Initialize Wayland surface and connections
     if (!wayland_init_surface(&state, anchor, margin)) {
         ret = 1;
@@ -226,7 +279,9 @@ int main(int argc, char *argv[]) {
 
     struct pollfd pollfds[] = {
         { .fd = wl_display_get_fd(state.display), .events = POLLIN, },
+        { .fd = state.fifo_fd, .events = POLLIN, },
     };
+    int nfds = (state.fifo_fd >= 0) ? 2 : 1;
 
     state.run = true;
     int update_counter = 0;
@@ -266,7 +321,7 @@ int main(int argc, char *argv[]) {
 
         int timeout = POLL_TIMEOUT_MS;
 
-        int poll_ret = poll(pollfds, sizeof(pollfds) / sizeof(pollfds[0]), timeout);
+        int poll_ret = poll(pollfds, nfds, timeout);
         if (poll_ret < 0) {
             if (errno == EINTR) {
                 // Interrupted by signal, continue
@@ -285,6 +340,42 @@ int main(int argc, char *argv[]) {
             // Attempt full reconnection
             wayland_events_handle_reconnection(&state, &wl_conn, pollfds);
             continue;
+        }
+
+        // Read timing offset commands from FIFO
+        if (state.fifo_fd >= 0 && (pollfds[1].revents & POLLIN)) {
+            char buf[64];
+            ssize_t n = read(state.fifo_fd, buf, sizeof(buf) - 1);
+            if (n > 0) {
+                buf[n] = '\0';
+
+                // Remove trailing newline/whitespace
+                while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r' || buf[n-1] == ' ')) {
+                    buf[--n] = '\0';
+                }
+
+                if (n > 0) {
+                    int delta = atoi(buf);
+
+                    if (buf[0] == '+' || buf[0] == '-') {
+                        // Cumulative mode: +100, -100
+                        state.timing_offset_ms += delta;
+                    } else {
+                        // Absolute mode: 0, 500
+                        state.timing_offset_ms = delta;
+                    }
+
+                    // Clamp to reasonable range
+                    if (state.timing_offset_ms < -10000) {
+                        state.timing_offset_ms = -10000;
+                    } else if (state.timing_offset_ms > 10000) {
+                        state.timing_offset_ms = 10000;
+                    }
+
+                    log_info("Timing offset: %dms", state.timing_offset_ms);
+                    rendering_manager_set_dirty(&state);
+                }
+            }
         }
 
         // Check for track changes periodically
@@ -383,6 +474,15 @@ int main(int argc, char *argv[]) {
     }
 
 exit:
+    // Clean up FIFO
+    if (state.fifo_fd >= 0) {
+        close(state.fifo_fd);
+        unlink(FIFO_PATH);
+    }
+
+    // Release lock file
+    lock_file_release();
+
     system_tray_cleanup();
     lrc_free_data(&state.lyrics);
     mpris_free_metadata(&state.current_track);
@@ -399,6 +499,7 @@ exit:
     }
     FcFini();
 
+exit_no_lock:
     // Free allocated font string if it was from config
     free(font_from_config_alloc);
 

@@ -1,0 +1,25 @@
+#!/bin/bash
+# wshowlyrics-offset: Helper script for timing offset control
+# Usage: wshowlyrics-offset +100   (100ms slower)
+#        wshowlyrics-offset -100   (100ms faster)
+#        wshowlyrics-offset 0      (reset to 0)
+
+FIFO_PATH="/tmp/wshowlyrics.fifo"
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 <offset_in_milliseconds>"
+    echo "  Examples:"
+    echo "    $0 +100    # 100ms slower (delay lyrics)"
+    echo "    $0 -100    # 100ms faster (advance lyrics)"
+    echo "    $0 0       # reset to default"
+    exit 1
+fi
+
+if [ ! -p "$FIFO_PATH" ]; then
+    echo "Error: wshowlyrics is not running (FIFO not found at $FIFO_PATH)"
+    exit 1
+fi
+
+echo "$1" > "$FIFO_PATH"
+
+echo "Timing offset adjusted: $1 ms"

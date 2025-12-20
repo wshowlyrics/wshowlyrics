@@ -212,6 +212,81 @@ wshowlyrics -F "Sans Bold 28" -a bottom -m 40
 wshowlyrics --font="Sans Bold 28" --anchor=bottom --margin=40
 ```
 
+## Timing Offset Control
+
+Adjust lyrics synchronization timing in real-time without restarting wshowlyrics.
+
+### Overview
+
+When lyrics are slightly out of sync with your music (due to audio latency, different player buffer times, or imperfect lyrics files), you can adjust the timing offset on the fly:
+
+```bash
+# Make lyrics appear 100ms later (slower)
+echo "+100" > /tmp/wshowlyrics.fifo
+
+# Make lyrics appear 100ms earlier (faster)
+echo "-100" > /tmp/wshowlyrics.fifo
+
+# Reset offset to 0
+echo "0" > /tmp/wshowlyrics.fifo
+```
+
+### Helper Script
+
+Install the convenience script for easier usage:
+
+```bash
+chmod +x wshowlyrics-offset
+sudo cp wshowlyrics-offset /usr/local/bin/
+
+# Usage
+wshowlyrics-offset +100   # 100ms slower
+wshowlyrics-offset -100   # 100ms faster
+wshowlyrics-offset 0      # reset
+```
+
+### Sway Integration
+
+Add these bindings to `~/.config/sway/config`:
+
+```sway
+# Timing offset control
+bindsym $mod+Plus exec echo "+100" > /tmp/wshowlyrics.fifo
+bindsym $mod+Minus exec echo "-100" > /tmp/wshowlyrics.fifo
+bindsym $mod+0 exec echo "0" > /tmp/wshowlyrics.fifo
+```
+
+### Hyprland Integration
+
+Add these bindings to `~/.config/hypr/hyprland.conf`:
+
+```conf
+# Timing offset control (using numpad keys)
+bind = $mainMod, KP_Add, exec, echo "+100" > /tmp/wshowlyrics.fifo
+bind = $mainMod, KP_Subtract, exec, echo "-100" > /tmp/wshowlyrics.fifo
+bind = $mainMod, KP_0, exec, echo "0" > /tmp/wshowlyrics.fifo
+
+# Alternative: using regular keys
+bind = $mainMod SHIFT, equal, exec, echo "+100" > /tmp/wshowlyrics.fifo
+bind = $mainMod, minus, exec, echo "-100" > /tmp/wshowlyrics.fifo
+bind = $mainMod, 0, exec, echo "0" > /tmp/wshowlyrics.fifo
+```
+
+### Behavior
+
+- **Cumulative mode**: Commands with `+` or `-` prefix add to the current offset (e.g., `+100` followed by `+100` = `+200ms` total)
+- **Absolute mode**: Commands without prefix set the exact offset value (e.g., `500` sets offset to exactly 500ms)
+- **Auto-reset**: Offset automatically resets to 0ms when a new track starts playing
+- **Range**: Valid range is -10000ms to +10000ms (-10s to +10s)
+
+### Multiple Instance Prevention
+
+wshowlyrics uses a lock file (`/tmp/wshowlyrics.lock`) to prevent multiple instances from running simultaneously. If you see an error about another instance running but believe it's incorrect:
+
+```bash
+rm /tmp/wshowlyrics.lock
+```
+
 ## Lyrics File Formats
 
 ### LRCX Format (Karaoke)

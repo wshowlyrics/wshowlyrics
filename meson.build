@@ -93,6 +93,7 @@ executable(
 		'src/utils/json/json_utils.c',
 		'src/utils/string/string_utils.c',
 		'src/utils/lang_detect/lang_detect.c',
+		'src/utils/lock/lock_file.c',
 		'src/utils/render/render_common.c',
 		'src/utils/render/ruby_render.c',
 		'src/utils/render/word_render.c',
