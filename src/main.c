@@ -256,19 +256,21 @@ int main(int argc, char *argv[]) {
         goto exit_no_lock;
     }
 
-    // Create FIFO for timing offset control
+    // Create FIFO for timing offset control (avoid TOCTOU by not unlinking first)
     #define FIFO_PATH "/tmp/wshowlyrics.fifo"
-    unlink(FIFO_PATH); // Remove old FIFO if exists
-    if (mkfifo(FIFO_PATH, 0666) == -1 && errno != EEXIST) {
-        log_warn("Failed to create FIFO %s: %s", FIFO_PATH, strerror(errno));
-    } else {
-        // Open FIFO in non-blocking mode
-        state.fifo_fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
-        if (state.fifo_fd < 0) {
-            log_warn("Failed to open FIFO %s: %s", FIFO_PATH, strerror(errno));
-        } else {
-            log_info("FIFO created at %s for timing offset control", FIFO_PATH);
+    if (mkfifo(FIFO_PATH, 0666) == -1) {
+        if (errno != EEXIST) {
+            log_warn("Failed to create FIFO %s: %s", FIFO_PATH, strerror(errno));
         }
+        // FIFO already exists, that's ok (we have exclusive lock)
+    }
+
+    // Open FIFO in non-blocking mode
+    state.fifo_fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
+    if (state.fifo_fd < 0) {
+        log_warn("Failed to open FIFO %s: %s", FIFO_PATH, strerror(errno));
+    } else {
+        log_info("FIFO ready at %s for timing offset control", FIFO_PATH);
     }
 
     // Initialize Wayland surface and connections

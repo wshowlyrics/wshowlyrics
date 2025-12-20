@@ -45,26 +45,24 @@ bool lock_file_acquire(void) {
                 pid_t old_pid = atoi(pid_str);
 
                 if (old_pid > 0 && !is_process_running(old_pid)) {
-                    // Stale lock file - remove and retry
-                    log_warn("Removing stale lock file (PID %d not running)", old_pid);
-                    close(lock_fd);
-                    unlink(LOCK_FILE_PATH);
+                    // Stale lock file - reuse the file descriptor to avoid TOCTOU
+                    log_warn("Clearing stale lock (PID %d not running)", old_pid);
 
-                    // Retry lock acquisition
-                    lock_fd = open(LOCK_FILE_PATH, O_RDWR | O_CREAT, 0644);
-                    if (lock_fd < 0) {
-                        log_error("Failed to reopen lock file: %s", strerror(errno));
-                        return false;
+                    // Truncate the file and reset position (keep fd open to avoid race)
+                    if (ftruncate(lock_fd, 0) == -1) {
+                        log_warn("Failed to truncate lock file: %s", strerror(errno));
                     }
+                    lseek(lock_fd, 0, SEEK_SET);
 
+                    // Try to acquire lock again (file is still open)
                     if (fcntl(lock_fd, F_SETLK, &fl) == -1) {
-                        log_error("Failed to acquire lock after removing stale lock: %s", strerror(errno));
+                        log_error("Failed to acquire lock after clearing stale lock: %s", strerror(errno));
                         close(lock_fd);
                         lock_fd = -1;
                         return false;
                     }
 
-                    // Successfully acquired lock after removing stale lock
+                    // Successfully acquired lock
                     goto write_pid;
                 } else {
                     log_info("Another instance is already running (PID %d)", old_pid);
