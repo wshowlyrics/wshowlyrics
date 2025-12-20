@@ -179,8 +179,8 @@ jobs:
           echo "use-agent" >> ~/.gnupg/gpg.conf
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
 
-          # Start gpg-agent
-          gpg-agent --daemon --allow-preset-passphrase
+          # Start gpg-agent (ignore if already running)
+          gpg-agent --daemon --allow-preset-passphrase || true
 
       - name: Build source package
         if: steps.check_tag.outputs.has_tag == 'true'
