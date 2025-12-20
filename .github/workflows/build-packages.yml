@@ -174,7 +174,7 @@ jobs:
       - name: Import GPG key and sign package
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq dpkg-sig
+          sudo apt-get install -y -qq devscripts
 
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 -d | gpg --batch --yes --import
 
@@ -182,7 +182,9 @@ jobs:
           ARCH="${{ matrix.arch }}"
           DEB_FILE="wshowlyrics_${VERSION}_${ARCH}.deb"
 
-          dpkg-sig --sign builder -k B4CD9B155AA3124C "${DEB_FILE}"
+          # Sign the .deb file using debsigs (requires debsigs package)
+          sudo apt-get install -y -qq debsigs
+          debsigs --sign=origin -k B4CD9B155AA3124C "${DEB_FILE}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -270,6 +272,7 @@ jobs:
 
           %install
           %meson_install
+          mv %{buildroot}%{_bindir}/lyrics %{buildroot}%{_bindir}/wshowlyrics
 
           %post
           %systemd_user_post wshowlyrics.service
@@ -371,6 +374,14 @@ jobs:
       - name: Download playerctl and linuxdeploy
         run: |
           ARCH="${{ matrix.arch }}"
+
+          # Ensure AppDir/usr/bin exists
+          mkdir -p AppDir/usr/bin
+
+          # Rename lyrics to wshowlyrics
+          if [ -f AppDir/usr/bin/lyrics ]; then
+            mv AppDir/usr/bin/lyrics AppDir/usr/bin/wshowlyrics
+          fi
 
           # Download and extract playerctl from deb package
           if [ "$ARCH" = "x86_64" ]; then

@@ -192,7 +192,7 @@ jobs:
             -o "../wshowlyrics_${VERSION}.orig.tar.gz" HEAD
 
           # Build source package
-          debuild -S -sa -k B4CD9B155AA3124C
+          debuild -S -sa -kB4CD9B155AA3124C
 
       - name: Setup dput configuration
         if: steps.check_tag.outputs.has_tag == 'true'

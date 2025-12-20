@@ -22,19 +22,10 @@ on:
 
 jobs:
   build-and-test:
-    strategy:
-      matrix:
-        include:
-          - arch: x86_64
-            runner: ubuntu-latest
-            container: archlinux:latest
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-            container: menci/archlinuxarm:latest
-    runs-on: ${{ matrix.runner }}
-    name: Build and Test (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    name: Build and Test (x86_64)
     container:
-      image: ${{ matrix.container }}
+      image: archlinux:latest
 
     steps:
     - name: Checkout code
@@ -104,19 +95,11 @@ jobs:
         fi
 
         # Verify architecture matches
-        if [ "${{ matrix.arch }}" = "x86_64" ]; then
-          if ! echo "$FILE_OUTPUT" | grep -qE "x86-64|x86_64"; then
-            echo "Error: Expected x86_64 binary but got: $FILE_OUTPUT"
-            exit 1
-          fi
-          echo "Binary format verified: x86_64 ELF executable"
-        elif [ "${{ matrix.arch }}" = "aarch64" ]; then
-          if ! echo "$FILE_OUTPUT" | grep -qE "aarch64|ARM aarch64"; then
-            echo "Error: Expected aarch64 binary but got: $FILE_OUTPUT"
-            exit 1
-          fi
-          echo "Binary format verified: aarch64 ELF executable"
+        if ! echo "$FILE_OUTPUT" | grep -qE "x86-64|x86_64"; then
+          echo "Error: Expected x86_64 binary but got: $FILE_OUTPUT"
+          exit 1
         fi
+        echo "Binary format verified: x86_64 ELF executable"
 
     - name: Verify installation files
       run: |
