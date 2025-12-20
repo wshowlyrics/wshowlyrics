@@ -22,6 +22,39 @@ rm -rf build && meson setup build && meson compile -C build
 
 The main binary is `build/lyrics` and is renamed to `wshowlyrics` during installation.
 
+## Release Process
+
+### Version Synchronization
+
+Before creating a new release tag, ensure all version strings are synchronized:
+
+**Files to Update**:
+1. **`meson.build`** (line 4): `version: 'X.Y.Z'`
+2. **`src/constants.h`** (line 32): `#define USER_AGENT_STRING "wshowlyrics/X.Y.Z"`
+
+**Checklist**:
+```bash
+# 1. Update meson.build
+sed -i "s/version: '[^']*'/version: 'X.Y.Z'/" meson.build
+
+# 2. Update USER_AGENT_STRING in constants.h
+sed -i 's/#define USER_AGENT_STRING "wshowlyrics\/[^"]*"/#define USER_AGENT_STRING "wshowlyrics\/X.Y.Z"/' src/constants.h
+
+# 3. Verify changes
+grep "version:" meson.build
+grep "USER_AGENT_STRING" src/constants.h
+
+# 4. Commit version bump
+git add meson.build src/constants.h
+git commit -m "chore: Bump version to X.Y.Z"
+
+# 5. Create release tag
+git tag -s vX.Y.Z -m "Release vX.Y.Z"
+git push origin master --tags
+```
+
+**Important**: Always update versions BEFORE tagging to ensure consistency across the codebase.
+
 ## Code Architecture
 
 ### Multi-Provider Lyrics System
