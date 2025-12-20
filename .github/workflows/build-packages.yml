@@ -320,10 +320,13 @@ jobs:
             rpmbuild -ba ~/rpmbuild/SPECS/wshowlyrics.spec
 
             cp ~/rpmbuild/RPMS/${ARCH}/wshowlyrics-*.rpm /workspace/
-
-            # Fix permissions for files created in container
-            chmod 644 /workspace/wshowlyrics-*.rpm
           "
+
+      - name: Fix permissions for RPM files
+        run: |
+          # Change ownership and permissions for files created in Docker container
+          sudo chown $(id -u):$(id -g) wshowlyrics-*.rpm
+          chmod 644 wshowlyrics-*.rpm
 
       - name: Import GPG key and sign RPM
         run: |
@@ -338,121 +341,8 @@ jobs:
           path: wshowlyrics-*.rpm
           retention-days: 7
 
-  build-appimage:
-    needs: prepare-build
-    if: needs.prepare-build.outputs.has_tag == 'true'
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          - arch: x86_64
-            runner: ubuntu-latest
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Build in Ubuntu 22.04 (glibc compatibility)
-        run: |
-          docker run --rm -v "$PWD:/workspace" -w /workspace ubuntu:22.04 bash -c "
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update
-            apt-get install -y \
-              meson ninja-build \
-              libwayland-dev wayland-protocols \
-              libcairo2-dev libpango1.0-dev \
-              libcurl4-openssl-dev libfontconfig1-dev \
-              libappindicator3-dev libgdk-pixbuf-2.0-dev \
-              libjson-c-dev libssl-dev \
-              wget file
-
-            meson setup build --prefix=/usr
-            meson compile -C build
-            DESTDIR=/workspace/AppDir meson install -C build
-
-            # Fix permissions for files created in container
-            chmod -R 777 /workspace/AppDir
-          "
-
-      - name: Download playerctl and linuxdeploy
-        run: |
-          ARCH="${{ matrix.arch }}"
-
-          # Rename lyrics to wshowlyrics
-          if [ -f AppDir/usr/bin/lyrics ]; then
-            mv AppDir/usr/bin/lyrics AppDir/usr/bin/wshowlyrics
-          fi
-
-          # Download and extract playerctl from deb package
-          if [ "$ARCH" = "x86_64" ]; then
-            wget https://github.com/altdesktop/playerctl/releases/download/v2.4.1/playerctl-2.4.1_amd64.deb
-            dpkg-deb -x playerctl-2.4.1_amd64.deb playerctl-extracted
-            cp playerctl-extracted/usr/bin/playerctl AppDir/usr/bin/
-          else
-            # For aarch64, install from system repository
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq playerctl
-            cp /usr/bin/playerctl AppDir/usr/bin/
-          fi
-
-          # Download linuxdeploy
-          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage
-          chmod +x linuxdeploy-${ARCH}.AppImage
-
-      - name: Create AppDir structure
-        run: |
-          mkdir -p AppDir/usr/share/applications
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-
-          # Create .desktop file
-          cat > AppDir/usr/share/applications/wshowlyrics.desktop << 'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=wshowlyrics
-          Comment=Wayland-native lyrics display
-          Exec=wshowlyrics
-          Icon=wshowlyrics
-          Categories=Audio;AudioVideo;
-          Terminal=false
-          EOF
-
-          # Create placeholder icon (music note emoji as PNG would be better)
-          echo "🎵" > AppDir/usr/share/icons/hicolor/256x256/apps/wshowlyrics.png
-
-      - name: Bundle dependencies with linuxdeploy
-        run: |
-          ARCH="${{ matrix.arch }}"
-          VERSION="${{ needs.prepare-build.outputs.version }}"
-
-          ./linuxdeploy-${ARCH}.AppImage --appdir AppDir --output appimage
-
-          # Rename to include version
-          mv wshowlyrics-*.AppImage "wshowlyrics-${VERSION}-${ARCH}.AppImage"
-
-      - name: Import GPG key and create detached signature
-        run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 -d | gpg --batch --yes --import
-
-          VERSION="${{ needs.prepare-build.outputs.version }}"
-          ARCH="${{ matrix.arch }}"
-          APPIMAGE="wshowlyrics-${VERSION}-${ARCH}.AppImage"
-
-          gpg --batch --yes --detach-sign --armor -u B4CD9B155AA3124C "${APPIMAGE}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: appimage-${{ matrix.arch }}
-          path: |
-            wshowlyrics-${{ needs.prepare-build.outputs.version }}-${{ matrix.arch }}.AppImage
-            wshowlyrics-${{ needs.prepare-build.outputs.version }}-${{ matrix.arch }}.AppImage.asc
-          retention-days: 7
-
   upload-to-release:
-    needs: [prepare-build, build-deb, build-rpm, build-appimage]
+    needs: [prepare-build, build-deb, build-rpm]
     if: needs.prepare-build.outputs.has_tag == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -495,13 +385,6 @@ jobs:
             sudo dnf install wshowlyrics-${{ needs.prepare-build.outputs.version }}-1.fc*.rpm
             ```
 
-            #### Universal (AppImage)
-            ```bash
-            # Download the appropriate AppImage for your architecture
-            chmod +x wshowlyrics-${{ needs.prepare-build.outputs.version }}-x86_64.AppImage
-            ./wshowlyrics-${{ needs.prepare-build.outputs.version }}-x86_64.AppImage
-            ```
-
             ### Package Verification
 
             All packages are signed with GPG key `B4CD9B155AA3124C`.
@@ -514,12 +397,5 @@ jobs:
             #### Verify .rpm
             ```bash
             rpm --checksig wshowlyrics-${{ needs.prepare-build.outputs.version }}-1.fc*.rpm
-            ```
-
-            #### Verify AppImage
-            ```bash
-            gpg --keyserver keyserver.ubuntu.com --recv-keys B4CD9B155AA3124C
-            gpg --verify wshowlyrics-${{ needs.prepare-build.outputs.version }}-x86_64.AppImage.asc \
-                         wshowlyrics-${{ needs.prepare-build.outputs.version }}-x86_64.AppImage
             ```
           generate_release_notes: true

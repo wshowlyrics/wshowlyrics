@@ -149,10 +149,7 @@ jobs:
            License version 3 can be found in "/usr/share/common-licenses/GPL-3".
           EOF
 
-          # debian/compat
-          echo "13" > debian/compat
-
-          # debian/source/format
+          # debian/source/format (debian/compat not needed with debhelper-compat)
           echo "3.0 (quilt)" > debian/source/format
 
       - name: Update debian/changelog
