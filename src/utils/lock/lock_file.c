@@ -19,8 +19,8 @@ static bool is_process_running(pid_t pid) {
 }
 
 bool lock_file_acquire(void) {
-    // Try to open/create lock file
-    lock_fd = open(LOCK_FILE_PATH, O_RDWR | O_CREAT, 0644);
+    // Try to open/create lock file (owner-only access for security)
+    lock_fd = open(LOCK_FILE_PATH, O_RDWR | O_CREAT, 0600);
     if (lock_fd < 0) {
         log_error("Failed to open lock file %s: %s", LOCK_FILE_PATH, strerror(errno));
         return false;
