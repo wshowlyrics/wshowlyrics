@@ -155,12 +155,14 @@ jobs:
           %{_userunitdir}/wshowlyrics.service
 
           %changelog
-          * $(date +"%a %b %d %Y") unstable-code <assa0620@gmail.com> - VERSION_PLACEHOLDER-1
+          * DATE_PLACEHOLDER unstable-code <assa0620@gmail.com> - VERSION_PLACEHOLDER-1
           - Nightly build from master branch (commit COMMIT_SHORT_PLACEHOLDER)
           SPECEOF
 
+          CHANGELOG_DATE=$(date +"%a %b %d %Y")
           sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" wshowlyrics.spec
           sed -i "s/COMMIT_SHORT_PLACEHOLDER/${COMMIT_SHORT}/g" wshowlyrics.spec
+          sed -i "s/DATE_PLACEHOLDER/${CHANGELOG_DATE}/g" wshowlyrics.spec
 
       - name: Create source tarball
         if: steps.check_tag.outputs.is_release == 'false'
