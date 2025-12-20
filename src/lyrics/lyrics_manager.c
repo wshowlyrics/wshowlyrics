@@ -258,9 +258,9 @@ void lyrics_manager_update_current_line(struct lyrics_state *state) {
     }
 
     // Get current playback position with timing offset applied
-    // Positive offset = delay lyrics (slower), Negative offset = advance lyrics (faster)
+    // Positive offset = advance lyrics (faster), Negative offset = delay lyrics (slower)
     int64_t position_us = mpris_get_position();
-    position_us -= (int64_t)state->timing_offset_ms * 1000LL;
+    position_us += (int64_t)state->timing_offset_ms * 1000LL;
 
     // Find the appropriate line for current position
     struct lyrics_line *new_line = lrc_find_line_at_time(&state->lyrics, position_us);

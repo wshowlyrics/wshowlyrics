@@ -8,6 +8,7 @@
 #include "../../utils/render/ruby_render.h"
 #include "../../utils/render/word_render.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include <stdlib.h>
 #include <strings.h>
 
 // Helper function to create render_base_params (reduces code duplication)
@@ -22,6 +23,44 @@ static inline struct render_base_params make_render_base(
         .width = width,
         .height = height
     };
+}
+
+// Helper function to render timing offset progress bar
+// Shows a horizontal bar below lyrics indicating the current timing offset:
+// - Positive offset (advance lyrics): bar extends right from center
+// - Negative offset (delay lyrics): bar extends left from center
+// - Zero offset: no bar displayed
+static void render_offset_bar(cairo_t *cairo, int timing_offset_ms,
+                               int width, int height, uint32_t foreground) {
+    if (timing_offset_ms == 0) {
+        return; // 0일 때는 숨김
+    }
+
+    const int bar_height = 4; // 4픽셀 높이
+    const int bar_y = height; // 텍스트 바로 아래
+    const int center_x = width / 2;
+    const int max_offset = 10000; // ±10초 (최대 범위)
+    const int max_bar_width = width / 2; // 바의 최대 길이 (화면 절반)
+
+    // 바의 길이 계산 (절대값 사용)
+    int abs_offset = abs(timing_offset_ms);
+    if (abs_offset > max_offset) {
+        abs_offset = max_offset; // 범위 클램핑
+    }
+    int bar_width = (int)((double)abs_offset / max_offset * max_bar_width);
+
+    // 바 그리기
+    cairo_set_source_u32(cairo, foreground);
+
+    if (timing_offset_ms < 0) {
+        // 음수: 중심에서 왼쪽으로 (가사 늦게 - 재생보다 뒤처짐)
+        cairo_rectangle(cairo, center_x - bar_width, bar_y, bar_width, bar_height);
+    } else {
+        // 양수: 중심에서 오른쪽으로 (가사 빠르게 - 재생보다 앞서감)
+        cairo_rectangle(cairo, center_x, bar_y, bar_width, bar_height);
+    }
+
+    cairo_fill(cairo);
 }
 
 cairo_subpixel_order_t rendering_manager_to_cairo_subpixel(enum wl_output_subpixel subpixel) {
@@ -224,6 +263,12 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
             *width = w;
             *height = h;
         }
+    }
+
+    // Render timing offset progress bar (if offset is non-zero)
+    if (state->timing_offset_ms != 0) {
+        render_offset_bar(cairo, state->timing_offset_ms, *width, *height, state->foreground);
+        *height += 6; // Progress bar 높이 + 여백 (4px bar + 2px spacing)
     }
 }
 
