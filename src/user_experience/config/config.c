@@ -1072,7 +1072,7 @@ char* config_load_with_fallback(struct config *cfg) {
         char *last_slash = strrchr(dir_path, '/');
         if (last_slash) {
             *last_slash = '\0';
-            mkdir(dir_path, 0755);  // Create ~/.config/wshowlyrics/
+            mkdir(dir_path, 0700);  // Create ~/.config/wshowlyrics/ (owner-only access for privacy)
         }
         free(dir_path);
 
@@ -1085,8 +1085,8 @@ char* config_load_with_fallback(struct config *cfg) {
 
         // Try to create config file atomically - if it exists, open() will fail
         // This eliminates TOCTOU by combining check and create into single atomic operation
-        mode_t old_mask = umask(0022);  // Ensure rw-r--r-- permissions
-        int fd = open(user_config_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
+        mode_t old_mask = umask(0077);  // Ensure rw------- permissions (privacy)
+        int fd = open(user_config_path, O_CREAT | O_EXCL | O_WRONLY, 0600);
         umask(old_mask);
 
         // If file was just created (fd >= 0), copy from system config
