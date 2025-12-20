@@ -60,7 +60,7 @@ jobs:
       - name: Install COPR CLI
         if: steps.check_tag.outputs.is_release == 'false'
         run: |
-          sudo dnf install -y copr-cli
+          pip install copr-cli
 
       - name: Setup COPR config
         if: steps.check_tag.outputs.is_release == 'false'
