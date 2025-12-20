@@ -69,6 +69,38 @@ cd wshowlyrics-git
 makepkg -si
 ```
 
+### Ubuntu/Debian (PPA)
+
+Add the PPA and install:
+
+```bash
+sudo add-apt-repository ppa:unstable-code/wshowlyrics
+sudo apt update
+sudo apt install wshowlyrics
+```
+
+Or download `.deb` from [Releases](https://github.com/unstable-code/lyrics/releases):
+
+```bash
+sudo dpkg -i wshowlyrics_*_amd64.deb
+sudo apt-get install -f  # Install dependencies
+```
+
+### Fedora/RHEL (COPR)
+
+Enable the COPR repository and install:
+
+```bash
+sudo dnf copr enable unstable-code/wshowlyrics
+sudo dnf install wshowlyrics
+```
+
+Or download `.rpm` from [Releases](https://github.com/unstable-code/lyrics/releases):
+
+```bash
+sudo dnf install wshowlyrics-*.rpm
+```
+
 ### Manual Installation (Arch Linux)
 
 Install dependencies:

@@ -67,6 +67,38 @@ cd wshowlyrics-git
 makepkg -si
 ```
 
+### Ubuntu/Debian (PPA)
+
+PPA를 추가하고 설치:
+
+```bash
+sudo add-apt-repository ppa:unstable-code/wshowlyrics
+sudo apt update
+sudo apt install wshowlyrics
+```
+
+또는 [릴리즈](https://github.com/unstable-code/lyrics/releases)에서 `.deb` 다운로드:
+
+```bash
+sudo dpkg -i wshowlyrics_*_amd64.deb
+sudo apt-get install -f  # 의존성 설치
+```
+
+### Fedora/RHEL (COPR)
+
+COPR 저장소를 활성화하고 설치:
+
+```bash
+sudo dnf copr enable unstable-code/wshowlyrics
+sudo dnf install wshowlyrics
+```
+
+또는 [릴리즈](https://github.com/unstable-code/lyrics/releases)에서 `.rpm` 다운로드:
+
+```bash
+sudo dnf install wshowlyrics-*.rpm
+```
+
 ### 수동 설치 (Arch Linux)
 
 의존성 설치:
