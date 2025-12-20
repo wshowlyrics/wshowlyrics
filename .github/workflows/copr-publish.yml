@@ -138,6 +138,8 @@ jobs:
 
           %install
           %meson_install
+          # Rename binary from lyrics to wshowlyrics
+          mv %{buildroot}%{_bindir}/lyrics %{buildroot}%{_bindir}/wshowlyrics
 
           %post
           %systemd_user_post wshowlyrics.service
@@ -172,17 +174,20 @@ jobs:
         run: |
           VERSION="${{ steps.pkgver.outputs.version }}"
 
-          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-          cp "wshowlyrics-${VERSION}.tar.gz" ~/rpmbuild/SOURCES/
-          cp wshowlyrics.spec ~/rpmbuild/SPECS/
-
-          rpmbuild -bs ~/rpmbuild/SPECS/wshowlyrics.spec
+          docker run --rm -v "$PWD:/workspace" -w /workspace fedora:latest bash -c "
+            dnf install -y rpm-build rpmdevtools
+            mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+            cp wshowlyrics-${VERSION}.tar.gz ~/rpmbuild/SOURCES/
+            cp wshowlyrics.spec ~/rpmbuild/SPECS/
+            rpmbuild -bs ~/rpmbuild/SPECS/wshowlyrics.spec
+            cp ~/rpmbuild/SRPMS/wshowlyrics-*.src.rpm /workspace/
+          "
 
       - name: Upload to COPR
         if: steps.check_tag.outputs.is_release == 'false'
         run: |
           VERSION="${{ steps.pkgver.outputs.version }}"
-          SRPM=$(find ~/rpmbuild/SRPMS -name "wshowlyrics-${VERSION}-*.src.rpm")
+          SRPM=$(find . -maxdepth 1 -name "wshowlyrics-*.src.rpm")
 
           echo "Uploading SRPM to COPR: $SRPM"
           copr-cli build unstable-code/wshowlyrics-nightly "${SRPM}"
