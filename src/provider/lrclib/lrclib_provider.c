@@ -189,7 +189,7 @@ static bool lrclib_search_fallback(const char *title, const char *artist,
     }
 
     // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
 
     // Build search request URL using helper function
     char request_url[URL_BUFFER_SIZE];
@@ -267,7 +267,7 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     }
 
     // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
 
     // URL encode parameters
     char *title_encoded = url_encode(curl, title);

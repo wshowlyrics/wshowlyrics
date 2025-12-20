@@ -147,7 +147,7 @@ bool claude_translator_init(void) {
     }
 
     // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+    curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
 
     return true;
 }

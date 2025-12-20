@@ -100,7 +100,7 @@ static bool setup_deepl_curl_request(CURL **curl_out,
     }
 
     // Enforce TLS 1.2 or higher
-    curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
 
     // Build headers
     struct curl_slist *headers = NULL;
