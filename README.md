@@ -5,8 +5,7 @@
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://www.linux.org/)
 [![Wayland](https://img.shields.io/badge/Wayland-Only-orange.svg)](https://wayland.freedesktop.org/)
 <a href="https://scan.coverity.com/projects/unstable-code-lyrics">
-  <img alt="Coverity Scan Build Status"
-       src="https://scan.coverity.com/projects/32766/badge.svg"/>
+  <img alt="Coverity Scan Build Status" src="https://scan.coverity.com/projects/32766/badge.svg?flat=1">
 </a>
 <a href="https://sonarcloud.io/summary/new_code?id=unstable-code_lyrics">
   <img alt="Quality Gate Status"
