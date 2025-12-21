@@ -12,6 +12,12 @@
        src="https://sonarcloud.io/api/project_badges/measure?project=unstable-code_lyrics&metric=alert_status"/>
 </a>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Fedora-51A2DA?style=for-the-badge&logo=fedora&logoColor=white" alt="Fedora">
+  <img src="https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white" alt="Ubuntu">
+  <img src="https://img.shields.io/badge/Arch%20Linux-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="Arch Linux">
+</p>
+
 <img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/e33bb35e-24f3-4632-811c-b7e55a0660a1" />
 
 Wayland 기반 가사 오버레이 프로그램입니다. [wshowkeys 프로젝트를 기반](https://github.com/unstable-code/wshowkeys)으로 제작되었으며, [LyricsX](https://github.com/ddddxxx/LyricsX)에서 영감을 받았습니다.

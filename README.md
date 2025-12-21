@@ -12,11 +12,19 @@
        src="https://sonarcloud.io/api/project_badges/measure?project=unstable-code_lyrics&metric=alert_status"/>
 </a>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Fedora-51A2DA?style=for-the-badge&logo=fedora&logoColor=white" alt="Fedora">
+  <img src="https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white" alt="Ubuntu">
+  <img src="https://img.shields.io/badge/Arch%20Linux-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="Arch Linux">
+</p>
+
 <img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/1909f0c1-445b-4526-b30f-6a5df93e624d" />
 
 A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https://github.com/unstable-code/wshowkeys) and inspired by [LyricsX](https://github.com/ddddxxx/LyricsX).
 
-[한국어 README](docs/README.ko.md)
+<p align="center">
+  <a href="docs/README.ko.md">🇰🇷 한국어</a>
+</p>
 
 ## Features
 
