@@ -168,6 +168,10 @@ bool translator_load_from_cache(const char *cache_path, struct lyrics_data *data
     // Read file contents
     fseek(f, 0, SEEK_END);
     long file_size = ftell(f);
+    if (file_size < 0) {
+        fclose(f);
+        return false;
+    }
     fseek(f, 0, SEEK_SET);
 
     char *json_str = malloc(file_size + 1);
@@ -568,6 +572,18 @@ void* translator_async_worker(void *arg) {
     // Count translatable lines
     int translatable_count = translator_count_translatable_lines(data);
     data->translation_total = translatable_count;
+
+    // Nothing to translate - return early to avoid division by zero
+    if (translatable_count == 0) {
+        data->translation_in_progress = false;
+        free(args->target_lang);
+        free(args->api_key);
+        free(args->model_name);
+        free(args->cache_path);
+        free(args);
+        return NULL;
+    }
+
     data->translation_in_progress = true;
 
     // Check if translation can complete before song ends
@@ -690,7 +706,12 @@ char* translator_perform_http_request(struct translator_http_params *params) {
 
     // Enforce TLS 1.2 minimum (allows TLS 1.2, 1.3, and future versions)
     // Excludes weak protocols: SSL 2.0/3.0, TLS 1.0/1.1
-    curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+    CURLcode setopt_res = curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+    if (setopt_res != CURLE_OK) {
+        log_error("%s: Failed to set SSL version: %s", params->provider_name, curl_easy_strerror(setopt_res));
+        curl_easy_cleanup(local_curl);
+        return NULL;
+    }
 
     char *response_data = NULL;
     int attempt = 0;
@@ -701,10 +722,16 @@ char* translator_perform_http_request(struct translator_http_params *params) {
         // Setup CURL request
         struct translator_curl_response response;
         translator_curl_response_init(&response);
-        curl_easy_setopt(local_curl, CURLOPT_URL, params->endpoint);
-        curl_easy_setopt(local_curl, CURLOPT_POSTFIELDS, params->request_body);
-        curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, translator_curl_write_callback);
-        curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, &response);
+
+        if (curl_easy_setopt(local_curl, CURLOPT_URL, params->endpoint) != CURLE_OK ||
+            curl_easy_setopt(local_curl, CURLOPT_POSTFIELDS, params->request_body) != CURLE_OK ||
+            curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, translator_curl_write_callback) != CURLE_OK ||
+            curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, &response) != CURLE_OK) {
+            log_error("%s: Failed to set CURL options", params->provider_name);
+            translator_curl_response_free(&response);
+            curl_easy_cleanup(local_curl);
+            return NULL;
+        }
 
         // Build provider-specific headers
         struct curl_slist *headers = params->build_headers(params->api_key, params->extra_data);
@@ -713,7 +740,14 @@ char* translator_perform_http_request(struct translator_http_params *params) {
             curl_easy_cleanup(local_curl);
             return NULL;
         }
-        curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
+
+        if (curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers) != CURLE_OK) {
+            log_error("%s: Failed to set HTTP headers", params->provider_name);
+            curl_slist_free_all(headers);
+            translator_curl_response_free(&response);
+            curl_easy_cleanup(local_curl);
+            return NULL;
+        }
 
         // Perform request
         CURLcode res = curl_easy_perform(local_curl);
@@ -819,7 +853,7 @@ bool translator_translate_lyrics_generic(struct lyrics_data *data,
     }
 
     // Prepare thread arguments
-    struct translator_thread_args *args = malloc(sizeof(struct translator_thread_args));
+    struct translator_thread_args *args = malloc(sizeof(*args));
     if (!args) {
         return false;
     }

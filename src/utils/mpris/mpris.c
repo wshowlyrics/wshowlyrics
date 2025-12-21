@@ -98,8 +98,10 @@ static char* build_player_arg(void) {
                 free(status);
                 break;  // Found a playing player, use it
             }
-            free(status);
         }
+
+        // Always free status if allocated, regardless of exit_code
+        free(status);
 
         player = strtok_r(NULL, ",", &saveptr);
     }
@@ -158,13 +160,14 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     char *player_name = execute_command(cmd, &player_exit_code);
 
     // Ignore browsers (chromium includes chrome/edge, firefox)
-    if (player_name && player_exit_code == 0) {
-        if (strstr(player_name, "chromium") || strstr(player_name, "firefox")) {
+    if (player_name) {
+        if (player_exit_code == 0 &&
+            (strstr(player_name, "chromium") || strstr(player_name, "firefox"))) {
             free(player_name);
             free(player_arg);
             return false;
         }
-        free(player_name);
+        free(player_name);  // Always free if allocated, regardless of exit_code
     }
 
     // Get all metadata in a single command to ensure consistency

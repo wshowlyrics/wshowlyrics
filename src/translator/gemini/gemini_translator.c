@@ -135,7 +135,12 @@ bool gemini_translator_init(void) {
     }
 
     // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+    if (curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
+        log_error("gemini_translator: Failed to set SSL version");
+        curl_easy_cleanup(curl_handle);
+        curl_handle = NULL;
+        return false;
+    }
 
     return true;
 }

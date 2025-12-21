@@ -100,7 +100,10 @@ static bool setup_deepl_curl_request(CURL **curl_out,
     }
 
     // Enforce TLS 1.2 or higher
-    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+    if (curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
+        curl_easy_cleanup(curl);
+        return false;
+    }
 
     // Build headers
     struct curl_slist *headers = NULL;
@@ -111,14 +114,18 @@ static bool setup_deepl_curl_request(CURL **curl_out,
     headers = curl_slist_append(headers, auth_header);
 
     // Configure request
-    curl_easy_setopt(curl, CURLOPT_URL, endpoint);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    if (curl_easy_setopt(curl, CURLOPT_URL, endpoint) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, response) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        return false;
+    }
 
     *curl_out = curl;
     *headers_out = headers;
@@ -275,7 +282,7 @@ bool deepl_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
     }
 
     // Prepare thread args
-    struct translator_thread_args *args = malloc(sizeof(struct translator_thread_args));
+    struct translator_thread_args *args = malloc(sizeof(*args));
     if (!args) {
         log_error("Failed to allocate memory for translation thread args");
         return false;
