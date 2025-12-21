@@ -389,10 +389,10 @@ This project uses a multi-layered SAST (Static Application Security Testing) app
    - GitHub PR decoration with Quality Gate
 
 4. **Coverity Scan** (Deep Concurrency Analysis)
-   - Weekly scans (Sundays 02:00 UTC / 11:00 KST)
+   - Weekly scans (Sundays 00:00 UTC / 09:00 KST)
    - Race condition and deadlock detection
    - Industry-standard deep data flow analysis
-   - 7-day rolling window (one scan per week)
+   - Up to 21 builds/week for 100K-500K LOC projects
 
 **Tool Comparison:**
 
@@ -501,9 +501,9 @@ Weekly deep analysis for advanced bug detection, particularly concurrency issues
 **Dashboard:** https://scan.coverity.com/projects/unstable-code-lyrics
 
 **Schedule:**
-- Automated weekly scans every Sunday 02:00 UTC (11:00 KST)
-- 7-day rolling window (last submission + 7 days = next available submission)
-- No manual workflow dispatch (prevents accidental quota exhaustion)
+- Automated weekly scans every Sunday 00:00 UTC (09:00 KST)
+- Up to 21 builds per week (max 3 per day) for 100K-500K LOC projects
+- Manual workflow dispatch enabled for testing and retry
 
 **Workflow:** `.github/workflows/coverity-scan.yml`
 
