@@ -2,9 +2,12 @@ name: Coverity Scan
 
 on:
   schedule:
-    # 매주 일요일 02:00 UTC (한국시간 11:00)
-    # Coverity Scan 무료 플랜: 7일 롤링 윈도우 제한 (주 1회)
-    - cron: '0 2 * * 0'
+    # 매월 첫째/셋째 일요일 00:00 UTC (한국시간 09:00)
+    # Coverity Scan 무료 플랜: 7일 롤링 윈도우 제한
+    # 2주 간격 실행으로 지연 시간 여유 확보 (7일 + 여유 > 168시간)
+    - cron: '0 0 1-7 * 0'      # 매월 1-7일 사이의 일요일
+    - cron: '0 0 15-21 * 0'    # 매월 15-21일 사이의 일요일
+  workflow_dispatch:  # 수동 실행 허용 (테스트 및 실패 시 재시도)
 
 jobs:
   coverity:
@@ -60,7 +63,7 @@ jobs:
              --form email=${{ secrets.COVERITY_EMAIL }} \
              --form file=@lyrics.tgz \
              --form version="${GITHUB_SHA:0:8}" \
-             --form description="Automated weekly scan - commit ${{ github.sha }}" \
+             --form description="Automated bi-weekly scan - commit ${{ github.sha }}" \
              https://scan.coverity.com/builds?project=unstable-code%2Flyrics
 
     - name: Upload build log on failure
