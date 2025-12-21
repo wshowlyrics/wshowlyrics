@@ -33,7 +33,11 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
     }
 
     // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+    if (curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
+        log_error("iTunes: Failed to set SSL version");
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
 
     // Sanitize track title to remove YouTube IDs and file extensions
     char *clean_track = sanitize_title(track);
@@ -90,12 +94,18 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
     // Setup CURL request
     struct curl_memory_buffer response;
     curl_memory_buffer_init(&response);
-    curl_easy_setopt(curl, CURLOPT_URL, request_url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    if (curl_easy_setopt(curl, CURLOPT_URL, request_url) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
+        log_error("iTunes: Failed to set CURL options");
+        curl_memory_buffer_free(&response);
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
 
     // Perform request
     CURLcode res = curl_easy_perform(curl);

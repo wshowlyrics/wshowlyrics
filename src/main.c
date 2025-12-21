@@ -56,22 +56,28 @@ int main(int argc, char *argv[]) {
                 curl_memory_buffer_init(&buffer);
 
                 const char *help_url = "https://raw.githubusercontent.com/unstable-code/lyrics/refs/heads/master/docs/help.txt";
-                curl_easy_setopt(curl, CURLOPT_URL, help_url);
-                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
-                curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buffer);
-                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-                curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);  // 5 second timeout
-                curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
+                if (curl_easy_setopt(curl, CURLOPT_URL, help_url) != CURLE_OK ||
+                    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
+                    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buffer) != CURLE_OK ||
+                    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK ||
+                    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L) != CURLE_OK ||  // 5 second timeout
+                    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK) {
+                    // Failed to set CURL options, skip to fallback help
+                    curl_memory_buffer_free(&buffer);
+                    curl_easy_cleanup(curl);
+                    curl = NULL;
+                }
 
-                CURLcode res = curl_easy_perform(curl);
+                if (curl) {
+                    CURLcode res = curl_easy_perform(curl);
 
-                // Check HTTP response code
-                long http_code = 0;
-                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-                curl_easy_cleanup(curl);
+                    // Check HTTP response code
+                    long http_code = 0;
+                    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+                    curl_easy_cleanup(curl);
 
-                // Only use fetched content if successful (2xx status code)
-                if (res == CURLE_OK && http_code >= 200 && http_code < 300 && buffer.size > 0) {
+                    // Only use fetched content if successful (2xx status code)
+                    if (res == CURLE_OK && http_code >= 200 && http_code < 300 && buffer.size > 0) {
                     // Replace %s with program name
                     char *pos = buffer.data;
                     char *end = buffer.data + buffer.size;
@@ -89,8 +95,9 @@ int main(int argc, char *argv[]) {
                     curl_memory_buffer_free(&buffer);
                     free(argv0_copy);
                     return 0;
+                    }
+                    curl_memory_buffer_free(&buffer);
                 }
-                curl_memory_buffer_free(&buffer);
             }
 
             // Fallback to basic help if fetch failed
@@ -146,9 +153,15 @@ int main(int argc, char *argv[]) {
     sa.sa_handler = signal_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
-    sigaction(SIGINT, &sa, NULL);  // Ctrl+C
-    sigaction(SIGTERM, &sa, NULL); // Termination request
-    sigaction(SIGHUP, &sa, NULL);  // Terminal hangup
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        log_warn("Failed to register SIGINT handler: %s", strerror(errno));
+    }
+    if (sigaction(SIGTERM, &sa, NULL) == -1) {
+        log_warn("Failed to register SIGTERM handler: %s", strerror(errno));
+    }
+    if (sigaction(SIGHUP, &sa, NULL) == -1) {
+        log_warn("Failed to register SIGHUP handler: %s", strerror(errno));
+    }
 
     // Store config file path and checksum for hot reload
     state.config_file_path = config_loaded_path;  // Transfer ownership

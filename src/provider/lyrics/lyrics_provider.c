@@ -114,12 +114,9 @@ static char* remove_extension(const char *str) {
 }
 
 static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
-    struct stat st;
-    if (stat(path, &st) != 0) {
-        return false;
-    }
-
     // Check file extension to determine parser
+    // Note: No stat() call here to avoid TOCTOU race condition
+    // Parser functions will handle missing/inaccessible files
     const char *ext = strrchr(path, '.');
     if (!ext) return false;
 
@@ -639,30 +636,26 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
         if (strcmp(providers[i]->name, "local") == 0 && has_hash) {
             char cache_path[512];
             if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
-                struct stat st;
-                if (stat(cache_path, &st) == 0) {
+                // Try to load from cache without stat() to avoid TOCTOU
+                // lrc_parse_file will fail gracefully if file doesn't exist
+                if (lrc_parse_file(cache_path, data)) {
                     log_info("Found cached lyrics: %s", cache_path);
+                    log_success("Found lyrics via cache");
 
-                    // Load from cache
-                    if (lrc_parse_file(cache_path, data)) {
-                        log_success("Found lyrics via cache");
-
-                        // Store the file path and calculate checksum
-                        data->source_file_path = strdup(cache_path);
-                        if (!calculate_file_md5(cache_path, data->md5_checksum)) {
-                            log_warn("Failed to calculate MD5 checksum for %s", cache_path);
-                            data->md5_checksum[0] = '\0';
-                        }
-
-                        // Try to translate lyrics with configured provider
-                        translate_lyrics_with_provider(data, track->length_us);
-
-                        return true;
-                    } else {
-                        log_warn("Failed to parse cached lyrics, will continue to online provider");
-                        // Delete corrupted cache file
-                        unlink(cache_path);
+                    // Store the file path and calculate checksum
+                    data->source_file_path = strdup(cache_path);
+                    if (!calculate_file_md5(cache_path, data->md5_checksum)) {
+                        log_warn("Failed to calculate MD5 checksum for %s", cache_path);
+                        data->md5_checksum[0] = '\0';
                     }
+
+                    // Try to translate lyrics with configured provider
+                    translate_lyrics_with_provider(data, track->length_us);
+
+                    return true;
+                } else {
+                    // Failed to parse - file might not exist or be corrupted
+                    // Continue to online provider without deleting cache
                 }
             }
         }

@@ -52,7 +52,9 @@ bool lock_file_acquire(void) {
                     if (ftruncate(lock_fd, 0) == -1) {
                         log_warn("Failed to truncate lock file: %s", strerror(errno));
                     }
-                    lseek(lock_fd, 0, SEEK_SET);
+                    if (lseek(lock_fd, 0, SEEK_SET) == -1) {
+                        log_warn("Failed to reset lock file position: %s", strerror(errno));
+                    }
 
                     // Try to acquire lock again (file is still open)
                     if (fcntl(lock_fd, F_SETLK, &fl) == -1) {

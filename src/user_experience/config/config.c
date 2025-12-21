@@ -320,8 +320,16 @@ static bool is_safe_path_for_shell(const char *path) {
 
 // Check config file permissions and fix them if they're too permissive
 static void check_and_fix_config_permissions(const char *path) {
+    // Use open() + fstat() + fchmod() to avoid TOCTOU race condition
+    // This ensures we're always operating on the same file
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        return;  // Can't open file, skip validation
+    }
+
     struct stat st;
-    if (stat(path, &st) != 0) {
+    if (fstat(fd, &st) != 0) {
+        close(fd);
         return;  // Can't stat file, skip validation
     }
 
@@ -339,10 +347,11 @@ static void check_and_fix_config_permissions(const char *path) {
         log_warn("⚠️  Config file has insecure permissions: %04o", mode);
         log_warn("File: %s", path);
 
-        // Try to automatically fix permissions
-        if (chmod(path, 0600) == 0) {
+        // Try to automatically fix permissions using fchmod to avoid TOCTOU
+        if (fchmod(fd, 0600) == 0) {
             log_info("✓ Automatically fixed permissions to 0600");
             log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            close(fd);
         } else {
             log_warn("Failed to automatically fix permissions: %s", strerror(errno));
             log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -375,7 +384,10 @@ static void check_and_fix_config_permissions(const char *path) {
                     // Notification failed, but we continue anyway
                 }
             }
+            close(fd);
         }
+    } else {
+        close(fd);
     }
 }
 
@@ -1072,7 +1084,10 @@ char* config_load_with_fallback(struct config *cfg) {
         char *last_slash = strrchr(dir_path, '/');
         if (last_slash) {
             *last_slash = '\0';
-            mkdir(dir_path, 0700);  // Create ~/.config/wshowlyrics/ (owner-only access for privacy)
+            if (mkdir(dir_path, 0700) == -1 && errno != EEXIST) {
+                // Failed to create directory and it's not because it already exists
+                log_warn("Failed to create config directory %s: %s", dir_path, strerror(errno));
+            }
         }
         free(dir_path);
 

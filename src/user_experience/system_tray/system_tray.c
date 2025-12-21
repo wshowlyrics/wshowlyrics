@@ -35,15 +35,24 @@ static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
     }
 
     // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+    if (curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
+        log_error("system_tray: Failed to set SSL version");
+        curl_easy_cleanup(curl);
+        return false;
+    }
 
     curl_memory_buffer_init(buffer);
 
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)buffer);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)buffer) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK) {
+        log_error("system_tray: Failed to set CURL options");
+        curl_memory_buffer_free(buffer);
+        curl_easy_cleanup(curl);
+        return false;
+    }
 
     CURLcode res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);
@@ -155,7 +164,13 @@ static GdkPixbuf* load_image_from_url(const char *url) {
             return NULL;
         }
 
-        gdk_pixbuf_loader_close(loader, NULL);
+        GError *close_error = NULL;
+        if (!gdk_pixbuf_loader_close(loader, &close_error)) {
+            if (close_error) {
+                log_warn("Failed to close pixbuf loader: %s", close_error->message);
+                g_error_free(close_error);
+            }
+        }
         pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
 
         if (pixbuf) {
@@ -239,7 +254,11 @@ bool system_tray_init(void) {
     }
 
     // Initialize CURL globally
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    CURLcode curl_res = curl_global_init(CURL_GLOBAL_DEFAULT);
+    if (curl_res != CURLE_OK) {
+        log_error("Failed to initialize CURL: %s", curl_easy_strerror(curl_res));
+        return false;
+    }
 
     // Create AppIndicator
     indicator = app_indicator_new(

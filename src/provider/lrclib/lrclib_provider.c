@@ -65,12 +65,17 @@ static bool build_search_request_url(CURL *curl, const char *title, const char *
 // Perform CURL request and return response
 static bool perform_lrclib_request(CURL *curl, const char *url, struct curl_memory_buffer *response) {
     curl_memory_buffer_init(response);
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
+        log_error("lrclib: Failed to set CURL options");
+        curl_memory_buffer_free(response);
+        return false;
+    }
 
     // Perform request
     CURLcode res = curl_easy_perform(curl);
@@ -189,7 +194,11 @@ static bool lrclib_search_fallback(const char *title, const char *artist,
     }
 
     // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+    if (curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
+        log_error("lrclib: Failed to set SSL version");
+        curl_easy_cleanup(curl);
+        return false;
+    }
 
     // Build search request URL using helper function
     char request_url[URL_BUFFER_SIZE];
@@ -267,7 +276,11 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     }
 
     // Enforce TLS 1.2 or higher for security
-    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+    if (curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
+        log_error("lrclib: Failed to set SSL version");
+        curl_easy_cleanup(curl);
+        return false;
+    }
 
     // URL encode parameters
     char *title_encoded = url_encode(curl, title);
@@ -304,12 +317,18 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     // Setup CURL request
     struct curl_memory_buffer response;
     curl_memory_buffer_init(&response);
-    curl_easy_setopt(curl, CURLOPT_URL, request_url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    if (curl_easy_setopt(curl, CURLOPT_URL, request_url) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
+        log_error("lrclib: Failed to set CURL options");
+        curl_memory_buffer_free(&response);
+        curl_easy_cleanup(curl);
+        return false;
+    }
 
     // Perform request
     CURLcode res = curl_easy_perform(curl);

@@ -139,7 +139,7 @@ bool parse_file_generic(const char *filename, const char *format_name,
                         bool (*parser_func)(const char *, struct lyrics_data *)) {
     FILE *fp = fopen(filename, "r");
     if (!fp) {
-        log_error("Failed to open %s file: %s", format_name, filename);
+        // This is normal during path search - don't log as error
         return false;
     }
 
