@@ -144,6 +144,7 @@ int main(int argc, char *argv[]) {
     state.current_line_index = -1; // No current line initially
     state.timing_offset_ms = 0; // No timing offset initially
     state.fifo_fd = -1; // No FIFO initially
+    state.overlay_enabled = true; // Overlay enabled by default
 
     // Set global state for signal handler
     g_state = &state;
@@ -271,12 +272,14 @@ int main(int argc, char *argv[]) {
 
     // Create FIFO for timing offset control (avoid TOCTOU by not unlinking first)
     #define FIFO_PATH "/tmp/wshowlyrics.fifo"
-    if (mkfifo(FIFO_PATH, 0666) == -1) {
+    mode_t old_mask = umask(0077);  // Owner-only access for privacy
+    if (mkfifo(FIFO_PATH, 0600) == -1) {
         if (errno != EEXIST) {
             log_warn("Failed to create FIFO %s: %s", FIFO_PATH, strerror(errno));
         }
         // FIFO already exists, that's ok (we have exclusive lock)
     }
+    umask(old_mask);
 
     // Open FIFO in non-blocking mode
     state.fifo_fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
@@ -370,25 +373,44 @@ int main(int argc, char *argv[]) {
                 }
 
                 if (n > 0) {
-                    int delta = atoi(buf);
-
-                    if (buf[0] == '+' || buf[0] == '-') {
-                        // Cumulative mode: +100, -100
-                        state.timing_offset_ms += delta;
+                    // Check for overlay control commands first
+                    if (strcmp(buf, "show") == 0) {
+                        state.overlay_enabled = true;
+                        system_tray_set_overlay_state(true);
+                        rendering_manager_set_dirty(&state);
+                        log_info("Overlay enabled");
+                    } else if (strcmp(buf, "hide") == 0) {
+                        state.overlay_enabled = false;
+                        system_tray_set_overlay_state(false);
+                        rendering_manager_set_dirty(&state);
+                        log_info("Overlay disabled");
+                    } else if (strcmp(buf, "toggle") == 0) {
+                        state.overlay_enabled = !state.overlay_enabled;
+                        system_tray_set_overlay_state(state.overlay_enabled);
+                        rendering_manager_set_dirty(&state);
+                        log_info("Overlay toggled: %s", state.overlay_enabled ? "enabled" : "disabled");
                     } else {
-                        // Absolute mode: 0, 500
-                        state.timing_offset_ms = delta;
-                    }
+                        // Parse as timing offset (existing logic)
+                        int delta = atoi(buf);
 
-                    // Clamp to reasonable range
-                    if (state.timing_offset_ms < -10000) {
-                        state.timing_offset_ms = -10000;
-                    } else if (state.timing_offset_ms > 10000) {
-                        state.timing_offset_ms = 10000;
-                    }
+                        if (buf[0] == '+' || buf[0] == '-') {
+                            // Cumulative mode: +100, -100
+                            state.timing_offset_ms += delta;
+                        } else {
+                            // Absolute mode: 0, 500
+                            state.timing_offset_ms = delta;
+                        }
 
-                    log_info("Timing offset: %dms", state.timing_offset_ms);
-                    rendering_manager_set_dirty(&state);
+                        // Clamp to reasonable range
+                        if (state.timing_offset_ms < -10000) {
+                            state.timing_offset_ms = -10000;
+                        } else if (state.timing_offset_ms > 10000) {
+                            state.timing_offset_ms = 10000;
+                        }
+
+                        log_info("Timing offset: %dms", state.timing_offset_ms);
+                        rendering_manager_set_dirty(&state);
+                    }
                 }
             }
         }
@@ -422,7 +444,15 @@ int main(int argc, char *argv[]) {
         }
 
         // Update current line based on playback position
-        if (mpris_is_playing()) {
+        if (!state.overlay_enabled) {
+            // Overlay disabled - render transparent (same as paused)
+            if (state.current_line != NULL) {
+                state.current_line = NULL;
+                state.prev_line = NULL;
+                state.next_line = NULL;
+                rendering_manager_set_dirty(&state);
+            }
+        } else if (mpris_is_playing()) {
             lyrics_manager_update_current_line(&state);
             // Continuously update for smooth karaoke highlighting (LRCX only)
             if (lyrics_manager_is_format(&state, ".lrcx")) {

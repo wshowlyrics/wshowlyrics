@@ -89,6 +89,7 @@ struct lyrics_state {
     bool run;
     bool needs_reconnect; // Set when layer surface is closed
     bool reconnecting; // Set during reconnection to ignore layer_surface_closed
+    bool overlay_enabled; // FIFO controlled: show/hide overlay (default: true)
     struct wayland_connection *wl_conn; // Wayland connection manager
 
     // Surface configuration for reinitialization

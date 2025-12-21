@@ -646,3 +646,128 @@ void system_tray_cleanup(void) {
     // Cleanup CURL
     curl_global_cleanup();
 }
+
+// Create disabled icon with red X overlay (1/4 size in bottom-right corner)
+static GdkPixbuf* create_disabled_icon(void) {
+    GtkIconTheme *icon_theme = gtk_icon_theme_get_default();
+    GError *error = NULL;
+
+    // Load default icon (same as when no music is playing)
+    GdkPixbuf *icon = gtk_icon_theme_load_icon(icon_theme, "audio-headphones", 48, 0, &error);
+    if (!icon) {
+        // Fallback chain (same as save_default_icon)
+        g_clear_error(&error);
+        icon = gtk_icon_theme_load_icon(icon_theme, "audio-player", 48, 0, &error);
+    }
+    if (!icon) {
+        g_clear_error(&error);
+        icon = gtk_icon_theme_load_icon(icon_theme, "multimedia-player", 48, 0, &error);
+    }
+    if (!icon) {
+        log_error("Failed to load icon for disabled state");
+        if (error) g_error_free(error);
+        return NULL;
+    }
+
+    int width = gdk_pixbuf_get_width(icon);
+    int height = gdk_pixbuf_get_height(icon);
+
+    // Create Cairo surface
+    cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+    cairo_t *cr = cairo_create(surface);
+
+    // Draw original icon
+    gdk_cairo_set_source_pixbuf(cr, icon, 0, 0);
+    cairo_paint(cr);
+
+    // Draw red X in bottom-right corner (1/4 size = 12x12)
+    double x_size = width / 4.0;
+    double x_offset = width - x_size - 2;   // 2px from right edge
+    double y_offset = height - x_size - 2;  // 2px from bottom edge
+
+    // Red X mark (transparent background)
+    cairo_set_source_rgb(cr, 1.0, 0.0, 0.0);  // Pure red
+    cairo_set_line_width(cr, 2.5);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+    double padding = 2;
+    // Draw X
+    cairo_move_to(cr, x_offset + padding, y_offset + padding);
+    cairo_line_to(cr, x_offset + x_size - padding, y_offset + x_size - padding);
+    cairo_stroke(cr);
+
+    cairo_move_to(cr, x_offset + x_size - padding, y_offset + padding);
+    cairo_line_to(cr, x_offset + padding, y_offset + x_size - padding);
+    cairo_stroke(cr);
+
+    // Convert back to GdkPixbuf
+    cairo_surface_flush(surface);
+    GdkPixbuf *disabled = gdk_pixbuf_get_from_surface(surface, 0, 0, width, height);
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(surface);
+    g_object_unref(icon);
+
+    return disabled;
+}
+
+// Set overlay state and update icon
+void system_tray_set_overlay_state(bool enabled) {
+    static bool current_state = true;
+    static const char *DISABLED_ICON_PATH = "/tmp/wshowlyrics/disabled-icon.png";
+    static const char *DISABLED_ICON_NAME = "disabled-icon";
+
+    if (!indicator) {
+        return;
+    }
+
+    // Skip duplicate updates
+    if (current_state == enabled) {
+        return;
+    }
+
+    current_state = enabled;
+
+    if (enabled) {
+        // Overlay enabled: restore to album art or default icon
+        struct stat st;
+        if (stat(ICON_PATH, &st) == 0) {
+            // Album art file exists, restore it
+            app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+            app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
+            log_info("Overlay enabled - album art restored");
+        } else {
+            // No album art, use default icon
+            system_tray_reset_icon();
+            log_info("Overlay enabled - default icon restored");
+        }
+    } else {
+        // Overlay disabled: show headphones + red X
+        GdkPixbuf *disabled = create_disabled_icon();
+        if (!disabled) {
+            log_error("Failed to create disabled icon");
+            return;
+        }
+
+        // Save as PNG
+        GError *error = NULL;
+        mode_t old_mask = umask(0077);
+        bool save_result = gdk_pixbuf_save(disabled, DISABLED_ICON_PATH, "png", &error, NULL);
+        umask(old_mask);
+
+        if (!save_result) {
+            log_error("Failed to save disabled icon: %s", error ? error->message : "unknown");
+            if (error) g_error_free(error);
+            g_object_unref(disabled);
+            return;
+        }
+
+        g_object_unref(disabled);
+
+        // Update indicator icon
+        app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+        app_indicator_set_icon_full(indicator, DISABLED_ICON_NAME, "Overlay Disabled");
+
+        log_info("Overlay disabled - icon updated");
+    }
+}

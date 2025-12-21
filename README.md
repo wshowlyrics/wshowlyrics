@@ -343,6 +343,51 @@ bind = $mainMod, 0, exec, echo "0" > /tmp/wshowlyrics.fifo
 - **Auto-reset**: Offset automatically resets to 0ms when a new track starts playing
 - **Range**: Valid range is -10000ms to +10000ms (-10s to +10s)
 
+## Overlay Toggle (Show/Hide Lyrics)
+
+Temporarily hide or show the lyrics overlay without stopping the application.
+
+### Overview
+
+When you want to hide lyrics temporarily (e.g., during presentations, screen recordings, or privacy), you can toggle the overlay visibility on the fly. All background operations (lyrics loading, translation, album art caching) continue running, so when you re-enable the overlay, lyrics appear instantly.
+
+```bash
+# Hide overlay
+echo "hide" > /tmp/wshowlyrics.fifo
+
+# Show overlay
+echo "show" > /tmp/wshowlyrics.fifo
+
+# Toggle overlay (show/hide)
+echo "toggle" > /tmp/wshowlyrics.fifo
+```
+
+### Sway Integration
+
+Add this binding to `~/.config/sway/config`:
+
+```sway
+# Toggle overlay visibility
+bindsym $mod+Pause exec echo "toggle" > /tmp/wshowlyrics.fifo
+```
+
+### Hyprland Integration
+
+Add this binding to `~/.config/hypr/hyprland.conf`:
+
+```conf
+# Toggle overlay visibility
+bind = $mainMod, PAUSE, exec, echo toggle > /tmp/wshowlyrics.fifo
+```
+
+### Behavior
+
+- **Visual feedback**: System tray icon changes to headphones with red X when overlay is hidden
+- **Background operations**: Lyrics loading, translation, and album art caching continue running
+- **Instant restore**: When re-enabled, current lyrics appear immediately without delay
+- **Auto-reset**: Overlay automatically re-enables when a new track starts playing
+- **Independent**: Works alongside timing offset adjustments
+
 ### Multiple Instance Prevention
 
 wshowlyrics uses a lock file (`/tmp/wshowlyrics.lock`) to prevent multiple instances from running simultaneously. If you see an error about another instance running but believe it's incorrect:

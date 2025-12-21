@@ -184,6 +184,13 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     // Reset timing offset for new track
     state->timing_offset_ms = 0;
 
+    // Reset overlay visibility for new track
+    if (!state->overlay_enabled) {
+        state->overlay_enabled = true;
+        system_tray_set_overlay_state(true);
+        log_info("Overlay auto-enabled for new track");
+    }
+
     // Try to find lyrics
     if (!lyrics_find_for_track(&state->current_track, &state->lyrics)) {
         log_info("No lyrics found for current track");
