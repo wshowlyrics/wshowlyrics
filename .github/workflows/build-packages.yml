@@ -370,11 +370,6 @@ jobs:
 
             ### Installation
 
-            #### Arch Linux (AUR)
-            ```bash
-            yay -S wshowlyrics
-            ```
-
             #### Debian/Ubuntu (.deb)
             ```bash
             # Download the appropriate .deb file for your architecture

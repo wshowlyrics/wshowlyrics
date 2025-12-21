@@ -54,18 +54,16 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
 
 ### Arch Linux (AUR)
 
-Install using an AUR helper like `yay`:
+**Stable release:**
+
+```bash
+yay -S wshowlyrics
+```
+
+**Development version (latest):**
 
 ```bash
 yay -S wshowlyrics-git
-```
-
-Or manually:
-
-```bash
-git clone https://aur.archlinux.org/wshowlyrics-git.git
-cd wshowlyrics-git
-makepkg -si
 ```
 
 ### Ubuntu/Debian (PPA)
