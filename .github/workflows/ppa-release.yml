@@ -117,6 +117,11 @@ jobs:
 
           override_dh_auto_configure:
           	dh_auto_configure -- --prefix=/usr
+
+          override_dh_auto_install:
+          	dh_auto_install
+          	# Rename binary from lyrics to wshowlyrics
+          	mv debian/wshowlyrics/usr/bin/lyrics debian/wshowlyrics/usr/bin/wshowlyrics
           EOF
           chmod +x debian/rules
 
