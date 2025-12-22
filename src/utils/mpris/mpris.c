@@ -167,7 +167,8 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
             free(player_arg);
             return false;
         }
-        free(player_name);  // Always free if allocated, regardless of exit_code
+        // Save player name to metadata (will be freed in mpris_free_metadata)
+        metadata->player_name = player_name;
     }
 
     // Get all metadata in a single command to ensure consistency
@@ -175,7 +176,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     int exit_code = 0;
     snprintf(cmd, sizeof(cmd),
         "playerctl %s metadata --format "
-        "'{{title}}|||{{artist}}|||{{album}}|||{{xesam:url}}|||{{mpris:artUrl}}|||{{mpris:length}}' 2>/dev/null",
+        "'{{xesam:title}}|||{{xesam:artist}}|||{{xesam:album}}|||{{xesam:url}}|||{{mpris:artUrl}}|||{{mpris:length}}' 2>/dev/null",
         player_arg);
     char *result = execute_command(cmd, &exit_code);
 
@@ -235,21 +236,21 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     *length_start = '\0';
     length_start += 3;
 
-    // Copy the values
+    // Copy the values (skip empty strings and "null" literals)
     metadata->title = strdup(title_start);
-    if (strlen(artist_start) > 0) {
+    if (strlen(artist_start) > 0 && strcmp(artist_start, "null") != 0) {
         metadata->artist = strdup(artist_start);
     }
-    if (strlen(album_start) > 0) {
+    if (strlen(album_start) > 0 && strcmp(album_start, "null") != 0) {
         metadata->album = strdup(album_start);
     }
-    if (strlen(url_start) > 0) {
+    if (strlen(url_start) > 0 && strcmp(url_start, "null") != 0) {
         metadata->url = strdup(url_start);
     }
-    if (strlen(art_url_start) > 0) {
+    if (strlen(art_url_start) > 0 && strcmp(art_url_start, "null") != 0) {
         metadata->art_url = strdup(art_url_start);
     }
-    if (strlen(length_start) > 0) {
+    if (strlen(length_start) > 0 && strcmp(length_start, "null") != 0) {
         metadata->length_us = atoll(length_start);
     }
 
@@ -335,6 +336,7 @@ void mpris_free_metadata(struct track_metadata *metadata) {
     free(metadata->album);
     free(metadata->url);
     free(metadata->art_url);
+    free(metadata->player_name);
     memset(metadata, 0, sizeof(struct track_metadata));
 }
 

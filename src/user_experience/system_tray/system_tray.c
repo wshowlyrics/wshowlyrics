@@ -400,33 +400,53 @@ void system_tray_reset_icon(void) {
     log_info("Icon reset to default: %s", ICON_PATH);
 }
 
-void system_tray_update_tooltip(const char *text) {
-    if (indicator && text) {
-        log_info("Updating tray tooltip: %s", text);
-        app_indicator_set_title(indicator, text);
-    }
-}
-
-void system_tray_send_notification(const char *artist, const char *title) {
-    if (!artist && !title) {
+void system_tray_send_notification(const struct notification_info *info) {
+    if (!info || !info->title) {
         return;
     }
 
-    // Build notification body
+    // Build notification title: "🎵 Title"
+    char notification_title[512];
+    snprintf(notification_title, sizeof(notification_title), "🎵 %s", info->title);
+
+    // Build notification body: "Album · Artist\nPlayer" (2 lines, capitalized player)
     char body[512];
-    if (artist && strlen(artist) > 0 && title && strlen(title) > 0) {
-        snprintf(body, sizeof(body), "%s - %s", artist, title);
-    } else if (title && strlen(title) > 0) {
-        snprintf(body, sizeof(body), "%s", title);
-    } else {
-        return;
+    const char *artist_display = (info->artist && strlen(info->artist) > 0) ? info->artist : "Unknown";
+    const char *album_display = (info->album && strlen(info->album) > 0) ? info->album : "Unknown";
+    const char *player_display = (info->player_name && strlen(info->player_name) > 0) ? info->player_name : "Unknown";
+
+    // Capitalize first letter of player name for notification
+    char player_capitalized[256];
+    snprintf(player_capitalized, sizeof(player_capitalized), "%s", player_display);
+    if (player_capitalized[0] >= 'a' && player_capitalized[0] <= 'z') {
+        player_capitalized[0] = player_capitalized[0] - 'a' + 'A';
     }
 
-    // Escape special characters for shell
+    snprintf(body, sizeof(body), "%s · %s\n%s", album_display, artist_display, player_capitalized);
+
+    // Escape title for shell
+    char escaped_title[1024];
+    const char *src = notification_title;
+    char *dst = escaped_title;
+    size_t remaining = sizeof(escaped_title) - 1;
+
+    while (*src && remaining > 1) {
+        if (*src == '"' || *src == '\\' || *src == '$' || *src == '`') {
+            if (remaining > 2) {
+                *dst++ = '\\';
+                remaining--;
+            }
+        }
+        *dst++ = *src++;
+        remaining--;
+    }
+    *dst = '\0';
+
+    // Escape body for shell
     char escaped_body[1024];
-    const char *src = body;
-    char *dst = escaped_body;
-    size_t remaining = sizeof(escaped_body) - 1;
+    src = body;
+    dst = escaped_body;
+    remaining = sizeof(escaped_body) - 1;
 
     while (*src && remaining > 1) {
         if (*src == '"' || *src == '\\' || *src == '$' || *src == '`') {
@@ -451,11 +471,15 @@ void system_tray_send_notification(const char *artist, const char *title) {
     // Build notify-send command with ephemeral flag and timeout
     // -e: ephemeral (don't save to notification center)
     // -t: timeout in milliseconds (configurable, default 5 seconds)
-    char cmd[2048];
-    snprintf(cmd, sizeof(cmd), "notify-send -a wshowlyrics -i \"%s\" -e -t %d \"🎵 Now Playing\" \"%s\" 2>/dev/null",
-             icon_path, g_config.lyrics.notification_timeout, escaped_body);
+    char cmd[3072];
+    snprintf(cmd, sizeof(cmd), "notify-send -a wshowlyrics -i \"%s\" -e -t %d \"%s\" \"%s\" 2>/dev/null",
+             icon_path, g_config.lyrics.notification_timeout, escaped_title, escaped_body);
 
-    log_info("Sending desktop notification: %s", body);
+    // Create log-friendly version: "Album · Artist (player)" (lowercase, with parentheses)
+    char log_body[512];
+    snprintf(log_body, sizeof(log_body), "%s · %s (%s)", album_display, artist_display, player_display);
+
+    log_info("Sending desktop notification: %s - %s", notification_title, log_body);
 
     // Execute notify-send in background
     int ret = system(cmd);

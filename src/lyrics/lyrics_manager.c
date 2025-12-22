@@ -209,7 +209,14 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
         if (g_config.lyrics.enable_notifications) {
             char cleaned_title[TITLE_BUFFER_SIZE];
             lyrics_manager_clean_title(cleaned_title, sizeof(cleaned_title), state->current_track.title);
-            system_tray_send_notification(state->current_track.artist, cleaned_title);
+
+            struct notification_info notif_info = {
+                .title = cleaned_title,
+                .artist = state->current_track.artist,
+                .album = state->current_track.album,
+                .player_name = state->current_track.player_name
+            };
+            system_tray_send_notification(&notif_info);
         }
 
         return false;
@@ -251,7 +258,14 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     if (g_config.lyrics.enable_notifications) {
         char cleaned_title[TITLE_BUFFER_SIZE];
         lyrics_manager_clean_title(cleaned_title, sizeof(cleaned_title), title);
-        system_tray_send_notification(artist, cleaned_title);
+
+        struct notification_info notif_info = {
+            .title = cleaned_title,
+            .artist = artist,
+            .album = album,
+            .player_name = state->current_track.player_name
+        };
+        system_tray_send_notification(&notif_info);
     }
 
     return true;

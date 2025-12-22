@@ -3,6 +3,14 @@
 
 #include <stdbool.h>
 
+// Notification metadata for desktop notifications
+struct notification_info {
+    const char *title;
+    const char *artist;
+    const char *album;
+    const char *player_name;
+};
+
 // Initialize system tray icon
 bool system_tray_init(void);
 
@@ -18,14 +26,13 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
 // Reset icon to default (called before track change)
 void system_tray_reset_icon(void);
 
-// Update tooltip text (e.g., "Artist - Title")
-void system_tray_update_tooltip(const char *text);
-
 // Set overlay state and update icon (enabled: normal icon, disabled: headphones + red X)
 void system_tray_set_overlay_state(bool enabled);
 
 // Send desktop notification for track change
-void system_tray_send_notification(const char *artist, const char *title);
+// Title: "🎵 Title"
+// Body: "Album · Artist\nPlayer" (shows "Unknown" for missing metadata, capitalizes player name)
+void system_tray_send_notification(const struct notification_info *info);
 
 // Update the system tray (process GTK events)
 // Should be called periodically from main loop
