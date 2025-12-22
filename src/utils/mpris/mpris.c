@@ -169,22 +169,22 @@ static void on_properties_changed(
         g_variant_unref(status_variant);
     }
 
-    // Check for Position change
-    GVariant *position_variant = g_variant_lookup_value(changed_properties, "Position", G_VARIANT_TYPE_INT64);
-    if (position_variant) {
-        mpris_state.position_us = g_variant_get_int64(position_variant);
-        mpris_state.position_timestamp_us = get_monotonic_time_us();
-        g_variant_unref(position_variant);
-    }
-
     // Check for Metadata change (track changed)
     GVariant *metadata_variant = g_variant_lookup_value(changed_properties, "Metadata", NULL);
     if (metadata_variant) {
-        log_info("Track metadata changed - new track detected");
-        // Reset position when track changes
-        mpris_state.position_us = 0;
-        mpris_state.position_timestamp_us = get_monotonic_time_us();
-        mpris_state.metadata_changed = true;  // Signal that metadata needs refresh
+        // Only treat as track change if currently playing or stopped
+        // Ignore metadata signals during pause/resume (some players send spurious signals)
+        bool is_playing = mpris_state.playback_status &&
+                         (strcmp(mpris_state.playback_status, "Playing") == 0 ||
+                          strcmp(mpris_state.playback_status, "Stopped") == 0);
+
+        if (is_playing) {
+            log_info("Track metadata changed - new track detected");
+            // Reset position when track changes
+            mpris_state.position_us = 0;
+            mpris_state.position_timestamp_us = get_monotonic_time_us();
+            mpris_state.metadata_changed = true;  // Signal that metadata needs refresh
+        }
         g_variant_unref(metadata_variant);
     }
 
@@ -194,26 +194,18 @@ static void on_properties_changed(
     g_variant_unref(invalidated_properties);
 }
 
-// Callback: Handle Seeked signal
+// Callback: Handle Seeked signal (no-op, position is polled directly)
 static void on_seeked(
     G_GNUC_UNUSED GDBusConnection *connection,
     G_GNUC_UNUSED const gchar *sender_name,
     G_GNUC_UNUSED const gchar *object_path,
     G_GNUC_UNUSED const gchar *interface_name,
     G_GNUC_UNUSED const gchar *signal_name,
-    GVariant *parameters,
+    G_GNUC_UNUSED GVariant *parameters,
     G_GNUC_UNUSED gpointer user_data)
 {
-
-    // Seeked signal contains new position in microseconds
-    int64_t new_position;
-    g_variant_get(parameters, "(x)", &new_position);
-
-    g_mutex_lock(&mpris_state.mutex);
-    mpris_state.position_us = new_position;
-    mpris_state.position_timestamp_us = get_monotonic_time_us();
-    log_info("Seeked to position: %ld µs", new_position);
-    g_mutex_unlock(&mpris_state.mutex);
+    // Position is queried directly in mpris_get_position(), so we don't need to cache it here
+    // Seeked signal subscription is kept for potential future optimizations
 }
 
 // Helper: Find best player based on preferred_players config
@@ -568,17 +560,51 @@ int64_t mpris_get_position(void) {
         return 0;
     }
 
+    // Use cached player (avoid expensive find_best_player() call)
     g_mutex_lock(&mpris_state.mutex);
-    int64_t position = mpris_state.position_us;
+    char *player = mpris_state.current_player ? strdup(mpris_state.current_player) : NULL;
+    g_mutex_unlock(&mpris_state.mutex);
 
-    // If playing, add elapsed time since last position update
-    if (mpris_state.playback_status && strcmp(mpris_state.playback_status, "Playing") == 0) {
-        int64_t now = get_monotonic_time_us();
-        int64_t elapsed = now - mpris_state.position_timestamp_us;
-        position += elapsed;
+    if (!player) {
+        return 0;
     }
 
-    g_mutex_unlock(&mpris_state.mutex);
+    char bus_name[SMALL_BUFFER_SIZE];
+    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", player);
+
+    GError *error = NULL;
+    GVariant *result = g_dbus_connection_call_sync(
+        dbus_connection,
+        bus_name,
+        MPRIS_OBJECT_PATH,
+        DBUS_PROPERTIES_INTERFACE,
+        "Get",
+        g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "Position"),
+        G_VARIANT_TYPE("(v)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
+
+    int64_t position = 0;
+
+    if (!error && result) {
+        GVariant *position_variant = g_variant_get_child_value(result, 0);
+        GVariant *position_value = g_variant_get_variant(position_variant);
+        if (g_variant_is_of_type(position_value, G_VARIANT_TYPE_INT64)) {
+            position = g_variant_get_int64(position_value);
+        }
+        g_variant_unref(position_value);
+        g_variant_unref(position_variant);
+        g_variant_unref(result);
+    }
+
+    if (error) {
+        g_error_free(error);
+    }
+
+    free(player);
     return position;
 }
 

@@ -426,14 +426,17 @@ int main(int argc, char *argv[]) {
 
         // Check if lyrics or config files have changed (every 2 seconds)
         if (update_counter++ % TRACK_UPDATE_CHECK_INTERVAL == 0) {
-            file_monitor_check_and_reload(
-                state.lyrics.source_file_path,
-                state.lyrics.md5_checksum,
-                sizeof(state.lyrics.md5_checksum),
-                "Lyrics",
-                file_monitor_reload_lyrics,
-                &state
-            );
+            // Skip monitoring for temporary files (causes infinite reload loop)
+            if (state.lyrics.source_file_path && strncmp(state.lyrics.source_file_path, "/tmp/", 5) != 0) {
+                file_monitor_check_and_reload(
+                    state.lyrics.source_file_path,
+                    state.lyrics.md5_checksum,
+                    sizeof(state.lyrics.md5_checksum),
+                    "Lyrics",
+                    file_monitor_reload_lyrics,
+                    &state
+                );
+            }
 
             file_monitor_check_and_reload(
                 state.config_file_path,
