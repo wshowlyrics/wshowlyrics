@@ -39,7 +39,7 @@ static void render_offset_bar(cairo_t *cairo, int timing_offset_ms,
     const int bar_height = 4; // 4픽셀 높이
     const int bar_y = height; // 텍스트 바로 아래
     const int center_x = width / 2;
-    const int max_offset = 10000; // ±10초 (최대 범위)
+    const int max_offset = 5000; // ±5초 (최대 범위)
     const int max_bar_width = width / 2; // 바의 최대 길이 (화면 절반)
 
     // 바의 길이 계산 (절대값 사용)

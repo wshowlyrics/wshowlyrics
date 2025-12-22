@@ -402,10 +402,10 @@ int main(int argc, char *argv[]) {
                         }
 
                         // Clamp to reasonable range
-                        if (state.timing_offset_ms < -10000) {
-                            state.timing_offset_ms = -10000;
-                        } else if (state.timing_offset_ms > 10000) {
-                            state.timing_offset_ms = 10000;
+                        if (state.timing_offset_ms < -5000) {
+                            state.timing_offset_ms = -5000;
+                        } else if (state.timing_offset_ms > 5000) {
+                            state.timing_offset_ms = 5000;
                         }
 
                         log_info("Timing offset: %dms", state.timing_offset_ms);
