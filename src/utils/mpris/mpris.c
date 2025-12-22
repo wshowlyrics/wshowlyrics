@@ -133,6 +133,13 @@ static char* find_best_player(void) {
     while (preferred) {
         // Trim whitespace
         while (*preferred == ' ') preferred++;
+
+        // Skip empty strings after trimming leading spaces
+        if (*preferred == '\0') {
+            preferred = strtok_r(NULL, ",", &saveptr);
+            continue;
+        }
+
         char *end = preferred + strlen(preferred) - 1;
         while (end > preferred && *end == ' ') *end-- = '\0';
 
@@ -164,6 +171,7 @@ static char* find_best_player(void) {
                     const char *status = g_variant_get_string(status_str, NULL);
 
                     if (strcmp(status, "Playing") == 0) {
+                        free(best_player);  // Free previous allocation if any
                         best_player = strdup(preferred);
                         g_variant_unref(status_str);
                         g_variant_unref(status_value);
