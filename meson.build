@@ -44,6 +44,7 @@ appindicator   = dependency('appindicator3-0.1')
 gdkpixbuf      = dependency('gdk-pixbuf-2.0')
 openssl        = dependency('openssl')
 jsonc          = dependency('json-c')
+gio            = dependency('gio-2.0')
 
 rt = cc.find_library('rt')
 
@@ -107,6 +108,7 @@ executable(
 		client_protos,
 		fontconfig,
 		gdkpixbuf,
+		gio,
 		jsonc,
 		libcurl,
 		openssl,

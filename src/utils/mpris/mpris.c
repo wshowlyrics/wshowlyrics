@@ -4,328 +4,354 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <time.h>
-#include <sys/time.h>
+#include <gio/gio.h>
 
-// Simple implementation using playerctl command
-// For a full implementation, we would use D-Bus directly
+// MPRIS2 D-Bus constants
+#define MPRIS_INTERFACE "org.mpris.MediaPlayer2"
+#define MPRIS_PLAYER_INTERFACE "org.mpris.MediaPlayer2.Player"
+#define MPRIS_OBJECT_PATH "/org/mpris/MediaPlayer2"
+#define DBUS_PROPERTIES_INTERFACE "org.freedesktop.DBus.Properties"
 
-// Cache for mpris_is_playing() to reduce D-Bus queries
-static struct {
-    bool cached;
-    bool is_playing;
-    int64_t timestamp_ms;
-} playing_cache = {0};
+// Global D-Bus connection
+static GDBusConnection *dbus_connection = NULL;
 
-// Cache for mpris_get_position() to reduce playerctl calls
-static struct {
-    bool cached;
-    int64_t position_us;
-    int64_t timestamp_ms;
-} position_cache = {0};
+// Helper: Get GVariant value from dictionary
+static GVariant* get_dict_value(GVariant *dict, const char *key) {
+    GVariantIter iter;
+    const char *dict_key;
+    GVariant *value;
 
-// Cache for build_player_arg() to avoid repeated playerctl calls
-static struct {
-    bool cached;
-    char *player_arg;
-    int64_t timestamp_ms;
-} player_arg_cache = {0};
-
-// Cache duration in milliseconds
-#define PLAYING_CACHE_MS 1000  // 1 second - playing state changes rarely
-#define POSITION_CACHE_MS 50   // Short for smooth karaoke (LRCX progressive fill)
-#define PLAYER_ARG_CACHE_MS 2000  // Player selection changes rarely
-
-// Get current time in milliseconds
-static int64_t get_time_ms(void) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    g_variant_iter_init(&iter, dict);
+    while (g_variant_iter_next(&iter, "{&sv}", &dict_key, &value)) {
+        if (strcmp(dict_key, key) == 0) {
+            return value;
+        }
+        g_variant_unref(value);
+    }
+    return NULL;
 }
 
-// Execute a shell command and return the output
-static char* execute_command(const char *cmd, int *exit_code) {
-    FILE *fp = popen(cmd, "r");
-    if (!fp) {
-        if (exit_code) *exit_code = -1;
+// Helper: Extract string from GVariant array
+static char* extract_string_array(GVariant *variant) {
+    if (!variant || !g_variant_is_of_type(variant, G_VARIANT_TYPE_STRING_ARRAY)) {
         return NULL;
     }
 
+    GVariantIter iter;
+    const char *str;
     char *result = NULL;
-    char buffer[PATH_BUFFER_SIZE];
-    size_t total_size = 0;
 
-    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        size_t len = strlen(buffer);
-        // Remove trailing newline
-        if (len > 0 && buffer[len - 1] == '\n') {
-            buffer[len - 1] = '\0';
-            len--;
-        }
-
-        char *new_result = realloc(result, total_size + len + 1);
-        if (!new_result) {
-            free(result);
-            pclose(fp);
-            if (exit_code) *exit_code = -1;
-            return NULL;
-        }
-        result = new_result;
-
-        // Use memcpy instead of strcat for O(n) performance
-        memcpy(result + total_size, buffer, len);
-        total_size += len;
-        result[total_size] = '\0';
+    g_variant_iter_init(&iter, variant);
+    if (g_variant_iter_next(&iter, "&s", &str)) {
+        result = strdup(str);
     }
 
-    int status = pclose(fp);
-    if (exit_code) {
-        *exit_code = WEXITSTATUS(status);
-    }
     return result;
 }
 
-// Build player argument for playerctl command
-// Returns "--player=<player>" for the best available player
-// Prioritizes playing players over paused ones
-static char* build_player_arg(void) {
-    int64_t now = get_time_ms();
+// Helper: List all MPRIS2 players on D-Bus
+static char** list_mpris_players(int *count) {
+    *count = 0;
 
-    // Return cached value if still valid
-    if (player_arg_cache.cached && (now - player_arg_cache.timestamp_ms) < PLAYER_ARG_CACHE_MS) {
-        return strdup(player_arg_cache.player_arg);
+    GError *error = NULL;
+    GVariant *result = g_dbus_connection_call_sync(
+        dbus_connection,
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "ListNames",
+        NULL,
+        G_VARIANT_TYPE("(as)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
+
+    if (error) {
+        log_error("Failed to list D-Bus names: %s", error->message);
+        g_error_free(error);
+        return NULL;
+    }
+
+    GVariant *names_variant = g_variant_get_child_value(result, 0);
+    GVariantIter iter;
+    const char *name;
+    char **players = NULL;
+    int capacity = 0;
+
+    g_variant_iter_init(&iter, names_variant);
+    while (g_variant_iter_next(&iter, "&s", &name)) {
+        if (strncmp(name, "org.mpris.MediaPlayer2.", 23) == 0) {
+            const char *player_name = name + 23;
+
+            // Skip browsers
+            if (strstr(player_name, "chromium") || strstr(player_name, "firefox")) {
+                continue;
+            }
+
+            // Expand array if needed
+            if (*count >= capacity) {
+                capacity = capacity == 0 ? 4 : capacity * 2;
+                players = realloc(players, capacity * sizeof(char*));
+            }
+
+            players[*count] = strdup(player_name);
+            (*count)++;
+        }
+    }
+
+    g_variant_unref(names_variant);
+    g_variant_unref(result);
+
+    return players;
+}
+
+// Helper: Find best player based on preferred_players config
+static char* find_best_player(void) {
+    int player_count = 0;
+    char **all_players = list_mpris_players(&player_count);
+
+    if (!all_players || player_count == 0) {
+        return NULL;
     }
 
     struct config *cfg = config_get();
+    char *best_player = NULL;
 
-    // If preferred_players is empty or not set, use %any
+    // If no preferred players, use first available
     if (!cfg->lyrics.preferred_players || cfg->lyrics.preferred_players[0] == '\0') {
-        // Update cache
-        free(player_arg_cache.player_arg);
-        player_arg_cache.player_arg = strdup("--player=%any");
-        player_arg_cache.cached = true;
-        player_arg_cache.timestamp_ms = now;
-        return strdup("--player=%any");
+        best_player = strdup(all_players[0]);
+        goto cleanup;
     }
 
-    // Parse preferred_players (comma-separated list)
+    // Parse preferred_players (comma-separated)
     char *players_copy = strdup(cfg->lyrics.preferred_players);
-    if (!players_copy) return strdup("--player=%any");
-
-    char *playing_player = NULL;
-    char *first_available = NULL;
-
-    // Check each preferred player
     char *saveptr;
-    char *player = strtok_r(players_copy, ",", &saveptr);
-    while (player) {
+    char *preferred = strtok_r(players_copy, ",", &saveptr);
+
+    while (preferred) {
         // Trim whitespace
-        while (*player == ' ') player++;
-        char *end = player + strlen(player) - 1;
-        while (end > player && *end == ' ') *end-- = '\0';
+        while (*preferred == ' ') preferred++;
+        char *end = preferred + strlen(preferred) - 1;
+        while (end > preferred && *end == ' ') *end-- = '\0';
 
-        // Check if this player is available and get its status
-        char cmd[SMALL_BUFFER_SIZE];
-        snprintf(cmd, sizeof(cmd), "playerctl --player=%s status 2>/dev/null", player);
+        // Check if this preferred player is available
+        for (int i = 0; i < player_count; i++) {
+            if (strcmp(all_players[i], preferred) == 0) {
+                // Check if it's playing
+                char bus_name[SMALL_BUFFER_SIZE];
+                snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", preferred);
 
-        int exit_code = 0;
-        char *status = execute_command(cmd, &exit_code);
+                GError *error = NULL;
+                GVariant *status_variant = g_dbus_connection_call_sync(
+                    dbus_connection,
+                    bus_name,
+                    MPRIS_OBJECT_PATH,
+                    DBUS_PROPERTIES_INTERFACE,
+                    "Get",
+                    g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "PlaybackStatus"),
+                    G_VARIANT_TYPE("(v)"),
+                    G_DBUS_CALL_FLAGS_NONE,
+                    -1,
+                    NULL,
+                    &error
+                );
 
-        if (status && exit_code == 0) {
-            // Player is available
-            if (!first_available) {
-                first_available = strdup(player);
-            }
+                if (!error && status_variant) {
+                    GVariant *status_value = g_variant_get_child_value(status_variant, 0);
+                    GVariant *status_str = g_variant_get_variant(status_value);
+                    const char *status = g_variant_get_string(status_str, NULL);
 
-            // Check if it's playing
-            if (strcmp(status, "Playing") == 0) {
-                playing_player = strdup(player);
-                free(status);
-                break;  // Found a playing player, use it
+                    if (strcmp(status, "Playing") == 0) {
+                        best_player = strdup(preferred);
+                        g_variant_unref(status_str);
+                        g_variant_unref(status_value);
+                        g_variant_unref(status_variant);
+                        free(players_copy);
+                        goto cleanup;
+                    }
+
+                    g_variant_unref(status_str);
+                    g_variant_unref(status_value);
+                    g_variant_unref(status_variant);
+                }
+
+                if (error) {
+                    g_error_free(error);
+                }
+
+                // If not playing but available, remember it
+                if (!best_player) {
+                    best_player = strdup(preferred);
+                }
             }
         }
 
-        // Always free status if allocated, regardless of exit_code
-        free(status);
-
-        player = strtok_r(NULL, ",", &saveptr);
+        preferred = strtok_r(NULL, ",", &saveptr);
     }
 
     free(players_copy);
 
-    // Build the result
-    char *result = malloc(SMALL_BUFFER_SIZE);
-    if (!result) {
-        free(playing_player);
-        free(first_available);
-        return strdup("--player=%any");
+    // If no preferred player found, use first available
+    if (!best_player) {
+        best_player = strdup(all_players[0]);
     }
 
-    // Priority: playing player > first available player > all preferred players
-    if (playing_player) {
-        snprintf(result, SMALL_BUFFER_SIZE, "--player=%s", playing_player);
-        free(playing_player);
-        free(first_available);
-    } else if (first_available) {
-        snprintf(result, SMALL_BUFFER_SIZE, "--player=%s", first_available);
-        free(first_available);
-    } else {
-        // No players available, fall back to checking all preferred players
-        snprintf(result, SMALL_BUFFER_SIZE, "--player=%s", cfg->lyrics.preferred_players);
+cleanup:
+    for (int i = 0; i < player_count; i++) {
+        free(all_players[i]);
     }
+    free(all_players);
 
-    // Update cache
-    free(player_arg_cache.player_arg);
-    player_arg_cache.player_arg = strdup(result);
-    player_arg_cache.cached = true;
-    player_arg_cache.timestamp_ms = now;
-
-    return result;
+    return best_player;
 }
 
 bool mpris_init(void) {
-    // Check if playerctl is available
-    int ret = system("which playerctl > /dev/null 2>&1");
-    return ret == 0;
+    GError *error = NULL;
+    dbus_connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+
+    if (error) {
+        log_error("Failed to connect to D-Bus: %s", error->message);
+        g_error_free(error);
+        return false;
+    }
+
+    return true;
 }
 
 bool mpris_get_metadata(struct track_metadata *metadata) {
-    if (!metadata) {
+    if (!metadata || !dbus_connection) {
         return false;
     }
 
     memset(metadata, 0, sizeof(struct track_metadata));
 
-    // Get player argument from config
-    char *player_arg = build_player_arg();
-    if (!player_arg) {
+    // Find best player
+    char *player = find_best_player();
+    if (!player) {
         return false;
     }
 
-    // Check player name first to filter out browsers
-    int player_exit_code = 0;
-    char cmd[SMALL_BUFFER_SIZE];
-    snprintf(cmd, sizeof(cmd),
-        "playerctl %s metadata --format '{{playerName}}' 2>/dev/null",
-        player_arg);
-    char *player_name = execute_command(cmd, &player_exit_code);
+    // Save player name
+    metadata->player_name = strdup(player);
 
-    // Ignore browsers (chromium includes chrome/edge, firefox)
-    if (player_name) {
-        if (player_exit_code == 0 &&
-            (strstr(player_name, "chromium") || strstr(player_name, "firefox"))) {
-            free(player_name);
-            free(player_arg);
-            return false;
+    // Build D-Bus service name
+    char bus_name[SMALL_BUFFER_SIZE];
+    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", player);
+
+    // Get Metadata property
+    GError *error = NULL;
+    GVariant *result = g_dbus_connection_call_sync(
+        dbus_connection,
+        bus_name,
+        MPRIS_OBJECT_PATH,
+        DBUS_PROPERTIES_INTERFACE,
+        "Get",
+        g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "Metadata"),
+        G_VARIANT_TYPE("(v)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
+
+    if (error) {
+        log_error("Failed to get metadata from %s: %s", player, error->message);
+        g_error_free(error);
+        free(player);
+        mpris_free_metadata(metadata);
+        return false;
+    }
+
+    GVariant *metadata_variant = g_variant_get_child_value(result, 0);
+    GVariant *metadata_dict = g_variant_get_variant(metadata_variant);
+
+    // Extract metadata fields
+    GVariant *value;
+
+    // Title (xesam:title)
+    value = get_dict_value(metadata_dict, "xesam:title");
+    if (value) {
+        metadata->title = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
+    // Artist (xesam:artist) - array of strings
+    value = get_dict_value(metadata_dict, "xesam:artist");
+    if (value) {
+        metadata->artist = extract_string_array(value);
+        g_variant_unref(value);
+    }
+
+    // Album (xesam:album)
+    value = get_dict_value(metadata_dict, "xesam:album");
+    if (value) {
+        metadata->album = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
+    // URL (xesam:url)
+    value = get_dict_value(metadata_dict, "xesam:url");
+    if (value) {
+        metadata->url = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
+    // Art URL (mpris:artUrl)
+    value = get_dict_value(metadata_dict, "mpris:artUrl");
+    if (value) {
+        metadata->art_url = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
+    // Length (mpris:length) - microseconds
+    value = get_dict_value(metadata_dict, "mpris:length");
+    if (value) {
+        if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64)) {
+            metadata->length_us = g_variant_get_int64(value);
         }
-        // Save player name to metadata (will be freed in mpris_free_metadata)
-        metadata->player_name = player_name;
+        g_variant_unref(value);
     }
 
-    // Get all metadata in a single command to ensure consistency
-    // Format: title|artist|album|url|artUrl|length
-    int exit_code = 0;
-    snprintf(cmd, sizeof(cmd),
-        "playerctl %s metadata --format "
-        "'{{xesam:title}}|||{{xesam:artist}}|||{{xesam:album}}|||{{xesam:url}}|||{{mpris:artUrl}}|||{{mpris:length}}' 2>/dev/null",
-        player_arg);
-    char *result = execute_command(cmd, &exit_code);
+    g_variant_unref(metadata_dict);
+    g_variant_unref(metadata_variant);
+    g_variant_unref(result);
 
-    // If playerctl exits with code 1, it means no players found
-    if (!result || exit_code != 0) {
-        free(result);
-        free(player_arg);
-        mpris_free_metadata(metadata);
-        return false;
-    }
+    // Get Position property separately
+    error = NULL;
+    result = g_dbus_connection_call_sync(
+        dbus_connection,
+        bus_name,
+        MPRIS_OBJECT_PATH,
+        DBUS_PROPERTIES_INTERFACE,
+        "Get",
+        g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "Position"),
+        G_VARIANT_TYPE("(v)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
 
-    // Parse the delimited result: title|||artist|||album|||url|||artUrl|||length
-    // Note: fields can be empty, so we need to carefully split by delimiter
-    char *title_start = result;
-
-    char *artist_start = strstr(title_start, "|||");
-    if (!artist_start) {
-        free(result);
-        free(player_arg);
-        mpris_free_metadata(metadata);
-        return false;
-    }
-    *artist_start = '\0';
-    artist_start += 3;
-
-    char *album_start = strstr(artist_start, "|||");
-    if (!album_start) {
-        free(result);
-        free(player_arg);
-        mpris_free_metadata(metadata);
-        return false;
-    }
-    *album_start = '\0';
-    album_start += 3;
-
-    char *url_start = strstr(album_start, "|||");
-    if (!url_start) {
-        free(result);
-        free(player_arg);
-        mpris_free_metadata(metadata);
-        return false;
-    }
-    *url_start = '\0';
-    url_start += 3;
-
-    char *art_url_start = strstr(url_start, "|||");
-    if (!art_url_start) {
-        free(result);
-        free(player_arg);
-        mpris_free_metadata(metadata);
-        return false;
-    }
-    *art_url_start = '\0';
-    art_url_start += 3;
-
-    char *length_start = strstr(art_url_start, "|||");
-    if (!length_start) {
-        free(result);
-        free(player_arg);
-        mpris_free_metadata(metadata);
-        return false;
-    }
-    *length_start = '\0';
-    length_start += 3;
-
-    // Copy the values (skip empty strings and "null" literals)
-    metadata->title = strdup(title_start);
-    if (artist_start[0] != '\0' && strcmp(artist_start, "null") != 0) {
-        metadata->artist = strdup(artist_start);
-    }
-    if (album_start[0] != '\0' && strcmp(album_start, "null") != 0) {
-        metadata->album = strdup(album_start);
-    }
-    if (url_start[0] != '\0' && strcmp(url_start, "null") != 0) {
-        metadata->url = strdup(url_start);
-    }
-    if (art_url_start[0] != '\0' && strcmp(art_url_start, "null") != 0) {
-        metadata->art_url = strdup(art_url_start);
-    }
-    if (length_start[0] != '\0' && strcmp(length_start, "null") != 0) {
-        metadata->length_us = atoll(length_start);
+    if (!error && result) {
+        GVariant *position_variant = g_variant_get_child_value(result, 0);
+        GVariant *position_value = g_variant_get_variant(position_variant);
+        if (g_variant_is_of_type(position_value, G_VARIANT_TYPE_INT64)) {
+            metadata->position_us = g_variant_get_int64(position_value);
+        }
+        g_variant_unref(position_value);
+        g_variant_unref(position_variant);
+        g_variant_unref(result);
     }
 
-    // Get position separately (not available in metadata format)
-    snprintf(cmd, sizeof(cmd), "playerctl %s position 2>/dev/null", player_arg);
-    char *position_str = execute_command(cmd, NULL);
-    if (position_str) {
-        double position_sec = atof(position_str);
-        metadata->position_us = (int64_t)(position_sec * 1000000);
-        free(position_str);
+    if (error) {
+        g_error_free(error);
     }
 
-    free(result);
-    free(player_arg);
+    free(player);
 
-    // Ignore Spotify advertisements (title="Advertisement" and URL contains "spotify.com/ad/")
+    // Ignore Spotify advertisements
     if (metadata->title && strcmp(metadata->title, "Advertisement") == 0 &&
         metadata->url && strstr(metadata->url, "spotify.com/ad/")) {
         mpris_free_metadata(metadata);
@@ -336,94 +362,99 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 }
 
 int64_t mpris_get_position(void) {
-    int64_t now = get_time_ms();
-
-    // Return cached value if still valid
-    if (position_cache.cached && (now - position_cache.timestamp_ms) < POSITION_CACHE_MS) {
-        return position_cache.position_us;
-    }
-
-    // Get player argument from config
-    char *player_arg = build_player_arg();
-    if (!player_arg) {
-        // Cache negative result
-        position_cache.cached = true;
-        position_cache.position_us = 0;
-        position_cache.timestamp_ms = now;
+    if (!dbus_connection) {
         return 0;
     }
 
-    // Use metadata format to get position in microseconds
-    char cmd[SMALL_BUFFER_SIZE];
-    snprintf(cmd, sizeof(cmd),
-        "playerctl %s metadata -f '{{position}}' 2>/dev/null",
-        player_arg);
-    char *position_str = execute_command(cmd, NULL);
-    free(player_arg);
-
-    if (!position_str) {
-        // Cache negative result
-        position_cache.cached = true;
-        position_cache.position_us = 0;
-        position_cache.timestamp_ms = now;
+    char *player = find_best_player();
+    if (!player) {
         return 0;
     }
 
-    // Position from metadata is in microseconds
-    int64_t position_us = atoll(position_str);
-    free(position_str);
+    char bus_name[SMALL_BUFFER_SIZE];
+    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", player);
 
-    // Update cache
-    position_cache.cached = true;
-    position_cache.position_us = position_us;
-    position_cache.timestamp_ms = now;
+    GError *error = NULL;
+    GVariant *result = g_dbus_connection_call_sync(
+        dbus_connection,
+        bus_name,
+        MPRIS_OBJECT_PATH,
+        DBUS_PROPERTIES_INTERFACE,
+        "Get",
+        g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "Position"),
+        G_VARIANT_TYPE("(v)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
 
-    return position_us;
+    int64_t position = 0;
+
+    if (!error && result) {
+        GVariant *position_variant = g_variant_get_child_value(result, 0);
+        GVariant *position_value = g_variant_get_variant(position_variant);
+        if (g_variant_is_of_type(position_value, G_VARIANT_TYPE_INT64)) {
+            position = g_variant_get_int64(position_value);
+        }
+        g_variant_unref(position_value);
+        g_variant_unref(position_variant);
+        g_variant_unref(result);
+    }
+
+    if (error) {
+        g_error_free(error);
+    }
+
+    free(player);
+    return position;
 }
 
 bool mpris_is_playing(void) {
-    int64_t now = get_time_ms();
-
-    // Return cached value if still valid
-    if (playing_cache.cached && (now - playing_cache.timestamp_ms) < PLAYING_CACHE_MS) {
-        return playing_cache.is_playing;
-    }
-
-    // Get player argument from config
-    char *player_arg = build_player_arg();
-    if (!player_arg) {
-        // Cache negative result
-        playing_cache.cached = true;
-        playing_cache.is_playing = false;
-        playing_cache.timestamp_ms = now;
+    if (!dbus_connection) {
         return false;
     }
 
-    int exit_code = 0;
-    char cmd[SMALL_BUFFER_SIZE];
-    snprintf(cmd, sizeof(cmd),
-        "playerctl %s status 2>/dev/null",
-        player_arg);
-    char *status = execute_command(cmd, &exit_code);
-    free(player_arg);
-
-    if (!status || exit_code != 0) {
-        free(status);
-        // Cache negative result
-        playing_cache.cached = true;
-        playing_cache.is_playing = false;
-        playing_cache.timestamp_ms = now;
+    char *player = find_best_player();
+    if (!player) {
         return false;
     }
 
-    bool playing = (strcmp(status, "Playing") == 0);
-    free(status);
+    char bus_name[SMALL_BUFFER_SIZE];
+    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", player);
 
-    // Update cache
-    playing_cache.cached = true;
-    playing_cache.is_playing = playing;
-    playing_cache.timestamp_ms = now;
+    GError *error = NULL;
+    GVariant *result = g_dbus_connection_call_sync(
+        dbus_connection,
+        bus_name,
+        MPRIS_OBJECT_PATH,
+        DBUS_PROPERTIES_INTERFACE,
+        "Get",
+        g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "PlaybackStatus"),
+        G_VARIANT_TYPE("(v)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
 
+    bool playing = false;
+
+    if (!error && result) {
+        GVariant *status_variant = g_variant_get_child_value(result, 0);
+        GVariant *status_value = g_variant_get_variant(status_variant);
+        const char *status = g_variant_get_string(status_value, NULL);
+        playing = (strcmp(status, "Playing") == 0);
+        g_variant_unref(status_value);
+        g_variant_unref(status_variant);
+        g_variant_unref(result);
+    }
+
+    if (error) {
+        g_error_free(error);
+    }
+
+    free(player);
     return playing;
 }
 
@@ -442,12 +473,8 @@ void mpris_free_metadata(struct track_metadata *metadata) {
 }
 
 void mpris_cleanup(void) {
-    // Free cached player argument
-    free(player_arg_cache.player_arg);
-    player_arg_cache.player_arg = NULL;
-    player_arg_cache.cached = false;
-
-    // Reset other caches
-    playing_cache.cached = false;
-    position_cache.cached = false;
+    if (dbus_connection) {
+        g_object_unref(dbus_connection);
+        dbus_connection = NULL;
+    }
 }
