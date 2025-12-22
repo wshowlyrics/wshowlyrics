@@ -62,6 +62,7 @@ struct lyrics_state {
     struct zwlr_layer_surface_v1 *layer_surface;
     uint32_t width, height;
     bool frame_scheduled, dirty;
+    struct wl_callback *frame_callback;
     struct pool_buffer buffers[2];
     struct pool_buffer *current_buffer;
     struct lyrics_output *output, *outputs;

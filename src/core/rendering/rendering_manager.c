@@ -7,6 +7,7 @@
 #include "../../utils/render/render_common.h"
 #include "../../utils/render/ruby_render.h"
 #include "../../utils/render/word_render.h"
+#include "../../events/wayland_events.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include <stdlib.h>
 #include <strings.h>
@@ -291,6 +292,13 @@ void rendering_manager_render_transparent(struct lyrics_state *state) {
         wl_surface_set_buffer_scale(state->surface, scale);
         wl_surface_attach(state->surface, state->current_buffer->buffer, 0, 0);
         wl_surface_damage_buffer(state->surface, 0, 0, state->width, state->height);
+
+        // Request frame callback for vsync
+        state->frame_callback = wl_surface_frame(state->surface);
+        wl_callback_add_listener(state->frame_callback,
+                wayland_events_get_frame_listener(), state);
+        state->frame_scheduled = true;
+
         wl_surface_commit(state->surface);
     }
 }
@@ -363,6 +371,13 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
                 state->current_buffer->buffer, 0, 0);
         wl_surface_damage_buffer(state->surface, 0, 0,
                 state->width, state->height);
+
+        // Request frame callback for vsync
+        state->frame_callback = wl_surface_frame(state->surface);
+        wl_callback_add_listener(state->frame_callback,
+                wayland_events_get_frame_listener(), state);
+        state->frame_scheduled = true;
+
         wl_surface_commit(state->surface);
     }
 

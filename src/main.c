@@ -455,6 +455,7 @@ int main(int argc, char *argv[]) {
         } else if (mpris_is_playing()) {
             lyrics_manager_update_current_line(&state);
             // Continuously update for smooth karaoke highlighting (LRCX only)
+            // Frame callback limits this to vsync (60/120 fps), not unlimited
             if (lyrics_manager_is_format(&state, ".lrcx")) {
                 rendering_manager_set_dirty(&state);
             }
@@ -519,6 +520,12 @@ int main(int argc, char *argv[]) {
     }
 
 exit:
+    // Clean up frame callback
+    if (state.frame_callback) {
+        wl_callback_destroy(state.frame_callback);
+        state.frame_callback = NULL;
+    }
+
     // Clean up FIFO
     if (state.fifo_fd >= 0) {
         close(state.fifo_fd);

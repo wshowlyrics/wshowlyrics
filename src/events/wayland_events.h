@@ -44,6 +44,14 @@ const struct wl_output_listener* wayland_events_get_output_listener(void);
 const struct wl_registry_listener* wayland_events_get_registry_listener(void);
 
 /**
+ * Get the frame callback listener
+ * The listener handles frame done events for vsync rendering
+ *
+ * @return Pointer to static frame callback listener
+ */
+const struct wl_callback_listener* wayland_events_get_frame_listener(void);
+
+/**
  * Handle full Wayland reconnection after connection loss
  * Reconnects to compositor and reinitializes surfaces
  *

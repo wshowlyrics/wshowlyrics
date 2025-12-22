@@ -17,6 +17,7 @@ static void output_done(void *data, struct wl_output *wl_output);
 static void output_scale(void *data, struct wl_output *wl_output, int32_t factor);
 static void registry_global(void *data, struct wl_registry *wl_registry, uint32_t name, const char *interface, uint32_t version);
 static void registry_global_remove(void *data, struct wl_registry *wl_registry, uint32_t name);
+static void frame_callback_done(void *data, struct wl_callback *callback, uint32_t time);
 
 // Listener structures (defined early so they can be referenced by event handlers)
 
@@ -42,7 +43,27 @@ static const struct wl_registry_listener registry_listener = {
     .global_remove = registry_global_remove,
 };
 
+static const struct wl_callback_listener frame_listener = {
+    .done = frame_callback_done,
+};
+
 // Event handlers
+
+static void frame_callback_done(void *data, struct wl_callback *callback, uint32_t time) {
+    (void)time;
+    struct lyrics_state *state = data;
+
+    // Destroy old callback
+    wl_callback_destroy(callback);
+    state->frame_callback = NULL;
+    state->frame_scheduled = false;
+
+    // Render if dirty
+    if (state->dirty) {
+        state->dirty = false;
+        rendering_manager_render_frame(state);
+    }
+}
 
 static void layer_surface_configure(void *data,
         struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1,
@@ -192,6 +213,10 @@ const struct wl_output_listener* wayland_events_get_output_listener(void) {
 
 const struct wl_registry_listener* wayland_events_get_registry_listener(void) {
     return &registry_listener;
+}
+
+const struct wl_callback_listener* wayland_events_get_frame_listener(void) {
+    return &frame_listener;
 }
 
 // Reconnection handler
