@@ -27,6 +27,9 @@ int64_t mpris_get_position(void);
 // Check if music is currently playing
 bool mpris_is_playing(void);
 
+// Check if track metadata has changed (signal-based)
+bool mpris_check_metadata_changed(void);
+
 // Free track metadata
 void mpris_free_metadata(struct track_metadata *metadata);
 

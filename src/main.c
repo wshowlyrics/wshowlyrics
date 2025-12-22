@@ -415,32 +415,34 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Check for track changes periodically
-        if (update_counter++ % TRACK_UPDATE_CHECK_INTERVAL == 0) {
+        // Check for track changes (signal-based, no polling)
+        if (mpris_check_metadata_changed()) {
             if (lyrics_manager_update_track_info(&state)) {
                 // Track changed, load new lyrics
                 lyrics_manager_load_lyrics(&state);
                 rendering_manager_set_dirty(&state);
-            } else {
-                // Check if lyrics or config files have changed (every 2 seconds)
-                file_monitor_check_and_reload(
-                    state.lyrics.source_file_path,
-                    state.lyrics.md5_checksum,
-                    sizeof(state.lyrics.md5_checksum),
-                    "Lyrics",
-                    file_monitor_reload_lyrics,
-                    &state
-                );
-
-                file_monitor_check_and_reload(
-                    state.config_file_path,
-                    state.config_md5_checksum,
-                    sizeof(state.config_md5_checksum),
-                    "Config",
-                    file_monitor_reload_config,
-                    &state
-                );
             }
+        }
+
+        // Check if lyrics or config files have changed (every 2 seconds)
+        if (update_counter++ % TRACK_UPDATE_CHECK_INTERVAL == 0) {
+            file_monitor_check_and_reload(
+                state.lyrics.source_file_path,
+                state.lyrics.md5_checksum,
+                sizeof(state.lyrics.md5_checksum),
+                "Lyrics",
+                file_monitor_reload_lyrics,
+                &state
+            );
+
+            file_monitor_check_and_reload(
+                state.config_file_path,
+                state.config_md5_checksum,
+                sizeof(state.config_md5_checksum),
+                "Config",
+                file_monitor_reload_config,
+                &state
+            );
         }
 
         // Update current line based on playback position
