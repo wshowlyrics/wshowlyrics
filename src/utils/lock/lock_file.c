@@ -105,7 +105,9 @@ write_pid:
 void lock_file_release(void) {
     if (lock_fd >= 0) {
         // Remove lock file
-        unlink(LOCK_FILE_PATH);
+        if (unlink(LOCK_FILE_PATH) != 0 && errno != ENOENT) {
+            log_warn("Failed to unlink lock file: %s", strerror(errno));
+        }
 
         // Release lock and close file
         struct flock fl = {
@@ -114,9 +116,13 @@ void lock_file_release(void) {
             .l_start = 0,
             .l_len = 0,
         };
-        fcntl(lock_fd, F_SETLK, &fl);
+        if (fcntl(lock_fd, F_SETLK, &fl) == -1) {
+            log_warn("Failed to unlock file: %s", strerror(errno));
+        }
 
-        close(lock_fd);
+        if (close(lock_fd) == -1) {
+            log_warn("Failed to close lock file: %s", strerror(errno));
+        }
         lock_fd = -1;
 
         log_info("Lock released");

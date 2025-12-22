@@ -282,7 +282,9 @@ bool system_tray_init(void) {
 
     // Set initial default icon
     log_info("Setting initial default icon");
-    mkdir(ICON_DIR, 0700);  // Owner-only access for privacy
+    if (mkdir(ICON_DIR, 0700) != 0 && errno != EEXIST) {
+        log_warn("Failed to create icon directory: %s", strerror(errno));
+    }
     if (save_default_icon(ICON_PATH)) {
         app_indicator_set_icon_theme_path(indicator, ICON_DIR);
         app_indicator_set_icon_full(indicator, ICON_NAME, "Music Player");
@@ -322,7 +324,9 @@ bool system_tray_update_icon(const char *art_url) {
     log_info("Image loaded successfully");
 
     // Create directory if it doesn't exist
-    mkdir(ICON_DIR, 0700);  // Owner-only access for privacy
+    if (mkdir(ICON_DIR, 0700) != 0 && errno != EEXIST) {
+        log_warn("Failed to create icon directory: %s", strerror(errno));
+    }
 
     // Scale to reasonable size (48x48)
     GdkPixbuf *scaled = gdk_pixbuf_scale_simple(pixbuf, 48, 48, GDK_INTERP_BILINEAR);
@@ -381,7 +385,9 @@ void system_tray_reset_icon(void) {
     last_metadata_hash[0] = '\0';
 
     // Create directory if it doesn't exist
-    mkdir(ICON_DIR, 0700);  // Owner-only access for privacy
+    if (mkdir(ICON_DIR, 0700) != 0 && errno != EEXIST) {
+        log_warn("Failed to create icon directory: %s", strerror(errno));
+    }
 
     // Save default icon to file
     if (!save_default_icon(ICON_PATH)) {

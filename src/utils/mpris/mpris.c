@@ -184,6 +184,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     if (!result || exit_code != 0) {
         free(result);
         free(player_arg);
+        mpris_free_metadata(metadata);
         return false;
     }
 
@@ -195,6 +196,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     if (!artist_start) {
         free(result);
         free(player_arg);
+        mpris_free_metadata(metadata);
         return false;
     }
     *artist_start = '\0';
@@ -204,6 +206,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     if (!album_start) {
         free(result);
         free(player_arg);
+        mpris_free_metadata(metadata);
         return false;
     }
     *album_start = '\0';
@@ -213,6 +216,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     if (!url_start) {
         free(result);
         free(player_arg);
+        mpris_free_metadata(metadata);
         return false;
     }
     *url_start = '\0';
@@ -222,6 +226,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     if (!art_url_start) {
         free(result);
         free(player_arg);
+        mpris_free_metadata(metadata);
         return false;
     }
     *art_url_start = '\0';
@@ -231,6 +236,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     if (!length_start) {
         free(result);
         free(player_arg);
+        mpris_free_metadata(metadata);
         return false;
     }
     *length_start = '\0';

@@ -94,6 +94,7 @@ bool lyrics_manager_update_track_info(struct lyrics_state *state) {
             // Clear the display
             rendering_manager_set_dirty(state);
         }
+        mpris_free_metadata(&new_track);
         return false;
     }
 
