@@ -6,9 +6,44 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <time.h>
+#include <sys/time.h>
 
 // Simple implementation using playerctl command
 // For a full implementation, we would use D-Bus directly
+
+// Cache for mpris_is_playing() to reduce D-Bus queries
+static struct {
+    bool cached;
+    bool is_playing;
+    int64_t timestamp_ms;
+} playing_cache = {0};
+
+// Cache for mpris_get_position() to reduce playerctl calls
+static struct {
+    bool cached;
+    int64_t position_us;
+    int64_t timestamp_ms;
+} position_cache = {0};
+
+// Cache for build_player_arg() to avoid repeated playerctl calls
+static struct {
+    bool cached;
+    char *player_arg;
+    int64_t timestamp_ms;
+} player_arg_cache = {0};
+
+// Cache duration in milliseconds
+#define PLAYING_CACHE_MS 1000  // 1 second - playing state changes rarely
+#define POSITION_CACHE_MS 50   // Short for smooth karaoke (LRCX progressive fill)
+#define PLAYER_ARG_CACHE_MS 2000  // Player selection changes rarely
+
+// Get current time in milliseconds
+static int64_t get_time_ms(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
 
 // Execute a shell command and return the output
 static char* execute_command(const char *cmd, int *exit_code) {
@@ -56,10 +91,22 @@ static char* execute_command(const char *cmd, int *exit_code) {
 // Returns "--player=<player>" for the best available player
 // Prioritizes playing players over paused ones
 static char* build_player_arg(void) {
+    int64_t now = get_time_ms();
+
+    // Return cached value if still valid
+    if (player_arg_cache.cached && (now - player_arg_cache.timestamp_ms) < PLAYER_ARG_CACHE_MS) {
+        return strdup(player_arg_cache.player_arg);
+    }
+
     struct config *cfg = config_get();
 
     // If preferred_players is empty or not set, use %any
     if (!cfg->lyrics.preferred_players || cfg->lyrics.preferred_players[0] == '\0') {
+        // Update cache
+        free(player_arg_cache.player_arg);
+        player_arg_cache.player_arg = strdup("--player=%any");
+        player_arg_cache.cached = true;
+        player_arg_cache.timestamp_ms = now;
         return strdup("--player=%any");
     }
 
@@ -128,6 +175,12 @@ static char* build_player_arg(void) {
         // No players available, fall back to checking all preferred players
         snprintf(result, SMALL_BUFFER_SIZE, "--player=%s", cfg->lyrics.preferred_players);
     }
+
+    // Update cache
+    free(player_arg_cache.player_arg);
+    player_arg_cache.player_arg = strdup(result);
+    player_arg_cache.cached = true;
+    player_arg_cache.timestamp_ms = now;
 
     return result;
 }
@@ -283,9 +336,20 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 }
 
 int64_t mpris_get_position(void) {
+    int64_t now = get_time_ms();
+
+    // Return cached value if still valid
+    if (position_cache.cached && (now - position_cache.timestamp_ms) < POSITION_CACHE_MS) {
+        return position_cache.position_us;
+    }
+
     // Get player argument from config
     char *player_arg = build_player_arg();
     if (!player_arg) {
+        // Cache negative result
+        position_cache.cached = true;
+        position_cache.position_us = 0;
+        position_cache.timestamp_ms = now;
         return 0;
     }
 
@@ -298,19 +362,40 @@ int64_t mpris_get_position(void) {
     free(player_arg);
 
     if (!position_str) {
+        // Cache negative result
+        position_cache.cached = true;
+        position_cache.position_us = 0;
+        position_cache.timestamp_ms = now;
         return 0;
     }
 
     // Position from metadata is in microseconds
     int64_t position_us = atoll(position_str);
     free(position_str);
+
+    // Update cache
+    position_cache.cached = true;
+    position_cache.position_us = position_us;
+    position_cache.timestamp_ms = now;
+
     return position_us;
 }
 
 bool mpris_is_playing(void) {
+    int64_t now = get_time_ms();
+
+    // Return cached value if still valid
+    if (playing_cache.cached && (now - playing_cache.timestamp_ms) < PLAYING_CACHE_MS) {
+        return playing_cache.is_playing;
+    }
+
     // Get player argument from config
     char *player_arg = build_player_arg();
     if (!player_arg) {
+        // Cache negative result
+        playing_cache.cached = true;
+        playing_cache.is_playing = false;
+        playing_cache.timestamp_ms = now;
         return false;
     }
 
@@ -324,11 +409,21 @@ bool mpris_is_playing(void) {
 
     if (!status || exit_code != 0) {
         free(status);
+        // Cache negative result
+        playing_cache.cached = true;
+        playing_cache.is_playing = false;
+        playing_cache.timestamp_ms = now;
         return false;
     }
 
     bool playing = (strcmp(status, "Playing") == 0);
     free(status);
+
+    // Update cache
+    playing_cache.cached = true;
+    playing_cache.is_playing = playing;
+    playing_cache.timestamp_ms = now;
+
     return playing;
 }
 
@@ -347,5 +442,12 @@ void mpris_free_metadata(struct track_metadata *metadata) {
 }
 
 void mpris_cleanup(void) {
-    // Nothing to cleanup in this simple implementation
+    // Free cached player argument
+    free(player_arg_cache.player_arg);
+    player_arg_cache.player_arg = NULL;
+    player_arg_cache.cached = false;
+
+    // Reset other caches
+    playing_cache.cached = false;
+    position_cache.cached = false;
 }
