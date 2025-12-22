@@ -81,7 +81,7 @@ int translator_count_translatable_lines(struct lyrics_data *data) {
     int count = 0;
     struct lyrics_line *line = data->lines;
     while (line) {
-        if (line->text && strlen(line->text) > 0) {
+        if (line->text && line->text[0] != '\0') {
             count++;
         }
         line = line->next;
@@ -100,7 +100,7 @@ int translator_count_translated_lines(struct lyrics_data *data) {
     int count = 0;
     struct lyrics_line *line = data->lines;
     while (line) {
-        if (line->translation && strlen(line->translation) > 0) {
+        if (line->translation && line->translation[0] != '\0') {
             count++;
         }
         line = line->next;
@@ -206,7 +206,7 @@ bool translator_load_from_cache(const char *cache_path, struct lyrics_data *data
         json_object *translation_obj = json_object_array_get_idx(translations_array, index);
         const char *translation = json_object_get_string(translation_obj);
 
-        if (translation && strlen(translation) > 0) {
+        if (translation && translation[0] != '\0') {
             free(line->translation);
             line->translation = strdup(translation);
         }
@@ -296,7 +296,7 @@ void translator_prepare_cache_resume(struct lyrics_data *data, int *already_tran
     int index = 0;
 
     while (line) {
-        if (line->text && strlen(line->text) > 0) {
+        if (line->text && line->text[0] != '\0') {
             // Clear translation if in re-validation range
             if (index >= new_already_translated && index < *already_translated && line->translation) {
                 free(line->translation);
@@ -479,12 +479,12 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
     }
 
     // Skip empty lines
-    if (!line->text || strlen(line->text) == 0) {
+    if (!line->text || line->text[0] == '\0') {
         return true;  // Continue
     }
 
     // Skip already translated lines
-    if (line->translation && strlen(line->translation) > 0) {
+    if (line->translation && line->translation[0] != '\0') {
         return true;  // Continue
     }
 
@@ -824,18 +824,18 @@ bool translator_translate_lyrics_generic(struct lyrics_data *data,
     const char *model_name = provider;
 
     // Validate
-    if (!api_key || strlen(api_key) == 0) {
+    if (!api_key || api_key[0] == '\0') {
         log_error("%s: API key not configured", provider_name);
         return false;
     }
 
-    if (!model_name || strlen(model_name) == 0) {
+    if (!model_name || model_name[0] == '\0') {
         log_error("%s: Model name not configured", provider_name);
         return false;
     }
 
     // Validate MD5 checksum
-    if (strlen(data->md5_checksum) == 0) {
+    if (data->md5_checksum[0] == '\0') {
         log_error("%s: MD5 checksum is empty, cannot cache translation", provider_name);
         return false;
     }

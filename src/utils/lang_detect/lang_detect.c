@@ -169,7 +169,7 @@ static char* strip_punctuation(const char *text) {
 #endif
 
 char* detect_language(const char *text, int max_len) {
-	if (!text || strlen(text) == 0) {
+	if (!text || text[0] == '\0') {
 		return NULL;
 	}
 

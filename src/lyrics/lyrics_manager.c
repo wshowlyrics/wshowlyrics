@@ -239,13 +239,13 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     const char *title = state->lyrics.metadata.title;
 
     // Fall back to MPRIS metadata if lyrics metadata is not available
-    if (!artist || strlen(artist) == 0) {
+    if (!artist || artist[0] == '\0') {
         artist = state->current_track.artist;
     }
-    if (!album || strlen(album) == 0) {
+    if (!album || album[0] == '\0') {
         album = state->current_track.album;
     }
-    if (!title || strlen(title) == 0) {
+    if (!title || title[0] == '\0') {
         title = state->current_track.title;
     }
 

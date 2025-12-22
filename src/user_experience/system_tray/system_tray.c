@@ -524,7 +524,7 @@ static bool load_cached_album_art(const char *cache_path, const char *metadata_h
 
 // Try to get artwork from MPRIS art URL
 static bool try_mpris_artwork(const char *art_url, const char *cache_path, const char *metadata_hash) {
-    if (!art_url || strlen(art_url) == 0) {
+    if (!art_url || art_url[0] == '\0') {
         return false;
     }
 
@@ -543,7 +543,7 @@ static bool try_mpris_artwork(const char *art_url, const char *cache_path, const
 // Try to get artwork from iTunes API
 static bool try_itunes_artwork(const char *artist, const char *album, const char *track,
                                const char *cache_path, const char *metadata_hash) {
-    if (!g_config.lyrics.enable_itunes || !track || strlen(track) == 0) {
+    if (!g_config.lyrics.enable_itunes || !track || track[0] == '\0') {
         if (!g_config.lyrics.enable_itunes) {
             log_info("iTunes API disabled in config");
         }

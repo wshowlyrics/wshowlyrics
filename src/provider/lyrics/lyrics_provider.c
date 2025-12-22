@@ -463,7 +463,7 @@ static bool local_search(const char *title, const char *artist, const char *albu
     (void)album;       // Unused for local search
 
     // Require title with non-empty content
-    if (!title || strlen(title) == 0) {
+    if (!title || title[0] == '\0') {
         log_info("Missing title, cannot search local files");
         return false;
     }

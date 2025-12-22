@@ -238,19 +238,19 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 
     // Copy the values (skip empty strings and "null" literals)
     metadata->title = strdup(title_start);
-    if (strlen(artist_start) > 0 && strcmp(artist_start, "null") != 0) {
+    if (artist_start[0] != '\0' && strcmp(artist_start, "null") != 0) {
         metadata->artist = strdup(artist_start);
     }
-    if (strlen(album_start) > 0 && strcmp(album_start, "null") != 0) {
+    if (album_start[0] != '\0' && strcmp(album_start, "null") != 0) {
         metadata->album = strdup(album_start);
     }
-    if (strlen(url_start) > 0 && strcmp(url_start, "null") != 0) {
+    if (url_start[0] != '\0' && strcmp(url_start, "null") != 0) {
         metadata->url = strdup(url_start);
     }
-    if (strlen(art_url_start) > 0 && strcmp(art_url_start, "null") != 0) {
+    if (art_url_start[0] != '\0' && strcmp(art_url_start, "null") != 0) {
         metadata->art_url = strdup(art_url_start);
     }
-    if (strlen(length_start) > 0 && strcmp(length_start, "null") != 0) {
+    if (length_start[0] != '\0' && strcmp(length_start, "null") != 0) {
         metadata->length_us = atoll(length_start);
     }
 

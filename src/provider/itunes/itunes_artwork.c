@@ -21,7 +21,7 @@ static char* url_encode(CURL *curl, const char *str) {
 
 char* itunes_search_artwork(const char *artist, const char *album, const char *track) {
     // Require at least a track title with non-empty content
-    if (!track || strlen(track) == 0) {
+    if (!track || track[0] == '\0') {
         log_info("Missing track title, cannot search iTunes");
         return NULL;
     }
@@ -41,7 +41,7 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
 
     // Sanitize track title to remove YouTube IDs and file extensions
     char *clean_track = sanitize_title(track);
-    if (!clean_track || strlen(clean_track) == 0) {
+    if (!clean_track || clean_track[0] == '\0') {
         free(clean_track);
         curl_easy_cleanup(curl);
         return NULL;
@@ -52,8 +52,8 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
     }
 
     // Validate metadata availability (similar to lrclib provider)
-    bool has_artist = (artist && strlen(artist) > 0 && strcasecmp(artist, "Unknown") != 0);
-    bool has_album = (album && strlen(album) > 0 && strcasecmp(album, "Unknown") != 0);
+    bool has_artist = (artist && artist[0] != '\0' && strcasecmp(artist, "Unknown") != 0);
+    bool has_album = (album && album[0] != '\0' && strcasecmp(album, "Unknown") != 0);
 
     // Build search term with available metadata
     char search_term[URL_BUFFER_SIZE];
@@ -153,7 +153,7 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
         artwork_url = extract_json_string(response.data, "artworkUrl60");
     }
 
-    if (artwork_url && strlen(artwork_url) > 0) {
+    if (artwork_url && artwork_url[0] != '\0') {
         log_info("iTunes API: found artwork: %s", artwork_url);
     } else {
         log_info("iTunes API: no artwork found");

@@ -30,7 +30,7 @@ static bool build_search_request_url(CURL *curl, const char *title, const char *
                                      char *url_buffer, size_t buffer_size) {
     // Sanitize title to remove YouTube IDs and file extensions
     char *clean_title = sanitize_title(title);
-    if (!clean_title || strlen(clean_title) == 0) {
+    if (!clean_title || clean_title[0] == '\0') {
         free(clean_title);
         return false;
     }
@@ -50,7 +50,7 @@ static bool build_search_request_url(CURL *curl, const char *title, const char *
     curl_free(title_encoded);
 
     // Add artist if available
-    if (artist && strlen(artist) > 0) {
+    if (artist && artist[0] != '\0') {
         char *artist_encoded = url_encode(curl, artist);
         if (artist_encoded) {
             snprintf(url_buffer + offset, buffer_size - offset,
@@ -115,7 +115,7 @@ static struct best_match_result find_best_match_in_results(
         char *synced_lyrics = extract_json_string(obj_start, "syncedLyrics");
 
         // Only consider results with synced lyrics
-        if (synced_lyrics && strlen(synced_lyrics) > 0) {
+        if (synced_lyrics && synced_lyrics[0] != '\0') {
             if (target_duration_ms > 0 && result_duration > 0) {
                 // We have both durations - compare
                 int64_t duration_diff = llabs((result_duration * 1000) - target_duration_ms);
@@ -157,7 +157,7 @@ static void extract_metadata_from_result(char *obj_start, struct lyrics_data *da
     char *album_name = extract_json_string(obj_start, "albumName");
     char *track_name = extract_json_string(obj_start, "trackName");
 
-    if (artist_name && strlen(artist_name) > 0) {
+    if (artist_name && artist_name[0] != '\0') {
         free(data->metadata.artist);
         data->metadata.artist = artist_name;
         log_info("lrclib metadata: artist = %s", artist_name);
@@ -165,7 +165,7 @@ static void extract_metadata_from_result(char *obj_start, struct lyrics_data *da
         free(artist_name);
     }
 
-    if (album_name && strlen(album_name) > 0) {
+    if (album_name && album_name[0] != '\0') {
         free(data->metadata.album);
         data->metadata.album = album_name;
         log_info("lrclib metadata: album = %s", album_name);
@@ -173,7 +173,7 @@ static void extract_metadata_from_result(char *obj_start, struct lyrics_data *da
         free(album_name);
     }
 
-    if (track_name && strlen(track_name) > 0) {
+    if (track_name && track_name[0] != '\0') {
         free(data->metadata.title);
         data->metadata.title = track_name;
         log_info("lrclib metadata: title = %s", track_name);
@@ -228,7 +228,7 @@ static bool lrclib_search_fallback(const char *title, const char *artist,
     struct best_match_result match = find_best_match_in_results(response.data, duration_ms);
 
     bool success = false;
-    if (match.synced_lyrics && strlen(match.synced_lyrics) > 0) {
+    if (match.synced_lyrics && match.synced_lyrics[0] != '\0') {
         if (duration_ms > 0) {
             log_info("Selected best match with duration diff: %ld ms", match.duration_diff);
         }
@@ -253,15 +253,15 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     (void)url; // Unused for online search
 
     // Require at least a title with non-empty content
-    if (!title || strlen(title) == 0) {
+    if (!title || title[0] == '\0') {
         log_info("Missing title, cannot search lrclib");
         return false;
     }
 
     // If we're missing artist or album, use search API instead
     // Check for NULL or empty string for both artist and album
-    bool has_artist = (artist && strlen(artist) > 0);
-    bool has_album = (album && strlen(album) > 0);
+    bool has_artist = (artist && artist[0] != '\0');
+    bool has_album = (album && album[0] != '\0');
 
     if (!has_artist || !has_album) {
         log_info("Missing metadata (artist: %s, album: %s), using search API",
@@ -367,10 +367,10 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     bool success = false;
 
     // Only use synced lyrics (LRC format) - skip plainLyrics
-    if (synced_lyrics && strlen(synced_lyrics) > 0) {
+    if (synced_lyrics && synced_lyrics[0] != '\0') {
         log_info("Found synced lyrics from lrclib exact match");
         success = lrc_parse_string(synced_lyrics, data);
-    } else if (plain_lyrics && strlen(plain_lyrics) > 0) {
+    } else if (plain_lyrics && plain_lyrics[0] != '\0') {
         log_info("Plain lyrics available but ignored (synced lyrics only)");
     }
 
