@@ -114,6 +114,10 @@ jobs:
           # Copy binary
           cp build/lyrics "${PKG_DIR}/usr/bin/wshowlyrics"
 
+          # Copy helper script
+          cp wshowlyrics-offset "${PKG_DIR}/usr/bin/wshowlyrics-offset"
+          chmod 755 "${PKG_DIR}/usr/bin/wshowlyrics-offset"
+
           # Copy config
           cp settings.ini.example "${PKG_DIR}/etc/wshowlyrics/settings.ini"
 
@@ -287,6 +291,7 @@ jobs:
           %license LICENSE
           %doc README.md
           %{_bindir}/wshowlyrics
+          %{_bindir}/wshowlyrics-offset
           %config(noreplace) %{_sysconfdir}/wshowlyrics/settings.ini
           %{_userunitdir}/wshowlyrics.service
 

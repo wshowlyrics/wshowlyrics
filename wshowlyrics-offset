@@ -1,25 +1,70 @@
 #!/bin/bash
-# wshowlyrics-offset: Helper script for timing offset control
+# wshowlyrics-offset: Helper script for timing offset control via D-Bus
 # Usage: wshowlyrics-offset +100   (100ms slower)
 #        wshowlyrics-offset -100   (100ms faster)
 #        wshowlyrics-offset 0      (reset to 0)
+#        wshowlyrics-offset toggle (toggle overlay)
 
-FIFO_PATH="/tmp/wshowlyrics.fifo"
+DBUS_SERVICE="org.wshowlyrics.Control"
+DBUS_PATH="/org/wshowlyrics/Control"
+DBUS_INTERFACE="org.wshowlyrics.Control"
 
 if [ -z "$1" ]; then
-    echo "Usage: $0 <offset_in_milliseconds>"
-    echo "  Examples:"
+    echo "Usage: $0 <offset_in_milliseconds|toggle|show|hide>"
+    echo "  Timing offset examples:"
     echo "    $0 +100    # 100ms slower (delay lyrics)"
     echo "    $0 -100    # 100ms faster (advance lyrics)"
     echo "    $0 0       # reset to default"
+    echo ""
+    echo "  Overlay control:"
+    echo "    $0 toggle  # toggle overlay visibility"
+    echo "    $0 show    # show overlay"
+    echo "    $0 hide    # hide overlay"
     exit 1
 fi
 
-if [ ! -p "$FIFO_PATH" ]; then
-    echo "Error: wshowlyrics is not running (FIFO not found at $FIFO_PATH)"
+# Check if wshowlyrics is running
+if ! busctl --user status "$DBUS_SERVICE" &>/dev/null; then
+    echo "Error: wshowlyrics is not running (D-Bus service not found)"
     exit 1
 fi
 
-echo "$1" > "$FIFO_PATH"
+# Handle overlay control commands
+case "$1" in
+    toggle)
+        gdbus call --session --dest "$DBUS_SERVICE" \
+            --object-path "$DBUS_PATH" \
+            --method "$DBUS_INTERFACE.ToggleOverlay" &>/dev/null
+        echo "Overlay toggled"
+        exit 0
+        ;;
+    show)
+        gdbus call --session --dest "$DBUS_SERVICE" \
+            --object-path "$DBUS_PATH" \
+            --method "$DBUS_INTERFACE.SetOverlay" true &>/dev/null
+        echo "Overlay shown"
+        exit 0
+        ;;
+    hide)
+        gdbus call --session --dest "$DBUS_SERVICE" \
+            --object-path "$DBUS_PATH" \
+            --method "$DBUS_INTERFACE.SetOverlay" false &>/dev/null
+        echo "Overlay hidden"
+        exit 0
+        ;;
+esac
 
-echo "Timing offset adjusted: $1 ms"
+# Handle timing offset adjustment
+if [[ "$1" =~ ^[+-] ]]; then
+    # Cumulative mode: +100, -100
+    gdbus call --session --dest "$DBUS_SERVICE" \
+        --object-path "$DBUS_PATH" \
+        --method "$DBUS_INTERFACE.AdjustTimingOffset" -- "$1" &>/dev/null
+    echo "Timing offset adjusted by: $1 ms"
+else
+    # Absolute mode: 0, 500, -200
+    gdbus call --session --dest "$DBUS_SERVICE" \
+        --object-path "$DBUS_PATH" \
+        --method "$DBUS_INTERFACE.SetTimingOffset" -- "$1" &>/dev/null
+    echo "Timing offset set to: $1 ms"
+fi

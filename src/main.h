@@ -85,7 +85,6 @@ struct lyrics_state {
 
     // Timing offset for sync adjustment (milliseconds)
     int timing_offset_ms; // Runtime timing offset (-1000 to +1000 ms)
-    int fifo_fd; // FIFO file descriptor for IPC commands
 
     bool run;
     bool needs_reconnect; // Set when layer surface is closed

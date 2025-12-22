@@ -1,7 +1,7 @@
 project(
 	'lyrics',
 	'c',
-	version: '0.7.5',
+	version: '0.8.0',
 	license: 'GPL',
 	meson_version: '>=0.51.0',
 	default_options: [
@@ -74,6 +74,7 @@ executable(
 		'src/utils/pango/pango_utils.c',
 		'src/utils/shm/shm.c',
 		'src/utils/mpris/mpris.c',
+		'src/utils/dbus_control/dbus_control.c',
 		'src/parser/lrc/lrc_common.c',
 		'src/parser/lrc/lrc_parser.c',
 		'src/parser/lrc/lrcx_parser.c',
@@ -94,7 +95,6 @@ executable(
 		'src/utils/json/json_utils.c',
 		'src/utils/string/string_utils.c',
 		'src/utils/lang_detect/lang_detect.c',
-		'src/utils/lock/lock_file.c',
 		'src/utils/render/render_common.c',
 		'src/utils/render/ruby_render.c',
 		'src/utils/render/word_render.c',
@@ -133,4 +133,11 @@ install_data(
 install_data(
 	'wshowlyrics.service',
 	install_dir: '/usr/lib/systemd/user',
+)
+
+# Install helper script for runtime control
+install_data(
+	'wshowlyrics-offset',
+	install_dir: get_option('bindir'),
+	install_mode: 'rwxr-xr-x',
 )

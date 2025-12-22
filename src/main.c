@@ -10,7 +10,7 @@
 #include "utils/wayland/wayland_manager.h"
 #include "utils/curl/curl_utils.h"
 #include "utils/lang_detect/lang_detect.h"
-#include "utils/lock/lock_file.h"
+#include "utils/dbus_control/dbus_control.h"
 #include "translator/deepl/deepl_translator.h"
 #include "translator/gemini/gemini_translator.h"
 #include "translator/claude/claude_translator.h"
@@ -143,7 +143,6 @@ int main(int argc, char *argv[]) {
     struct lyrics_state state = { 0 };
     state.current_line_index = -1; // No current line initially
     state.timing_offset_ms = 0; // No timing offset initially
-    state.fifo_fd = -1; // No FIFO initially
     state.overlay_enabled = true; // Overlay enabled by default
 
     // Set global state for signal handler
@@ -262,31 +261,9 @@ int main(int argc, char *argv[]) {
     // Initialize language detection for translation validation
     lang_detect_init();
 
-    // Try to acquire lock file (prevent multiple instances)
-    if (!lock_file_acquire()) {
-        log_error("Another instance of wshowlyrics is already running");
-        log_error("If you're sure no other instance is running, remove: %s", LOCK_FILE_PATH);
-        ret = 1;
-        goto exit_no_lock;
-    }
-
-    // Create FIFO for timing offset control (avoid TOCTOU by not unlinking first)
-    #define FIFO_PATH "/tmp/wshowlyrics.fifo"
-    mode_t old_mask = umask(0077);  // Owner-only access for privacy
-    if (mkfifo(FIFO_PATH, 0600) == -1) {
-        if (errno != EEXIST) {
-            log_warn("Failed to create FIFO %s: %s", FIFO_PATH, strerror(errno));
-        }
-        // FIFO already exists, that's ok (we have exclusive lock)
-    }
-    umask(old_mask);
-
-    // Open FIFO in non-blocking mode
-    state.fifo_fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
-    if (state.fifo_fd < 0) {
-        log_warn("Failed to open FIFO %s: %s", FIFO_PATH, strerror(errno));
-    } else {
-        log_info("FIFO ready at %s for timing offset control", FIFO_PATH);
+    // Initialize D-Bus control interface for runtime control
+    if (!dbus_control_init(&state)) {
+        log_warn("Failed to initialize D-Bus control interface (overlay/offset control disabled)");
     }
 
     // Initialize Wayland surface and connections
@@ -297,9 +274,8 @@ int main(int argc, char *argv[]) {
 
     struct pollfd pollfds[] = {
         { .fd = wl_display_get_fd(state.display), .events = POLLIN, },
-        { .fd = state.fifo_fd, .events = POLLIN, },
     };
-    int nfds = (state.fifo_fd >= 0) ? 2 : 1;
+    int nfds = 1;
 
     state.run = true;
     int update_counter = 0;
@@ -358,61 +334,6 @@ int main(int argc, char *argv[]) {
             // Attempt full reconnection
             wayland_events_handle_reconnection(&state, &wl_conn, pollfds);
             continue;
-        }
-
-        // Read timing offset commands from FIFO
-        if (state.fifo_fd >= 0 && (pollfds[1].revents & POLLIN)) {
-            char buf[64];
-            ssize_t n = read(state.fifo_fd, buf, sizeof(buf) - 1);
-            if (n > 0) {
-                buf[n] = '\0';
-
-                // Remove trailing newline/whitespace
-                while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r' || buf[n-1] == ' ')) {
-                    buf[--n] = '\0';
-                }
-
-                if (n > 0) {
-                    // Check for overlay control commands first
-                    if (strcmp(buf, "show") == 0) {
-                        state.overlay_enabled = true;
-                        system_tray_set_overlay_state(true);
-                        rendering_manager_set_dirty(&state);
-                        log_info("Overlay enabled");
-                    } else if (strcmp(buf, "hide") == 0) {
-                        state.overlay_enabled = false;
-                        system_tray_set_overlay_state(false);
-                        rendering_manager_set_dirty(&state);
-                        log_info("Overlay disabled");
-                    } else if (strcmp(buf, "toggle") == 0) {
-                        state.overlay_enabled = !state.overlay_enabled;
-                        system_tray_set_overlay_state(state.overlay_enabled);
-                        rendering_manager_set_dirty(&state);
-                        log_info("Overlay toggled: %s", state.overlay_enabled ? "enabled" : "disabled");
-                    } else {
-                        // Parse as timing offset (existing logic)
-                        int delta = atoi(buf);
-
-                        if (buf[0] == '+' || buf[0] == '-') {
-                            // Cumulative mode: +100, -100
-                            state.timing_offset_ms += delta;
-                        } else {
-                            // Absolute mode: 0, 500
-                            state.timing_offset_ms = delta;
-                        }
-
-                        // Clamp to reasonable range
-                        if (state.timing_offset_ms < -5000) {
-                            state.timing_offset_ms = -5000;
-                        } else if (state.timing_offset_ms > 5000) {
-                            state.timing_offset_ms = 5000;
-                        }
-
-                        log_info("Timing offset: %dms", state.timing_offset_ms);
-                        rendering_manager_set_dirty(&state);
-                    }
-                }
-            }
         }
 
         // Check for track changes (signal-based, no polling)
@@ -531,14 +452,8 @@ exit:
         state.frame_callback = NULL;
     }
 
-    // Clean up FIFO
-    if (state.fifo_fd >= 0) {
-        close(state.fifo_fd);
-        unlink(FIFO_PATH);
-    }
-
-    // Release lock file
-    lock_file_release();
+    // Clean up D-Bus control interface
+    dbus_control_cleanup();
 
     system_tray_cleanup();
     lrc_free_data(&state.lyrics);
@@ -556,7 +471,6 @@ exit:
     }
     FcFini();
 
-exit_no_lock:
     // Free allocated font string if it was from config
     free(font_from_config_alloc);
 
