@@ -7,7 +7,7 @@ on:
       - completed
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build-packages-${{ github.ref }}
@@ -348,6 +348,8 @@ jobs:
     needs: [prepare-build, build-deb, build-rpm]
     if: needs.prepare-build.outputs.has_tag == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
