@@ -2,6 +2,7 @@
 #include "../../utils/curl/curl_utils.h"
 #include "../../provider/itunes/itunes_artwork.h"
 #include "../../utils/file/file_utils.h"
+#include "../../utils/string/string_utils.h"
 #include "../config/config.h"
 #include <stdio.h>
 #include "../../constants.h"
@@ -411,9 +412,9 @@ void system_tray_send_notification(const struct notification_info *info) {
 
     // Build notification body: "Album · Artist\nPlayer" (2 lines, capitalized player)
     char body[512];
-    const char *artist_display = (info->artist && strlen(info->artist) > 0) ? info->artist : "Unknown";
-    const char *album_display = (info->album && strlen(info->album) > 0) ? info->album : "Unknown";
-    const char *player_display = (info->player_name && strlen(info->player_name) > 0) ? info->player_name : "Unknown";
+    const char *artist_display = (info->artist && info->artist[0] != '\0') ? info->artist : "Unknown";
+    const char *album_display = (info->album && info->album[0] != '\0') ? info->album : "Unknown";
+    const char *player_display = (info->player_name && info->player_name[0] != '\0') ? info->player_name : "Unknown";
 
     // Capitalize first letter of player name for notification
     char player_capitalized[256];
@@ -424,41 +425,11 @@ void system_tray_send_notification(const struct notification_info *info) {
 
     snprintf(body, sizeof(body), "%s · %s\n%s", album_display, artist_display, player_capitalized);
 
-    // Escape title for shell
+    // Escape title and body for shell
     char escaped_title[1024];
-    const char *src = notification_title;
-    char *dst = escaped_title;
-    size_t remaining = sizeof(escaped_title) - 1;
-
-    while (*src && remaining > 1) {
-        if (*src == '"' || *src == '\\' || *src == '$' || *src == '`') {
-            if (remaining > 2) {
-                *dst++ = '\\';
-                remaining--;
-            }
-        }
-        *dst++ = *src++;
-        remaining--;
-    }
-    *dst = '\0';
-
-    // Escape body for shell
     char escaped_body[1024];
-    src = body;
-    dst = escaped_body;
-    remaining = sizeof(escaped_body) - 1;
-
-    while (*src && remaining > 1) {
-        if (*src == '"' || *src == '\\' || *src == '$' || *src == '`') {
-            if (remaining > 2) {
-                *dst++ = '\\';
-                remaining--;
-            }
-        }
-        *dst++ = *src++;
-        remaining--;
-    }
-    *dst = '\0';
+    escape_shell_string(notification_title, escaped_title, sizeof(escaped_title));
+    escape_shell_string(body, escaped_body, sizeof(escaped_body));
 
     // Check if album art exists, otherwise use default icon
     const char *icon_path = ICON_PATH;
