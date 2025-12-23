@@ -189,3 +189,32 @@ revalidate_count = 2
 #   - aggressive: Save at 90% completion (late save, more complete translations)
 # Default: balanced
 cache_policy = balanced
+
+# ============================================================================
+# Cache Settings
+# ============================================================================
+
+[cache]
+# Automatic cleanup policy for old cache files
+# The program automatically removes cache files that haven't been accessed for the specified period
+# When cache is accessed (loaded), the access time is updated to keep it fresh
+#
+# Options:
+#   - off: Disable automatic cleanup (cache grows indefinitely)
+#   - aggressive: Delete files not accessed in 7 days
+#   - normal: Delete files not accessed in 15 days (default, recommended)
+#   - conservative: Delete files not accessed in 30 days
+#
+# Benefits:
+#   - Frequently played songs remain cached
+#   - Rarely played songs are automatically cleaned up
+#   - Saves disk space without manual intervention
+#
+# Note: You can still manually clear cache using:
+#   wshowlyrics --purge=all         (clear all cache)
+#   wshowlyrics --purge=translations (clear only translation cache)
+#   wshowlyrics --purge=album-art   (clear only album art)
+#   wshowlyrics --purge=lyrics      (clear only lyrics cache)
+#
+# Default: normal
+cleanup_policy = normal

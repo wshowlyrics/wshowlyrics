@@ -156,6 +156,24 @@ static void parse_translation_section(struct config *cfg, const char *key, const
     }
 }
 
+// Parse [cache] section
+static void parse_cache_section(struct config *cfg, const char *key, const char *value) {
+    if (strcmp(key, "cleanup_policy") == 0) {
+        if (strcmp(value, "off") == 0) {
+            cfg->cache.cleanup_policy = CACHE_CLEANUP_OFF;
+        } else if (strcmp(value, "aggressive") == 0) {
+            cfg->cache.cleanup_policy = CACHE_CLEANUP_AGGRESSIVE;
+        } else if (strcmp(value, "normal") == 0) {
+            cfg->cache.cleanup_policy = CACHE_CLEANUP_NORMAL;
+        } else if (strcmp(value, "conservative") == 0) {
+            cfg->cache.cleanup_policy = CACHE_CLEANUP_CONSERVATIVE;
+        } else {
+            log_warn("Invalid cache.cleanup_policy value: %s (using default: normal)", value);
+            cfg->cache.cleanup_policy = CACHE_CLEANUP_NORMAL;
+        }
+    }
+}
+
 // Parse deprecated [deepl] section with migration warning
 static void parse_deprecated_deepl_section(struct config *cfg, const char *key, const char *value) {
     static bool deepl_warning_shown = false;
@@ -254,6 +272,9 @@ void config_init_defaults(struct config *cfg) {
     cfg->translation.max_retries = 3;  // Maximum 3 retry attempts
     cfg->translation.revalidate_count = 2;  // Re-validate last 2 translations on resume
     cfg->translation.cache_policy = CACHE_POLICY_BALANCED;  // 75% threshold by default
+
+    // Cache defaults
+    cfg->cache.cleanup_policy = CACHE_CLEANUP_NORMAL;  // 15 days by default
 }
 
 void config_free(struct config *cfg) {
@@ -451,6 +472,8 @@ bool config_load(struct config *cfg, const char *path) {
             parse_lyrics_section(cfg, key, value);
         } else if (strcmp(section, "translation") == 0) {
             parse_translation_section(cfg, key, value);
+        } else if (strcmp(section, "cache") == 0) {
+            parse_cache_section(cfg, key, value);
         } else if (strcmp(section, "deepl") == 0) {
             parse_deprecated_deepl_section(cfg, key, value);
         }
@@ -1160,5 +1183,20 @@ float config_get_cache_threshold(enum translation_cache_policy policy) {
             return 0.90f;  // 90% - Late save, more complete
         default:
             return 0.75f;  // Default to balanced
+    }
+}
+
+int config_get_cleanup_days(enum cache_cleanup_policy policy) {
+    switch (policy) {
+        case CACHE_CLEANUP_OFF:
+            return -1;  // Disabled
+        case CACHE_CLEANUP_AGGRESSIVE:
+            return 7;   // 7 days
+        case CACHE_CLEANUP_NORMAL:
+            return 15;  // 15 days (default)
+        case CACHE_CLEANUP_CONSERVATIVE:
+            return 30;  // 30 days
+        default:
+            return 15;  // Default to normal
     }
 }

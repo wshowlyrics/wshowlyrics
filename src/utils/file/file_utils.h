@@ -18,10 +18,23 @@ bool file_has_changed(const char *filepath, const char *expected_checksum);
 // Pattern examples: "%s/%s.%s" for "dir/file.ext", "%s/.lyrics" for "home/.lyrics"
 int build_path(char *dest, size_t dest_size, const char *fmt, ...);
 
-// Ensure /tmp/wshowlyrics cache directories exist
-// Creates: /tmp/wshowlyrics/album_art/ and /tmp/wshowlyrics/lyrics/
+// Get cache base directory path
+// Returns $XDG_CACHE_HOME/wshowlyrics or $HOME/.cache/wshowlyrics
+const char* get_cache_base_dir(void);
+
+// Get translated cache directory path
+// Returns $XDG_CACHE_HOME/wshowlyrics/translated or $HOME/.cache/wshowlyrics/translated
+const char* get_cache_translated_dir(void);
+
+// Ensure cache directories exist using XDG Base Directory specification
+// Creates: $XDG_CACHE_HOME/wshowlyrics/{album_art,lyrics,translated}/
 // Returns true on success, false on error
 bool ensure_cache_directories(void);
+
+// Purge (delete) cache directories
+// type: "all", "translations", "album-art", or "lyrics"
+// Returns true on success, false on error
+bool purge_cache(const char *type);
 
 // Build cache file path for album art
 // md5_hash: 32-char hex string
@@ -45,5 +58,17 @@ bool calculate_metadata_md5(const char *artist, const char *title, const char *a
 int build_translation_cache_path(char *dest, size_t dest_size,
                                   const char *original_md5,
                                   const char *target_lang);
+
+// Automatically cleanup old cache files based on policy
+// max_days: Maximum age in days (-1 to disable cleanup)
+// Removes files not accessed for max_days from all cache directories
+// Returns true on success, false on error
+bool auto_cleanup_old_cache(int max_days);
+
+// Update access time of a cache file (touch)
+// filepath: Full path to cache file
+// Updates both access and modification time to current time
+// Returns true on success, false if file doesn't exist or error
+bool touch_cache_file(const char *filepath);
 
 #endif

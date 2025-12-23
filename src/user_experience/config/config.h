@@ -39,6 +39,19 @@ enum translation_cache_policy {
     CACHE_POLICY_AGGRESSIVE     // Save at 90% completion (late save, more complete)
 };
 
+// Cache cleanup policy (automatic removal of old cache files)
+enum cache_cleanup_policy {
+    CACHE_CLEANUP_OFF,          // Disable automatic cleanup
+    CACHE_CLEANUP_AGGRESSIVE,   // Delete files not accessed in 7 days
+    CACHE_CLEANUP_NORMAL,       // Delete files not accessed in 15 days (default)
+    CACHE_CLEANUP_CONSERVATIVE  // Delete files not accessed in 30 days
+};
+
+// Cache settings
+struct cache_config {
+    enum cache_cleanup_policy cleanup_policy;  // Automatic cleanup policy
+};
+
 // Translation settings (multi-provider support)
 struct translation_config {
     char *provider;              // Provider and model: "deepl", "gemini-2.5-flash", "claude-sonnet-4-5", "false"
@@ -57,6 +70,7 @@ struct config {
     struct display_config display;
     struct lyrics_config lyrics;
     struct translation_config translation;
+    struct cache_config cache;
 };
 
 // Global configuration instance (prefer using config_get() instead of direct access)
@@ -92,5 +106,8 @@ void config_validate_user_config(void);
 
 // Get cache threshold value (0.0 - 1.0) from policy
 float config_get_cache_threshold(enum translation_cache_policy policy);
+
+// Get cache cleanup days from policy (returns -1 for CACHE_CLEANUP_OFF)
+int config_get_cleanup_days(enum cache_cleanup_policy policy);
 
 #endif // CONFIG_H

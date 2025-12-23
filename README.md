@@ -256,6 +256,19 @@ mpv --force-window=yes song.mp3
 wshowlyrics -h
 wshowlyrics --help
 
+# Clear all cache and exit
+wshowlyrics --purge
+wshowlyrics --purge=all
+
+# Clear only translation cache (useful after changing translation provider)
+wshowlyrics --purge=translations
+
+# Clear only album art cache
+wshowlyrics --purge=album-art
+
+# Clear only lyrics cache
+wshowlyrics --purge=lyrics
+
 # Run in MPRIS mode (default)
 wshowlyrics
 
@@ -700,12 +713,14 @@ max_retries = 3
 ### Features
 
 - **Multiple provider support**: Choose from OpenAI, DeepL, Google Gemini, or Anthropic Claude
-- **Smart caching**: Translations are cached in `/tmp/wshowlyrics/translated/` and reused on subsequent playbacks
+- **Smart caching**: Translations are cached in `~/.cache/wshowlyrics/` (or `$XDG_CACHE_HOME/wshowlyrics/`) and reused on subsequent playbacks
+- **Persistent cache**: Translation cache persists across reboots, reducing API costs for frequently played songs
+- **Cache management**: Use `--purge=translations` to clear translation cache when needed
 - **Language detection optimization**: Automatically skips translation for text already in target language, saving API costs for mixed-language lyrics
 - **Format support**: Provider-based translation applies to LRC format files. SRT and VTT files support inline translation using `{translation}` syntax at line start (no API required). LRCX format is excluded.
 - **Rate limiting**: Configurable rate limiting to respect API quotas and avoid errors
 - **Auto-retry**: Automatic retry on rate limit errors (configurable attempts)
-- **Cost-effective**: Translations are only performed once per song and cached until system restart
+- **Cost-effective**: Translations are only performed once per song and reused indefinitely until cache is cleared
 - **Configurable display**: Choose between showing both original + translation, or translation only
 - **Adjustable opacity**: Control how visible the translation text appears
 

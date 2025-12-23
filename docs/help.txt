@@ -4,6 +4,8 @@ Wayland lyrics overlay with MPRIS integration
 
 Options:
   -h, --help                   Show this help message
+      --purge[=TYPE]           Purge cache and exit
+                               TYPE: all (default), translations, album-art, lyrics
   -b, --background=COLOR       Background color in #RRGGBB[AA] format (default: #00000080)
   -f, --foreground=COLOR       Foreground/text color in #RRGGBB[AA] format (default: #FFFFFFFF)
   -F, --font=FONT              Font specification (default: "Sans 20")

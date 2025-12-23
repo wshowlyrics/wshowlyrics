@@ -45,9 +45,26 @@ int main(int argc, char *argv[]) {
     }
     const char *program_name = basename(argv0_copy);
 
-    // Quick check for --help before doing any initialization
+    // Quick check for --help and --purge before doing any initialization
     // This prevents config loading messages from appearing with help text
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--purge") == 0 || strncmp(argv[i], "--purge=", 8) == 0) {
+            const char *type = "all";
+            if (strncmp(argv[i], "--purge=", 8) == 0) {
+                type = argv[i] + 8;
+            }
+
+            fprintf(stdout, "Purging cache type: %s\n", type);
+            if (purge_cache(type)) {
+                fprintf(stdout, "Cache purged successfully\n");
+                free(argv0_copy);
+                return 0;
+            } else {
+                fprintf(stderr, "Failed to purge cache\n");
+                free(argv0_copy);
+                return 1;
+            }
+        }
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             // Try to fetch detailed help from GitHub
             CURL *curl = curl_easy_init();
@@ -101,17 +118,11 @@ int main(int argc, char *argv[]) {
             }
 
             // Fallback to basic help if fetch failed
-            fprintf(stdout, "Usage: %s [OPTIONS]\n\n", program_name);
             fprintf(stdout, "Wayland lyrics overlay with MPRIS integration\n\n");
-            fprintf(stdout, "Options:\n");
-            fprintf(stdout, "  -h, --help                   Show this help message\n");
-            fprintf(stdout, "  -b, --background=COLOR       Background color (default: #00000080)\n");
-            fprintf(stdout, "  -f, --foreground=COLOR       Text color (default: #FFFFFFFF)\n");
-            fprintf(stdout, "  -F, --font=FONT              Font specification (default: \"Sans 20\")\n");
-            fprintf(stdout, "  -a, --anchor=POSITION        Anchor: top, bottom, left, right (default: bottom)\n");
-            fprintf(stdout, "  -m, --margin=PIXELS          Margin from edge (default: 32)\n\n");
-            fprintf(stdout, "For full documentation, see:\n");
-            fprintf(stdout, "  https://github.com/Scruel/lyrics/blob/master/README.md\n");
+            fprintf(stdout, "For detailed help and usage information, see:\n");
+            fprintf(stdout, "  https://raw.githubusercontent.com/unstable-code/lyrics/refs/heads/master/docs/help.txt\n\n");
+            fprintf(stdout, "Documentation:\n");
+            fprintf(stdout, "  https://github.com/unstable-code/lyrics/blob/master/README.md\n");
 
             free(argv0_copy);
             return 0;
@@ -260,6 +271,10 @@ int main(int argc, char *argv[]) {
 
     // Initialize language detection for translation validation
     lang_detect_init();
+
+    // Run automatic cache cleanup based on config policy
+    int cleanup_days = config_get_cleanup_days(g_config.cache.cleanup_policy);
+    auto_cleanup_old_cache(cleanup_days);
 
     // Initialize D-Bus control interface for runtime control
     if (!dbus_control_init(&state)) {

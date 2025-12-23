@@ -447,6 +447,8 @@ bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
 
     // Cache loaded - check if complete
     if (translator_check_cache_complete(data, translatable_count, already_translated)) {
+        // Update cache access time to prevent cleanup
+        touch_cache_file(args->cache_path);
         log_success("Found cached translation: %s", args->cache_path);
         log_success("%s: Loaded complete translation from cache (%d lines)",
                    args->provider_name, *already_translated);
@@ -459,6 +461,8 @@ bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
     struct config *cfg = config_get();
     int revalidate_count = cfg->translation.revalidate_count;
     translator_prepare_cache_resume(data, already_translated, revalidate_count);
+    // Update cache access time to prevent cleanup
+    touch_cache_file(args->cache_path);
     log_info("Found cached translation: %s", args->cache_path);
     log_info("%s: Loaded partial cache (%d/%d), re-validating last %d lines",
             args->provider_name, *already_translated, translatable_count, revalidate_count);
@@ -843,8 +847,8 @@ bool translator_translate_lyrics_generic(struct lyrics_data *data,
     // Build cache path
     char cache_path[512];
     snprintf(cache_path, sizeof(cache_path),
-             "/tmp/wshowlyrics/translated/%s_%s.json",
-             data->md5_checksum, target_lang);
+             "%s/%s_%s.json",
+             get_cache_translated_dir(), data->md5_checksum, target_lang);
 
     // Create cache directories
     if (!ensure_cache_directories()) {

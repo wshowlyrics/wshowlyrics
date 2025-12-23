@@ -252,6 +252,19 @@ mpv --force-window=yes song.mp3
 wshowlyrics -h
 wshowlyrics --help
 
+# 모든 캐시 삭제 후 종료
+wshowlyrics --purge
+wshowlyrics --purge=all
+
+# 번역 캐시만 삭제 (번역 제공자 변경 후 유용)
+wshowlyrics --purge=translations
+
+# 앨범 아트 캐시만 삭제
+wshowlyrics --purge=album-art
+
+# 가사 캐시만 삭제
+wshowlyrics --purge=lyrics
+
 # MPRIS 모드로 실행 (기본)
 wshowlyrics
 
@@ -695,12 +708,14 @@ max_retries = 3
 ### 기능
 
 - **다중 제공자 지원**: OpenAI, DeepL, Google Gemini, Anthropic Claude 중 선택
-- **스마트 캐싱**: 번역은 `/tmp/wshowlyrics/translated/`에 캐시되어 재생시 재사용됨
+- **스마트 캐싱**: 번역은 `~/.cache/wshowlyrics/` (또는 `$XDG_CACHE_HOME/wshowlyrics/`)에 캐시되어 재생시 재사용됨
+- **영구 캐시**: 번역 캐시가 재부팅 후에도 유지되어 자주 듣는 곡의 API 비용 절감
+- **캐시 관리**: 필요시 `--purge=translations` 명령으로 번역 캐시 삭제 가능
 - **언어 감지 최적화**: 이미 목표 언어인 텍스트는 자동으로 제외되어 혼합 언어 가사의 API 비용 절감
 - **포맷 지원**: 제공자 기반 번역은 LRC 포맷 파일에 적용됩니다. SRT와 VTT 파일은 줄 시작 부분에 `{번역}` 구문을 사용한 인라인 번역을 지원합니다 (API 불필요). LRCX 포맷은 제외됩니다.
 - **레이트 리밋**: API 할당량을 지키기 위한 설정 가능한 레이트 리밋
 - **자동 재시도**: 레이트 리밋 오류 발생 시 자동 재시도 (시도 횟수 설정 가능)
-- **비용 효율적**: 곡당 한 번만 번역되고 재부팅 전까지 캐시됨
+- **비용 효율적**: 곡당 한 번만 번역되고 캐시 삭제 전까지 무한 재사용
 - **표시 모드 설정**: 원문+번역 또는 번역만 표시 중 선택 가능
 - **투명도 조절**: 번역 텍스트의 가시성 조절 가능
 

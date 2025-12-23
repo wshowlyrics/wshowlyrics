@@ -3,14 +3,61 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <openssl/evp.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <time.h>
+#include <utime.h>
 
-#define CACHE_BASE_DIR "/tmp/wshowlyrics"
-#define CACHE_ALBUM_ART_DIR CACHE_BASE_DIR "/album_art"
-#define CACHE_LYRICS_DIR CACHE_BASE_DIR "/lyrics"
-#define CACHE_TRANSLATED_DIR CACHE_BASE_DIR "/translated"
+// Static cache for directory paths (initialized on first use)
+static char g_cache_base_dir[512] = {0};
+static char g_cache_album_art_dir[600] = {0};
+static char g_cache_lyrics_dir[600] = {0};
+static char g_cache_translated_dir[600] = {0};
+static bool g_cache_dirs_initialized = false;
+
+// Initialize cache directory paths using XDG Base Directory specification
+static void init_cache_directories(void) {
+    if (g_cache_dirs_initialized) {
+        return;
+    }
+
+    const char *xdg_cache = getenv("XDG_CACHE_HOME");
+    const char *home = getenv("HOME");
+
+    if (xdg_cache && xdg_cache[0] != '\0') {
+        // Use XDG_CACHE_HOME
+        snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/wshowlyrics", xdg_cache);
+    } else if (home && home[0] != '\0') {
+        // Fallback to $HOME/.cache
+        snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/.cache/wshowlyrics", home);
+    } else {
+        // Last resort: use /tmp (should rarely happen)
+        snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "/tmp/wshowlyrics");
+    }
+
+    // Build subdirectory paths
+    snprintf(g_cache_album_art_dir, sizeof(g_cache_album_art_dir), "%s/album_art", g_cache_base_dir);
+    snprintf(g_cache_lyrics_dir, sizeof(g_cache_lyrics_dir), "%s/lyrics", g_cache_base_dir);
+    snprintf(g_cache_translated_dir, sizeof(g_cache_translated_dir), "%s/translated", g_cache_base_dir);
+
+    g_cache_dirs_initialized = true;
+}
+
+// Get cache base directory path
+const char* get_cache_base_dir(void) {
+    init_cache_directories();
+    return g_cache_base_dir;
+}
+
+// Get translated cache directory path
+const char* get_cache_translated_dir(void) {
+    init_cache_directories();
+    return g_cache_translated_dir;
+}
 
 bool calculate_file_md5(const char *filepath, char *checksum_out) {
     if (!filepath || !checksum_out) {
@@ -126,21 +173,23 @@ static bool mkdir_p(const char *path) {
 }
 
 bool ensure_cache_directories(void) {
+    init_cache_directories();
+
     // Create base directory
-    if (!mkdir_p(CACHE_BASE_DIR)) {
+    if (!mkdir_p(g_cache_base_dir)) {
         return false;
     }
 
     // Create subdirectories
-    if (!mkdir_p(CACHE_ALBUM_ART_DIR)) {
+    if (!mkdir_p(g_cache_album_art_dir)) {
         return false;
     }
 
-    if (!mkdir_p(CACHE_LYRICS_DIR)) {
+    if (!mkdir_p(g_cache_lyrics_dir)) {
         return false;
     }
 
-    if (!mkdir_p(CACHE_TRANSLATED_DIR)) {
+    if (!mkdir_p(g_cache_translated_dir)) {
         return false;
     }
 
@@ -158,7 +207,8 @@ int build_album_art_cache_path(char *dest, size_t dest_size, const char *md5_has
         return -1;
     }
 
-    return build_path(dest, dest_size, "%s/%s.png", CACHE_ALBUM_ART_DIR, md5_hash);
+    init_cache_directories();
+    return build_path(dest, dest_size, "%s/%s.png", g_cache_album_art_dir, md5_hash);
 }
 
 int build_lyrics_cache_path(char *dest, size_t dest_size, const char *md5_hash) {
@@ -172,7 +222,8 @@ int build_lyrics_cache_path(char *dest, size_t dest_size, const char *md5_hash) 
         return -1;
     }
 
-    return build_path(dest, dest_size, "%s/%s.lrc", CACHE_LYRICS_DIR, md5_hash);
+    init_cache_directories();
+    return build_path(dest, dest_size, "%s/%s.lrc", g_cache_lyrics_dir, md5_hash);
 }
 
 bool calculate_metadata_md5(const char *artist, const char *title, const char *album, char *md5_out) {
@@ -235,6 +286,237 @@ int build_translation_cache_path(char *dest, size_t dest_size,
         return -1;
     }
 
+    init_cache_directories();
     return build_path(dest, dest_size, "%s/%s_%s.json",
-                      CACHE_TRANSLATED_DIR, original_md5, target_lang);
+                      g_cache_translated_dir, original_md5, target_lang);
+}
+
+// Recursively remove directory and its contents
+static bool remove_directory_recursive(const char *path) {
+    DIR *dir = opendir(path);
+    if (!dir) {
+        // Directory doesn't exist or can't be opened
+        if (errno == ENOENT) {
+            return true; // Already doesn't exist - success
+        }
+        log_error("Failed to open directory %s: %s", path, strerror(errno));
+        return false;
+    }
+
+    struct dirent *entry;
+    bool success = true;
+
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        char full_path[1024];
+        snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+
+        struct stat st;
+        if (stat(full_path, &st) == -1) {
+            log_error("Failed to stat %s: %s", full_path, strerror(errno));
+            success = false;
+            continue;
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            // Recursively remove subdirectory
+            if (!remove_directory_recursive(full_path)) {
+                success = false;
+            }
+        } else {
+            // Remove file
+            if (unlink(full_path) == -1) {
+                log_error("Failed to remove file %s: %s", full_path, strerror(errno));
+                success = false;
+            }
+        }
+    }
+
+    closedir(dir);
+
+    // Remove the directory itself
+    if (rmdir(path) == -1) {
+        log_error("Failed to remove directory %s: %s", path, strerror(errno));
+        return false;
+    }
+
+    return success;
+}
+
+bool purge_cache(const char *type) {
+    if (!type) {
+        log_error("purge_cache: type is NULL");
+        return false;
+    }
+
+    init_cache_directories();
+
+    bool success = true;
+    int removed_count = 0;
+
+    if (strcmp(type, "all") == 0) {
+        log_info("Purging all cache directories...");
+        if (remove_directory_recursive(g_cache_base_dir)) {
+            log_info("Successfully purged all cache");
+            removed_count++;
+        } else {
+            log_error("Failed to purge all cache");
+            success = false;
+        }
+    } else if (strcmp(type, "translations") == 0) {
+        log_info("Purging translation cache...");
+        if (remove_directory_recursive(g_cache_translated_dir)) {
+            log_info("Successfully purged translation cache");
+            removed_count++;
+        } else {
+            log_error("Failed to purge translation cache");
+            success = false;
+        }
+    } else if (strcmp(type, "album-art") == 0) {
+        log_info("Purging album art cache...");
+        if (remove_directory_recursive(g_cache_album_art_dir)) {
+            log_info("Successfully purged album art cache");
+            removed_count++;
+        } else {
+            log_error("Failed to purge album art cache");
+            success = false;
+        }
+    } else if (strcmp(type, "lyrics") == 0) {
+        log_info("Purging lyrics cache...");
+        if (remove_directory_recursive(g_cache_lyrics_dir)) {
+            log_info("Successfully purged lyrics cache");
+            removed_count++;
+        } else {
+            log_error("Failed to purge lyrics cache");
+            success = false;
+        }
+    } else {
+        log_error("purge_cache: invalid type '%s' (must be 'all', 'translations', 'album-art', or 'lyrics')", type);
+        return false;
+    }
+
+    if (removed_count > 0) {
+        log_info("Cache purge completed");
+    }
+
+    return success;
+}
+
+// Helper: Check if a file is older than max_days (based on access time)
+static bool is_file_old(const char *filepath, int max_days) {
+    struct stat st;
+    if (stat(filepath, &st) != 0) {
+        return false;  // Can't stat, don't delete
+    }
+
+    // Get current time
+    time_t now = time(NULL);
+    if (now == (time_t)-1) {
+        return false;
+    }
+
+    // Calculate age in seconds
+    time_t file_atime = st.st_atime;  // Last access time
+    double age_seconds = difftime(now, file_atime);
+    double max_seconds = max_days * 24 * 60 * 60;
+
+    return age_seconds > max_seconds;
+}
+
+// Clean up old cache files in a directory
+static int cleanup_directory(const char *dir_path, int max_days) {
+    DIR *dir = opendir(dir_path);
+    if (!dir) {
+        if (errno == ENOENT) {
+            return 0;  // Directory doesn't exist, nothing to clean
+        }
+        log_warn("Failed to open directory %s: %s", dir_path, strerror(errno));
+        return 0;
+    }
+
+    int removed_count = 0;
+    struct dirent *entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        char filepath[1024];
+        snprintf(filepath, sizeof(filepath), "%s/%s", dir_path, entry->d_name);
+
+        struct stat st;
+        if (stat(filepath, &st) == -1) {
+            continue;
+        }
+
+        // Only process regular files
+        if (!S_ISREG(st.st_mode)) {
+            continue;
+        }
+
+        // Check if file is old enough to delete
+        if (is_file_old(filepath, max_days)) {
+            if (unlink(filepath) == 0) {
+                log_info("Removed old cache file: %s (not accessed for %d+ days)", entry->d_name, max_days);
+                removed_count++;
+            } else {
+                log_warn("Failed to remove old cache file %s: %s", filepath, strerror(errno));
+            }
+        }
+    }
+
+    closedir(dir);
+    return removed_count;
+}
+
+// Auto cleanup old cache files based on config policy
+bool auto_cleanup_old_cache(int max_days) {
+    if (max_days < 0) {
+        // Cleanup disabled
+        return true;
+    }
+
+    init_cache_directories();
+
+    log_info("Starting automatic cache cleanup (removing files older than %d days)...", max_days);
+
+    int total_removed = 0;
+
+    // Clean up each cache directory
+    total_removed += cleanup_directory(g_cache_translated_dir, max_days);
+    total_removed += cleanup_directory(g_cache_album_art_dir, max_days);
+    total_removed += cleanup_directory(g_cache_lyrics_dir, max_days);
+
+    if (total_removed > 0) {
+        log_info("Cache cleanup complete: removed %d old file(s)", total_removed);
+    } else {
+        log_info("Cache cleanup complete: no old files found");
+    }
+
+    return true;
+}
+
+// Update access time of a cache file (touch)
+bool touch_cache_file(const char *filepath) {
+    if (!filepath) {
+        return false;
+    }
+
+    // Update access and modification time to current time
+    if (utime(filepath, NULL) == 0) {
+        return true;
+    }
+
+    // If utime fails, it might not exist yet, which is fine
+    if (errno != ENOENT) {
+        log_warn("Failed to update access time for %s: %s", filepath, strerror(errno));
+    }
+
+    return false;
 }
