@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <utime.h>
+#include <fcntl.h>
 
 // Static cache for directory paths (initialized on first use)
 static char g_cache_base_dir[512] = {0};
@@ -292,6 +293,7 @@ int build_translation_cache_path(char *dest, size_t dest_size,
 }
 
 // Recursively remove directory and its contents
+// Uses fstatat() and unlinkat() to avoid TOCTOU race conditions
 static bool remove_directory_recursive(const char *path) {
     DIR *dir = opendir(path);
     if (!dir) {
@@ -300,6 +302,13 @@ static bool remove_directory_recursive(const char *path) {
             return true; // Already doesn't exist - success
         }
         log_error("Failed to open directory %s: %s", path, strerror(errno));
+        return false;
+    }
+
+    int dir_fd = dirfd(dir);
+    if (dir_fd == -1) {
+        log_error("Failed to get directory fd for %s: %s", path, strerror(errno));
+        closedir(dir);
         return false;
     }
 
@@ -312,26 +321,31 @@ static bool remove_directory_recursive(const char *path) {
             continue;
         }
 
-        char full_path[1024];
-        snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
-
         struct stat st;
-        if (stat(full_path, &st) == -1) {
-            log_error("Failed to stat %s: %s", full_path, strerror(errno));
+        // Use fstatat() with dirfd to avoid TOCTOU race condition
+        // AT_SYMLINK_NOFOLLOW: don't follow symlinks (security)
+        if (fstatat(dir_fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) == -1) {
+            log_error("Failed to stat %s/%s: %s", path, entry->d_name, strerror(errno));
             success = false;
             continue;
         }
 
         if (S_ISDIR(st.st_mode)) {
             // Recursively remove subdirectory
+            char full_path[1024];
+            snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
             if (!remove_directory_recursive(full_path)) {
                 success = false;
             }
         } else {
-            // Remove file
-            if (unlink(full_path) == -1) {
-                log_error("Failed to remove file %s: %s", full_path, strerror(errno));
-                success = false;
+            // Remove file using unlinkat() with dirfd (atomicity)
+            if (unlinkat(dir_fd, entry->d_name, 0) == -1) {
+                // File might have been deleted by another process (race condition)
+                if (errno != ENOENT) {
+                    log_error("Failed to remove file %s/%s: %s", path, entry->d_name, strerror(errno));
+                    success = false;
+                }
+                // ENOENT is fine - file already deleted
             }
         }
     }
@@ -406,28 +420,8 @@ bool purge_cache(const char *type) {
     return success;
 }
 
-// Helper: Check if a file is older than max_days (based on access time)
-static bool is_file_old(const char *filepath, int max_days) {
-    struct stat st;
-    if (stat(filepath, &st) != 0) {
-        return false;  // Can't stat, don't delete
-    }
-
-    // Get current time
-    time_t now = time(NULL);
-    if (now == (time_t)-1) {
-        return false;
-    }
-
-    // Calculate age in seconds
-    time_t file_atime = st.st_atime;  // Last access time
-    double age_seconds = difftime(now, file_atime);
-    double max_seconds = max_days * 24 * 60 * 60;
-
-    return age_seconds > max_seconds;
-}
-
 // Clean up old cache files in a directory
+// Uses fstatat() and unlinkat() to avoid TOCTOU race conditions
 static int cleanup_directory(const char *dir_path, int max_days) {
     DIR *dir = opendir(dir_path);
     if (!dir) {
@@ -435,6 +429,13 @@ static int cleanup_directory(const char *dir_path, int max_days) {
             return 0;  // Directory doesn't exist, nothing to clean
         }
         log_warn("Failed to open directory %s: %s", dir_path, strerror(errno));
+        return 0;
+    }
+
+    int dir_fd = dirfd(dir);
+    if (dir_fd == -1) {
+        log_warn("Failed to get directory fd for %s: %s", dir_path, strerror(errno));
+        closedir(dir);
         return 0;
     }
 
@@ -447,11 +448,10 @@ static int cleanup_directory(const char *dir_path, int max_days) {
             continue;
         }
 
-        char filepath[1024];
-        snprintf(filepath, sizeof(filepath), "%s/%s", dir_path, entry->d_name);
-
         struct stat st;
-        if (stat(filepath, &st) == -1) {
+        // Use fstatat() with dirfd to avoid TOCTOU race condition
+        // AT_SYMLINK_NOFOLLOW: don't follow symlinks (security)
+        if (fstatat(dir_fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) == -1) {
             continue;
         }
 
@@ -460,13 +460,27 @@ static int cleanup_directory(const char *dir_path, int max_days) {
             continue;
         }
 
-        // Check if file is old enough to delete
-        if (is_file_old(filepath, max_days)) {
-            if (unlink(filepath) == 0) {
+        // Check if file is old enough to delete (based on access time)
+        time_t now = time(NULL);
+        if (now == (time_t)-1) {
+            continue;
+        }
+
+        time_t file_atime = st.st_atime;  // Last access time
+        double age_seconds = difftime(now, file_atime);
+        double max_seconds = max_days * 24 * 60 * 60;
+
+        if (age_seconds > max_seconds) {
+            // Remove file using unlinkat() with dirfd (atomicity)
+            if (unlinkat(dir_fd, entry->d_name, 0) == 0) {
                 log_info("Removed old cache file: %s (not accessed for %d+ days)", entry->d_name, max_days);
                 removed_count++;
             } else {
-                log_warn("Failed to remove old cache file %s: %s", filepath, strerror(errno));
+                // File might have been deleted by another process (race condition)
+                if (errno != ENOENT) {
+                    log_warn("Failed to remove old cache file %s: %s", entry->d_name, strerror(errno));
+                }
+                // ENOENT is fine - file already deleted
             }
         }
     }
