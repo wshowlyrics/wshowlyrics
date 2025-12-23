@@ -266,8 +266,9 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
         }
     }
 
-    // Render timing offset progress bar (if offset is non-zero)
-    if (state->timing_offset_ms != 0) {
+    // Render timing offset progress bar (if offset is non-zero and lyrics are shown)
+    // Hide progress bar during instrumental breaks (is_empty_line = true)
+    if (state->timing_offset_ms != 0 && has_lyrics && !is_empty_line) {
         render_offset_bar(cairo, state->timing_offset_ms, *width, *height, state->foreground);
         *height += 6; // Progress bar 높이 + 여백 (4px bar + 2px spacing)
     }
