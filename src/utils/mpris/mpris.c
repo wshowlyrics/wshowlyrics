@@ -274,8 +274,10 @@ static void on_name_owner_changed(
                         continue;
                     }
                     size_t len = strlen(preferred);
-                    char *end = preferred + len - 1;
-                    while (end > preferred && *end == ' ') *end-- = '\0';
+                    if (len > 0) {
+                        char *end = preferred + len - 1;
+                        while (end > preferred && *end == ' ') *end-- = '\0';
+                    }
 
                     // If new player matches preferred, switch
                     if (strcmp(player_name, preferred) == 0) {
