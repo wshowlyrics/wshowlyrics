@@ -214,6 +214,7 @@ static char* find_best_player(void) {
     char **all_players = list_mpris_players(&player_count);
 
     if (!all_players || player_count == 0) {
+        free(all_players);
         return NULL;
     }
 
@@ -330,7 +331,9 @@ bool mpris_init(void) {
     g_mutex_init(&mpris_state.mutex);
 
     // Set initial flag to load first track
+    g_mutex_lock(&mpris_state.mutex);
     mpris_state.metadata_changed = true;
+    g_mutex_unlock(&mpris_state.mutex);
 
     // Find initial player and get initial state
     char *player = find_best_player();
