@@ -278,7 +278,7 @@ wshowlyrics --font="Sans Bold 28" --anchor=bottom --margin=40
 
 ## Timing Offset Control
 
-Adjust lyrics synchronization timing in real-time without restarting wshowlyrics.
+Adjust lyrics synchronization timing in real-time without restarting wshowlyrics using the D-Bus control interface.
 
 ### Overview
 
@@ -286,28 +286,47 @@ When lyrics are slightly out of sync with your music (due to audio latency, diff
 
 ```bash
 # Make lyrics appear 100ms later (slower)
-echo "+100" > /tmp/wshowlyrics.fifo
+wshowlyrics-offset +100
 
 # Make lyrics appear 100ms earlier (faster)
-echo "-100" > /tmp/wshowlyrics.fifo
+wshowlyrics-offset -100
+
+# Set absolute offset
+wshowlyrics-offset 200    # Set to exactly 200ms delay
 
 # Reset offset to 0
-echo "0" > /tmp/wshowlyrics.fifo
+wshowlyrics-offset 0
 ```
 
-### Helper Script
+### wshowlyrics-offset Script
 
-Install the convenience script for easier usage:
+The `wshowlyrics-offset` helper script provides an easy interface to the D-Bus control service:
 
 ```bash
+# Install the convenience script
 chmod +x wshowlyrics-offset
 sudo cp wshowlyrics-offset /usr/local/bin/
 
-# Usage
-wshowlyrics-offset +100   # 100ms slower
-wshowlyrics-offset -100   # 100ms faster
-wshowlyrics-offset 0      # reset
+# Usage examples
+wshowlyrics-offset +100   # Increase by 100ms
+wshowlyrics-offset -100   # Decrease by 100ms
+wshowlyrics-offset 200    # Set to 200ms
+wshowlyrics-offset 0      # Reset to 0ms
+wshowlyrics-offset toggle # Toggle overlay visibility
 ```
+
+### D-Bus Service Details
+
+The script communicates with wshowlyrics via D-Bus:
+
+- **Service**: `org.wshowlyrics.Control`
+- **Object Path**: `/org/wshowlyrics/Control`
+- **Interface**: `org.wshowlyrics.Control`
+- **Methods**:
+  - `AdjustTimingOffset(int16 offset_ms)` - Add/subtract from current offset
+  - `SetTimingOffset(int16 offset_ms)` - Set absolute offset value
+  - `ToggleOverlay()` - Toggle overlay visibility
+  - `SetOverlay(boolean visible)` - Show/hide overlay
 
 ### Sway Integration
 
@@ -315,9 +334,9 @@ Add these bindings to `~/.config/sway/config`:
 
 ```sway
 # Timing offset control
-bindsym $mod+Plus exec echo "+100" > /tmp/wshowlyrics.fifo
-bindsym $mod+Minus exec echo "-100" > /tmp/wshowlyrics.fifo
-bindsym $mod+0 exec echo "0" > /tmp/wshowlyrics.fifo
+bindsym $mod+Plus exec wshowlyrics-offset +100
+bindsym $mod+Minus exec wshowlyrics-offset -100
+bindsym $mod+0 exec wshowlyrics-offset 0
 ```
 
 ### Hyprland Integration
@@ -326,40 +345,44 @@ Add these bindings to `~/.config/hypr/hyprland.conf`:
 
 ```conf
 # Timing offset control (using numpad keys)
-bind = $mainMod, KP_Add, exec, echo "+100" > /tmp/wshowlyrics.fifo
-bind = $mainMod, KP_Subtract, exec, echo "-100" > /tmp/wshowlyrics.fifo
-bind = $mainMod, KP_0, exec, echo "0" > /tmp/wshowlyrics.fifo
+bind = $mainMod, KP_Add, exec, wshowlyrics-offset +100
+bind = $mainMod, KP_Subtract, exec, wshowlyrics-offset -100
+bind = $mainMod, KP_0, exec, wshowlyrics-offset 0
 
 # Alternative: using regular keys
-bind = $mainMod SHIFT, equal, exec, echo "+100" > /tmp/wshowlyrics.fifo
-bind = $mainMod, minus, exec, echo "-100" > /tmp/wshowlyrics.fifo
-bind = $mainMod, 0, exec, echo "0" > /tmp/wshowlyrics.fifo
+bind = $mainMod SHIFT, equal, exec, wshowlyrics-offset +100
+bind = $mainMod, minus, exec, wshowlyrics-offset -100
+bind = $mainMod, 0, exec, wshowlyrics-offset 0
 ```
 
 ### Behavior
 
-- **Cumulative mode**: Commands with `+` or `-` prefix add to the current offset (e.g., `+100` followed by `+100` = `+200ms` total)
-- **Absolute mode**: Commands without prefix set the exact offset value (e.g., `500` sets offset to exactly 500ms)
+- **Cumulative adjustments**: Use `+` or `-` prefix to add/subtract from current offset (e.g., `+100` then `+100` = `+200ms` total)
+- **Absolute values**: Commands without prefix set exact offset (e.g., `500` sets offset to exactly 500ms)
 - **Auto-reset**: Offset automatically resets to 0ms when a new track starts playing
 - **Range**: Valid range is -10000ms to +10000ms (-10s to +10s)
 
 ## Overlay Toggle (Show/Hide Lyrics)
 
-Temporarily hide or show the lyrics overlay without stopping the application.
+Temporarily hide or show the lyrics overlay without stopping the application using the D-Bus control interface.
 
 ### Overview
 
 When you want to hide lyrics temporarily (e.g., during presentations, screen recordings, or privacy), you can toggle the overlay visibility on the fly. All background operations (lyrics loading, translation, album art caching) continue running, so when you re-enable the overlay, lyrics appear instantly.
 
 ```bash
-# Hide overlay
-echo "hide" > /tmp/wshowlyrics.fifo
+# Toggle overlay visibility
+wshowlyrics-offset toggle
 
 # Show overlay
-echo "show" > /tmp/wshowlyrics.fifo
+gdbus call --session --dest org.wshowlyrics.Control \
+  --object-path /org/wshowlyrics/Control \
+  --method org.wshowlyrics.Control.SetOverlay true
 
-# Toggle overlay (show/hide)
-echo "toggle" > /tmp/wshowlyrics.fifo
+# Hide overlay
+gdbus call --session --dest org.wshowlyrics.Control \
+  --object-path /org/wshowlyrics/Control \
+  --method org.wshowlyrics.Control.SetOverlay false
 ```
 
 ### Sway Integration
@@ -368,7 +391,7 @@ Add this binding to `~/.config/sway/config`:
 
 ```sway
 # Toggle overlay visibility
-bindsym $mod+Pause exec echo "toggle" > /tmp/wshowlyrics.fifo
+bindsym $mod+Pause exec wshowlyrics-offset toggle
 ```
 
 ### Hyprland Integration
@@ -377,7 +400,7 @@ Add this binding to `~/.config/hypr/hyprland.conf`:
 
 ```conf
 # Toggle overlay visibility
-bind = $mainMod, PAUSE, exec, echo toggle > /tmp/wshowlyrics.fifo
+bind = $mainMod, PAUSE, exec, wshowlyrics-offset toggle
 ```
 
 ### Behavior

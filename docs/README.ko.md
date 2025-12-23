@@ -274,7 +274,7 @@ wshowlyrics --font="Sans Bold 28" --anchor=bottom --margin=40
 
 ## 타이밍 오프셋 조절
 
-wshowlyrics를 재시작하지 않고 실시간으로 가사 싱크 타이밍을 조절할 수 있습니다.
+D-Bus 제어 인터페이스를 사용하여 wshowlyrics를 재시작하지 않고 실시간으로 가사 싱크 타이밍을 조절할 수 있습니다.
 
 ### 개요
 
@@ -282,28 +282,47 @@ wshowlyrics를 재시작하지 않고 실시간으로 가사 싱크 타이밍을
 
 ```bash
 # 가사를 100ms 느리게 표시 (늦게)
-echo "+100" > /tmp/wshowlyrics.fifo
+wshowlyrics-offset +100
 
 # 가사를 100ms 빠르게 표시 (빨리)
-echo "-100" > /tmp/wshowlyrics.fifo
+wshowlyrics-offset -100
+
+# 절대값으로 오프셋 설정
+wshowlyrics-offset 200    # 정확히 200ms 지연으로 설정
 
 # 오프셋을 0으로 리셋
-echo "0" > /tmp/wshowlyrics.fifo
+wshowlyrics-offset 0
 ```
 
-### 헬퍼 스크립트
+### wshowlyrics-offset 스크립트
 
-편리한 사용을 위한 스크립트 설치:
+`wshowlyrics-offset` 헬퍼 스크립트는 D-Bus 제어 서비스에 쉽게 접근하는 방법을 제공합니다:
 
 ```bash
+# 편리한 스크립트 설치
 chmod +x wshowlyrics-offset
 sudo cp wshowlyrics-offset /usr/local/bin/
 
-# 사용법
-wshowlyrics-offset +100   # 100ms 느리게
-wshowlyrics-offset -100   # 100ms 빠르게
-wshowlyrics-offset 0      # 리셋
+# 사용 예시
+wshowlyrics-offset +100   # 100ms 증가
+wshowlyrics-offset -100   # 100ms 감소
+wshowlyrics-offset 200    # 200ms로 설정
+wshowlyrics-offset 0      # 0ms로 리셋
+wshowlyrics-offset toggle # 오버레이 표시/숨김 전환
 ```
+
+### D-Bus 서비스 상세 정보
+
+스크립트는 D-Bus를 통해 wshowlyrics와 통신합니다:
+
+- **서비스**: `org.wshowlyrics.Control`
+- **객체 경로**: `/org/wshowlyrics/Control`
+- **인터페이스**: `org.wshowlyrics.Control`
+- **메서드**:
+  - `AdjustTimingOffset(int16 offset_ms)` - 현재 오프셋에 더하거나 뺌
+  - `SetTimingOffset(int16 offset_ms)` - 절대값 오프셋 설정
+  - `ToggleOverlay()` - 오버레이 표시/숨김 전환
+  - `SetOverlay(boolean visible)` - 오버레이 표시/숨김
 
 ### Sway 통합
 
@@ -311,9 +330,9 @@ wshowlyrics-offset 0      # 리셋
 
 ```sway
 # 타이밍 오프셋 조절
-bindsym $mod+Plus exec echo "+100" > /tmp/wshowlyrics.fifo
-bindsym $mod+Minus exec echo "-100" > /tmp/wshowlyrics.fifo
-bindsym $mod+0 exec echo "0" > /tmp/wshowlyrics.fifo
+bindsym $mod+Plus exec wshowlyrics-offset +100
+bindsym $mod+Minus exec wshowlyrics-offset -100
+bindsym $mod+0 exec wshowlyrics-offset 0
 ```
 
 ### Hyprland 통합
@@ -322,40 +341,44 @@ bindsym $mod+0 exec echo "0" > /tmp/wshowlyrics.fifo
 
 ```conf
 # 타이밍 오프셋 조절 (넘패드 키 사용)
-bind = $mainMod, KP_Add, exec, echo "+100" > /tmp/wshowlyrics.fifo
-bind = $mainMod, KP_Subtract, exec, echo "-100" > /tmp/wshowlyrics.fifo
-bind = $mainMod, KP_0, exec, echo "0" > /tmp/wshowlyrics.fifo
+bind = $mainMod, KP_Add, exec, wshowlyrics-offset +100
+bind = $mainMod, KP_Subtract, exec, wshowlyrics-offset -100
+bind = $mainMod, KP_0, exec, wshowlyrics-offset 0
 
 # 대안: 일반 키 사용
-bind = $mainMod SHIFT, equal, exec, echo "+100" > /tmp/wshowlyrics.fifo
-bind = $mainMod, minus, exec, echo "-100" > /tmp/wshowlyrics.fifo
-bind = $mainMod, 0, exec, echo "0" > /tmp/wshowlyrics.fifo
+bind = $mainMod SHIFT, equal, exec, wshowlyrics-offset +100
+bind = $mainMod, minus, exec, wshowlyrics-offset -100
+bind = $mainMod, 0, exec, wshowlyrics-offset 0
 ```
 
 ### 동작 방식
 
-- **누적 모드**: `+` 또는 `-` 접두사가 있는 명령은 현재 오프셋에 더해집니다 (예: `+100` 다음 `+100` = 총 `+200ms`)
-- **절대값 모드**: 접두사 없는 명령은 정확한 오프셋 값을 설정합니다 (예: `500`은 오프셋을 정확히 500ms로 설정)
-- **자동 리셋**: 새 트랙이 재생되면 오프셋이 자동으로 0ms로 리셋됩니다
+- **누적 조정**: `+` 또는 `-` 접두사를 사용하여 현재 오프셋에 더하거나 뺌 (예: `+100` 후 `+100` = 총 `+200ms`)
+- **절대값**: 접두사 없는 명령은 정확한 오프셋 값을 설정 (예: `500`은 오프셋을 정확히 500ms로 설정)
+- **자동 리셋**: 새 트랙이 재생되면 오프셋이 자동으로 0ms로 리셋됨
 - **범위**: 유효 범위는 -10000ms ~ +10000ms (-10초 ~ +10초)
 
 ## 오버레이 토글 (가사 숨김/표시)
 
-프로그램을 종료하지 않고 일시적으로 가사 오버레이를 숨기거나 표시할 수 있습니다.
+D-Bus 제어 인터페이스를 사용하여 프로그램을 종료하지 않고 일시적으로 가사 오버레이를 숨기거나 표시할 수 있습니다.
 
 ### 개요
 
 프레젠테이션, 화면 녹화, 프라이버시 보호 등을 위해 가사를 일시적으로 숨기고 싶을 때, 실시간으로 오버레이 표시 여부를 전환할 수 있습니다. 가사 로드, 번역, 앨범아트 캐싱 등 모든 백그라운드 작업은 계속 실행되므로, 오버레이를 다시 활성화하면 즉시 현재 가사가 표시됩니다.
 
 ```bash
-# 오버레이 숨김
-echo "hide" > /tmp/wshowlyrics.fifo
+# 오버레이 표시/숨김 토글
+wshowlyrics-offset toggle
 
 # 오버레이 표시
-echo "show" > /tmp/wshowlyrics.fifo
+gdbus call --session --dest org.wshowlyrics.Control \
+  --object-path /org/wshowlyrics/Control \
+  --method org.wshowlyrics.Control.SetOverlay true
 
-# 오버레이 토글 (숨김/표시 전환)
-echo "toggle" > /tmp/wshowlyrics.fifo
+# 오버레이 숨김
+gdbus call --session --dest org.wshowlyrics.Control \
+  --object-path /org/wshowlyrics/Control \
+  --method org.wshowlyrics.Control.SetOverlay false
 ```
 
 ### Sway 통합
@@ -364,7 +387,7 @@ echo "toggle" > /tmp/wshowlyrics.fifo
 
 ```sway
 # 오버레이 표시/숨김 토글
-bindsym $mod+Pause exec echo "toggle" > /tmp/wshowlyrics.fifo
+bindsym $mod+Pause exec wshowlyrics-offset toggle
 ```
 
 ### Hyprland 통합
@@ -373,7 +396,7 @@ bindsym $mod+Pause exec echo "toggle" > /tmp/wshowlyrics.fifo
 
 ```conf
 # 오버레이 표시/숨김 토글
-bind = $mainMod, PAUSE, exec, echo toggle > /tmp/wshowlyrics.fifo
+bind = $mainMod, PAUSE, exec, wshowlyrics-offset toggle
 ```
 
 ### 동작 방식
