@@ -246,7 +246,7 @@ static void on_name_owner_changed(
     }
 
     // Player appeared (new_owner is not empty)
-    if (new_owner && strlen(new_owner) > 0) {
+    if (new_owner && new_owner[0] != '\0') {
         log_info("MPRIS player appeared: %s", player_name);
 
         g_mutex_lock(&mpris_state.mutex);
@@ -273,7 +273,8 @@ static void on_name_owner_changed(
                         preferred = strtok_r(NULL, ",", &saveptr);
                         continue;
                     }
-                    char *end = preferred + strlen(preferred) - 1;
+                    size_t len = strlen(preferred);
+                    char *end = preferred + len - 1;
                     while (end > preferred && *end == ' ') *end-- = '\0';
 
                     // If new player matches preferred, switch
@@ -301,7 +302,7 @@ static void on_name_owner_changed(
         }
     }
     // Player disappeared (old_owner is not empty, new_owner is empty)
-    else if (old_owner && strlen(old_owner) > 0) {
+    else if (old_owner && old_owner[0] != '\0') {
         log_info("MPRIS player disappeared: %s", player_name);
 
         g_mutex_lock(&mpris_state.mutex);
