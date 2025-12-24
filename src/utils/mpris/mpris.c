@@ -335,7 +335,9 @@ static void on_name_owner_changed(
                 free(mpris_state.playback_status);
                 mpris_state.current_player = NULL;
                 mpris_state.playback_status = NULL;
-                mpris_state.metadata_changed = false;
+                // Set metadata_changed to trigger lyrics_manager_update_track_info()
+                // which will reset the system tray icon to default
+                mpris_state.metadata_changed = true;
                 g_mutex_unlock(&mpris_state.mutex);
             }
         }

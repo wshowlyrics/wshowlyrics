@@ -91,8 +91,9 @@ void get_ruby_text_size(cairo_t *cairo, const char *font, int *width, int *heigh
         get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, ruby_text);
     }
 
-    // Width is base text width (ruby is centered over base)
-    *width = base_w;
+    // Width is MAX(base_w, ruby_w) to prevent ruby text clipping
+    // Example: 私{わたし} where ruby "わたし" is longer than base "私"
+    *width = (ruby_w > base_w) ? ruby_w : base_w;
 
     // Height is base + ruby (if present), with tighter spacing
     int spacing = ruby_h > 0 ? -4 : 0;  // Reduce gap by 4px when ruby exists
@@ -120,23 +121,26 @@ int pango_printf_ruby(cairo_t *cairo, const char *font, double scale,
     // Calculate spacing
     int spacing = (ruby_text && ruby_text[0] != '\0') ? -4 : 0;
 
-    // Draw ruby text above, centered over base text
+    // Calculate maximum width (to prevent clipping when ruby is longer)
+    int max_w = (ruby_w > base_w) ? ruby_w : base_w;
+
+    // Draw ruby text above, centered over available width
     // Position ruby so that base text will be at the SAME y position regardless of ruby
     if (ruby_text && ruby_text[0] != '\0') {
         cairo_save(cairo);
-        // Center ruby over base text (not over total width)
-        double ruby_offset_x = (base_w - ruby_w) / 2.0;
+        // Center ruby over available width
+        double ruby_offset_x = (max_w - ruby_w) / 2.0;
         // Move ruby UP so base text stays at y
         cairo_move_to(cairo, x + ruby_offset_x, y - ruby_h - spacing);
         pango_printf(cairo, font, scale * 0.5, ruby_text);
         cairo_restore(cairo);
     }
 
-    // Draw base text at the original y position (consistent for all text)
-    cairo_move_to(cairo, x, y);
+    // Draw base text at the original y position, centered over available width
+    double base_offset_x = (max_w - base_w) / 2.0;
+    cairo_move_to(cairo, x + base_offset_x, y);
     pango_printf(cairo, font, scale, base_text);
 
-    // Don't move cairo current point - let caller manage position
-    // Return base text width for caller to update position
-    return base_w;
+    // Return maximum width so next segment doesn't overlap
+    return max_w;
 }
