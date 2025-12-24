@@ -493,6 +493,9 @@ static bool load_cached_album_art(const char *cache_path, const char *metadata_h
         return false;  // Cache doesn't exist
     }
 
+    // Update access time to prevent automatic cleanup
+    touch_cache_file(cache_path);
+
     log_success("Found cached album art: %s", cache_path);
 
     GError *error = NULL;

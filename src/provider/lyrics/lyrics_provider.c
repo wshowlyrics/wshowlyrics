@@ -642,6 +642,9 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
                     log_info("Found cached lyrics: %s", cache_path);
                     log_success("Found lyrics via cache");
 
+                    // Update access time to prevent automatic cleanup
+                    touch_cache_file(cache_path);
+
                     // Store the file path and calculate checksum
                     data->source_file_path = strdup(cache_path);
                     if (!calculate_file_md5(cache_path, data->md5_checksum)) {
