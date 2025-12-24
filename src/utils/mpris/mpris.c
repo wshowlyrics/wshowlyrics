@@ -732,9 +732,11 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 
     free(player);
 
-    // Ignore Spotify advertisements
-    if (metadata->title && strcmp(metadata->title, "Advertisement") == 0 &&
-        metadata->url && strstr(metadata->url, "spotify.com/ad/")) {
+    // Ignore Spotify advertisements (detect by URL pattern)
+    // Spotify ads have URLs like: https://open.spotify.com/ad/...
+    // Title contains actual ad content, not "Advertisement"
+    if (metadata->url && strstr(metadata->url, "spotify.com/ad/")) {
+        log_info("Spotify advertisement detected, ignoring");
         mpris_free_metadata(metadata);
         return false;
     }
