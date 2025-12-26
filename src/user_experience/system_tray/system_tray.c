@@ -2,6 +2,7 @@
 #include "../../utils/curl/curl_utils.h"
 #include "../../provider/itunes/itunes_artwork.h"
 #include "../../utils/file/file_utils.h"
+#include "../../utils/icon/icon_utils.h"
 #include "../../utils/string/string_utils.h"
 #include "../config/config.h"
 #include <stdio.h>
@@ -437,12 +438,48 @@ void system_tray_send_notification(const struct notification_info *info) {
     escape_shell_string(notification_title, escaped_title, sizeof(escaped_title));
     escape_shell_string(body, escaped_body, sizeof(escaped_body));
 
-    // Check if album art exists, otherwise use default icon
+    // Prepare notification icon with player badge
+    static const char *NOTIFICATION_ICON_PATH = "/tmp/wshowlyrics/notification-icon.png";
     const char *icon_path = ICON_PATH;
     struct stat st;
-    if (stat(icon_path, &st) != 0) {
-        // Album art not found, use default icon name
-        icon_path = "audio-player";
+    bool has_album_art = (stat(icon_path, &st) == 0);
+
+    if (has_album_art && player_display && strcmp(player_display, "Unknown") != 0) {
+        // Album art exists - add player badge for notification
+        GError *error = NULL;
+        GdkPixbuf *album_art = gdk_pixbuf_new_from_file(ICON_PATH, &error);
+
+        if (album_art) {
+            // Load player icon (16x16 will be scaled to 1/4 of album art size)
+            GdkPixbuf *player_icon = icon_utils_load_player_icon(player_display, 16);
+            GdkPixbuf *badged = icon_utils_add_badge(album_art, player_icon);
+
+            if (badged) {
+                // Save badged image for notification
+                GError *save_error = NULL;
+                if (gdk_pixbuf_save(badged, NOTIFICATION_ICON_PATH, "png", &save_error, NULL)) {
+                    icon_path = NOTIFICATION_ICON_PATH;
+                    log_info("Created notification icon with %s badge", player_display);
+                } else {
+                    log_warn("Failed to save notification icon: %s",
+                            save_error ? save_error->message : "unknown error");
+                    if (save_error) g_error_free(save_error);
+                }
+                g_object_unref(badged);
+            }
+
+            if (player_icon) g_object_unref(player_icon);
+            g_object_unref(album_art);
+        } else {
+            log_warn("Failed to load album art for notification: %s",
+                    error ? error->message : "unknown error");
+            if (error) g_error_free(error);
+        }
+    } else if (!has_album_art) {
+        // No album art, use player-specific icon
+        const char *player_icon_name = icon_utils_get_player_icon_name(player_display);
+        icon_path = player_icon_name;
+        log_info("Using player icon '%s' for notification", player_icon_name);
     }
 
     // Build notify-send command with ephemeral flag and timeout
