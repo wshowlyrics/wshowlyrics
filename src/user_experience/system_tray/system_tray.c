@@ -694,11 +694,11 @@ static GdkPixbuf* create_disabled_icon(void) {
     GError *error = NULL;
 
     // Load default icon (same as when no music is playing)
-    GdkPixbuf *icon = gtk_icon_theme_load_icon(icon_theme, "audio-headphones", 48, 0, &error);
+    GdkPixbuf *icon = gtk_icon_theme_load_icon(icon_theme, "audio-player", 48, 0, &error);
     if (!icon) {
-        // Fallback chain (same as save_default_icon)
+        // Fallback to headphones icon
         g_clear_error(&error);
-        icon = gtk_icon_theme_load_icon(icon_theme, "audio-player", 48, 0, &error);
+        icon = gtk_icon_theme_load_icon(icon_theme, "audio-headphones", 48, 0, &error);
     }
     if (!icon) {
         g_clear_error(&error);
