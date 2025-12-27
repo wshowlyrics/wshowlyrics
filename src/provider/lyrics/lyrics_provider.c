@@ -606,6 +606,9 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
     }
 
     // Try each provider in order
+    bool tried_local = false;
+    bool tried_lrclib = false;
+
     for (int i = 0; providers[i]; i++) {
         // Skip local provider if no extensions configured
         if (strcmp(providers[i]->name, "local") == 0 &&
@@ -618,6 +621,13 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
         if (strcmp(providers[i]->name, "lrclib") == 0 && !g_config.lyrics.enable_lrclib) {
             log_info("Skipped provider: %s (disabled in config)", providers[i]->name);
             continue;
+        }
+
+        // Track which providers were actually tried
+        if (strcmp(providers[i]->name, "local") == 0) {
+            tried_local = true;
+        } else if (strcmp(providers[i]->name, "lrclib") == 0) {
+            tried_lrclib = true;
         }
 
         log_info("Trying provider: %s", providers[i]->name);
@@ -670,6 +680,15 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
         }
     }
 
-    log_warn("No lyrics found");
+    // Provide helpful feedback based on what happened
+    if (!tried_local && !tried_lrclib) {
+        log_warn("No lyrics providers enabled. Check 'extensions' and 'enable_lrclib' settings in ~/.config/wshowlyrics/settings.ini");
+    } else if (tried_local && tried_lrclib) {
+        log_warn("Tried local files and online provider (lrclib), but no lyrics found");
+    } else if (tried_local) {
+        log_warn("Tried local files, but no lyrics found");
+    } else if (tried_lrclib) {
+        log_warn("Tried online provider (lrclib), but no lyrics found");
+    }
     return false;
 }
