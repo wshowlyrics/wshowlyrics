@@ -42,10 +42,17 @@ static struct {
     bool position_fix_needed;       // Flag: Spotify position fix needed after track change
     bool position_fix_in_progress;  // Flag: Spotify position fix in progress (prevents infinite loop)
     GMutex mutex;                   // Thread safety for signal callbacks
-    guint subscription_id;          // PropertiesChanged subscription ID
+    guint subscription_id;          // PropertiesChanged subscription ID (current player)
     guint seeked_subscription_id;   // Seeked signal subscription ID
     guint name_owner_subscription_id; // NameOwnerChanged subscription ID
+    guint all_players_subscription_id; // PropertiesChanged subscription ID (all players)
+    GHashTable *unique_name_map;    // Maps D-Bus unique names (:1.xxx) to well-known names (org.mpris.MediaPlayer2.xxx)
 } mpris_state = {0};
+
+// Forward declarations
+static char* find_best_player(void);
+static void setup_player_subscription(char *player);
+static void populate_initial_name_mapping(void);
 
 // Helper: Get GVariant value from dictionary
 static GVariant* get_dict_value(GVariant *dict, const char *key) {
@@ -208,6 +215,25 @@ static void on_properties_changed(
         free(mpris_state.playback_status);
         mpris_state.playback_status = strdup(status);
         log_info("PlaybackStatus changed: %s", status);
+
+        // If current player paused/stopped, check for other playing players
+        if (strcmp(status, "Paused") == 0 || strcmp(status, "Stopped") == 0) {
+            char *current = mpris_state.current_player ? strdup(mpris_state.current_player) : NULL;
+            g_mutex_unlock(&mpris_state.mutex);  // Unlock before D-Bus call
+
+            char *new_player = find_best_player();
+            if (new_player && current && strcmp(new_player, current) != 0) {
+                log_info("Current player paused/stopped, switching to playing player: %s", new_player);
+                setup_player_subscription(new_player);
+                // Don't free new_player - ownership transferred to setup_player_subscription
+            } else {
+                free(new_player);  // Only free if not used
+            }
+
+            free(current);
+            g_mutex_lock(&mpris_state.mutex);  // Re-lock for rest of function
+        }
+
         g_variant_unref(status_variant);
     }
 
@@ -261,9 +287,105 @@ static void on_seeked(
     // Seeked signal subscription is kept for potential future optimizations
 }
 
-// Forward declarations
-static char* find_best_player(void);
-static void setup_player_subscription(char *player);
+// Callback: Handle PropertiesChanged from ANY MPRIS player (for automatic switching)
+static void on_any_player_properties_changed(
+    G_GNUC_UNUSED GDBusConnection *connection,
+    const gchar *sender_name,
+    G_GNUC_UNUSED const gchar *object_path,
+    G_GNUC_UNUSED const gchar *interface_name,
+    G_GNUC_UNUSED const gchar *signal_name,
+    GVariant *parameters,
+    G_GNUC_UNUSED gpointer user_data)
+{
+    if (!sender_name) {
+        return;
+    }
+
+    // Map unique name (:1.xxxxx) to well-known name (org.mpris.MediaPlayer2.xxx)
+    const char *well_known_name = sender_name;
+    if (sender_name[0] == ':') {
+        // This is a unique name - look it up in our mapping
+        g_mutex_lock(&mpris_state.mutex);
+        const char *mapped = g_hash_table_lookup(mpris_state.unique_name_map, sender_name);
+        if (mapped) {
+            well_known_name = mapped;
+        } else {
+            // Unknown player, ignore
+            g_mutex_unlock(&mpris_state.mutex);
+            return;
+        }
+        g_mutex_unlock(&mpris_state.mutex);
+    }
+
+    // Extract player name from well-known name (e.g., "org.mpris.MediaPlayer2.spotify" -> "spotify")
+    if (strncmp(well_known_name, "org.mpris.MediaPlayer2.", 23) != 0) {
+        return;
+    }
+    const char *player_name = well_known_name + 23;
+
+    // Skip browsers and playerctld
+    if (strstr(player_name, "chromium") ||
+        strstr(player_name, "firefox") ||
+        strcmp(player_name, "playerctld") == 0) {
+        return;
+    }
+
+    // Check if this is the current player
+    g_mutex_lock(&mpris_state.mutex);
+    bool is_current = mpris_state.current_player &&
+                     strcmp(mpris_state.current_player, player_name) == 0;
+    g_mutex_unlock(&mpris_state.mutex);
+
+    if (is_current) {
+        // Current player - already handled by on_properties_changed
+        return;
+    }
+
+    // Different player - check if it started playing
+    const gchar *iface;
+    GVariant *changed_properties;
+    GVariant *invalidated_properties;
+    g_variant_get(parameters, "(&s@a{sv}@as)", &iface, &changed_properties, &invalidated_properties);
+
+    GVariant *status_variant = g_variant_lookup_value(changed_properties, "PlaybackStatus", G_VARIANT_TYPE_STRING);
+    if (status_variant) {
+        const char *status = g_variant_get_string(status_variant, NULL);
+
+        if (strcmp(status, "Playing") == 0) {
+            // Other player started playing - check if we should switch
+            g_mutex_lock(&mpris_state.mutex);
+            bool current_is_paused = mpris_state.playback_status &&
+                                    (strcmp(mpris_state.playback_status, "Paused") == 0 ||
+                                     strcmp(mpris_state.playback_status, "Stopped") == 0);
+            g_mutex_unlock(&mpris_state.mutex);
+
+            if (current_is_paused) {
+                log_info("Player %s started playing while current player is paused", player_name);
+
+                // Find best player (considers playing status and preferences)
+                char *new_player = find_best_player();
+                if (new_player) {
+                    g_mutex_lock(&mpris_state.mutex);
+                    bool should_switch = !mpris_state.current_player ||
+                                        strcmp(new_player, mpris_state.current_player) != 0;
+                    g_mutex_unlock(&mpris_state.mutex);
+
+                    if (should_switch) {
+                        log_info("Switching to playing player: %s", new_player);
+                        setup_player_subscription(new_player);
+                    } else {
+                        free(new_player);
+                    }
+                }
+            }
+        }
+
+        g_variant_unref(status_variant);
+    }
+
+    g_variant_unref(changed_properties);
+    g_variant_unref(invalidated_properties);
+}
 
 // Callback: Handle NameOwnerChanged signal (player appearance/disappearance)
 static void on_name_owner_changed(
@@ -297,7 +419,16 @@ static void on_name_owner_changed(
 
     // Player appeared (new_owner is not empty)
     if (new_owner && new_owner[0] != '\0') {
-        log_info("MPRIS player appeared: %s", player_name);
+        log_info("MPRIS player appeared: %s (unique name: %s)", player_name, new_owner);
+
+        // Add to unique name mapping for signal routing
+        g_mutex_lock(&mpris_state.mutex);
+        if (mpris_state.unique_name_map) {
+            g_hash_table_insert(mpris_state.unique_name_map,
+                              g_strdup(new_owner),  // key: :1.xxxxx
+                              g_strdup(name));      // value: org.mpris.MediaPlayer2.xxx
+        }
+        g_mutex_unlock(&mpris_state.mutex);
 
         g_mutex_lock(&mpris_state.mutex);
         bool should_switch = false;
@@ -355,7 +486,14 @@ static void on_name_owner_changed(
     }
     // Player disappeared (old_owner is not empty, new_owner is empty)
     else if (old_owner && old_owner[0] != '\0') {
-        log_info("MPRIS player disappeared: %s", player_name);
+        log_info("MPRIS player disappeared: %s (unique name: %s)", player_name, old_owner);
+
+        // Remove from unique name mapping
+        g_mutex_lock(&mpris_state.mutex);
+        if (mpris_state.unique_name_map) {
+            g_hash_table_remove(mpris_state.unique_name_map, old_owner);
+        }
+        g_mutex_unlock(&mpris_state.mutex);
 
         g_mutex_lock(&mpris_state.mutex);
         bool is_current = mpris_state.current_player &&
@@ -406,9 +544,54 @@ static char* find_best_player(void) {
 
     struct config *cfg = config_get();
     char *best_player = NULL;
+    char *fallback_player = NULL;  // First available but not playing
 
-    // If no preferred players, use first available
+    // If no preferred players, find first playing player or first available
     if (!cfg->lyrics.preferred_players || cfg->lyrics.preferred_players[0] == '\0') {
+        // Try to find a playing player first
+        for (int i = 0; i < player_count; i++) {
+            char bus_name[SMALL_BUFFER_SIZE];
+            snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", all_players[i]);
+
+            GError *error = NULL;
+            GVariant *status_variant = g_dbus_connection_call_sync(
+                dbus_connection,
+                bus_name,
+                MPRIS_OBJECT_PATH,
+                DBUS_PROPERTIES_INTERFACE,
+                "Get",
+                g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "PlaybackStatus"),
+                G_VARIANT_TYPE("(v)"),
+                G_DBUS_CALL_FLAGS_NONE,
+                -1,
+                NULL,
+                &error
+            );
+
+            if (!error && status_variant) {
+                GVariant *status_value = g_variant_get_child_value(status_variant, 0);
+                GVariant *status_str = g_variant_get_variant(status_value);
+                const char *status = g_variant_get_string(status_str, NULL);
+
+                if (strcmp(status, "Playing") == 0) {
+                    best_player = strdup(all_players[i]);
+                    g_variant_unref(status_str);
+                    g_variant_unref(status_value);
+                    g_variant_unref(status_variant);
+                    goto cleanup;
+                }
+
+                g_variant_unref(status_str);
+                g_variant_unref(status_value);
+                g_variant_unref(status_variant);
+            }
+
+            if (error) {
+                g_error_free(error);
+            }
+        }
+
+        // No playing player, use first available
         best_player = strdup(all_players[0]);
         goto cleanup;
     }
@@ -459,7 +642,9 @@ static char* find_best_player(void) {
                     const char *status = g_variant_get_string(status_str, NULL);
 
                     if (strcmp(status, "Playing") == 0) {
-                        free(best_player);  // Free previous allocation if any
+                        // Found a playing player - use it immediately
+                        free(best_player);
+                        free(fallback_player);
                         best_player = strdup(preferred);
                         g_variant_unref(status_str);
                         g_variant_unref(status_value);
@@ -477,9 +662,9 @@ static char* find_best_player(void) {
                     g_error_free(error);
                 }
 
-                // If not playing but available, remember it
-                if (!best_player) {
-                    best_player = strdup(preferred);
+                // If not playing but available, remember as fallback
+                if (!fallback_player) {
+                    fallback_player = strdup(preferred);
                 }
             }
         }
@@ -489,8 +674,12 @@ static char* find_best_player(void) {
 
     free(players_copy);
 
-    // If no preferred player found, use first available
-    if (!best_player) {
+    // If found a playing player, use it; otherwise use fallback or first available
+    if (best_player) {
+        free(fallback_player);
+    } else if (fallback_player) {
+        best_player = fallback_player;
+    } else {
         best_player = strdup(all_players[0]);
     }
 
@@ -631,6 +820,95 @@ static void setup_player_subscription(char *player) {
     log_info("MPRIS: Subscribed to signals for player '%s'", player);
 }
 
+// Populate initial mapping for already-running MPRIS players
+static void populate_initial_name_mapping(void) {
+    if (!dbus_connection || !mpris_state.unique_name_map) {
+        return;
+    }
+
+    // Get all D-Bus names
+    GError *error = NULL;
+    GVariant *result = g_dbus_connection_call_sync(
+        dbus_connection,
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "ListNames",
+        NULL,
+        G_VARIANT_TYPE("(as)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
+
+    if (error) {
+        log_error("Failed to list D-Bus names for initial mapping: %s", error->message);
+        g_error_free(error);
+        return;
+    }
+
+    GVariant *names_variant = g_variant_get_child_value(result, 0);
+    GVariantIter iter;
+    const char *name;
+
+    g_variant_iter_init(&iter, names_variant);
+    while (g_variant_iter_next(&iter, "&s", &name)) {
+        // Only care about MPRIS players
+        if (strncmp(name, "org.mpris.MediaPlayer2.", 23) != 0) {
+            continue;
+        }
+
+        const char *player_name = name + 23;
+
+        // Skip browsers and playerctld
+        if (strstr(player_name, "chromium") ||
+            strstr(player_name, "firefox") ||
+            strcmp(player_name, "playerctld") == 0) {
+            continue;
+        }
+
+        // Get the unique name (owner) for this well-known name
+        GError *owner_error = NULL;
+        GVariant *owner_result = g_dbus_connection_call_sync(
+            dbus_connection,
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetNameOwner",
+            g_variant_new("(s)", name),
+            G_VARIANT_TYPE("(s)"),
+            G_DBUS_CALL_FLAGS_NONE,
+            -1,
+            NULL,
+            &owner_error
+        );
+
+        if (!owner_error && owner_result) {
+            const char *unique_name;
+            g_variant_get(owner_result, "(&s)", &unique_name);
+
+            // Add to mapping
+            g_mutex_lock(&mpris_state.mutex);
+            g_hash_table_insert(mpris_state.unique_name_map,
+                              g_strdup(unique_name),
+                              g_strdup(name));
+            g_mutex_unlock(&mpris_state.mutex);
+
+            log_info("Initial mapping: %s -> %s", unique_name, name);
+
+            g_variant_unref(owner_result);
+        }
+
+        if (owner_error) {
+            g_error_free(owner_error);
+        }
+    }
+
+    g_variant_unref(names_variant);
+    g_variant_unref(result);
+}
+
 bool mpris_init(void) {
     GError *error = NULL;
     dbus_connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
@@ -643,6 +921,17 @@ bool mpris_init(void) {
 
     // Initialize mutex
     g_mutex_init(&mpris_state.mutex);
+
+    // Initialize unique name mapping (D-Bus :1.xxx -> org.mpris.MediaPlayer2.xxx)
+    mpris_state.unique_name_map = g_hash_table_new_full(
+        g_str_hash,        // Hash function for string keys
+        g_str_equal,       // Equality function for string keys
+        g_free,            // Key destructor
+        g_free             // Value destructor
+    );
+
+    // Populate mapping with already-running players
+    populate_initial_name_mapping();
 
     // Set initial flag to load first track
     g_mutex_lock(&mpris_state.mutex);
@@ -664,6 +953,27 @@ bool mpris_init(void) {
     );
 
     log_info("MPRIS: Subscribed to NameOwnerChanged signal");
+
+    // Subscribe to PropertiesChanged from ALL MPRIS players (for automatic switching)
+    mpris_state.all_players_subscription_id = g_dbus_connection_signal_subscribe(
+        dbus_connection,
+        NULL,  // All senders
+        DBUS_PROPERTIES_INTERFACE,
+        "PropertiesChanged",
+        MPRIS_OBJECT_PATH,
+        MPRIS_PLAYER_INTERFACE,  // Filter for Player interface
+        G_DBUS_SIGNAL_FLAGS_NONE,
+        on_any_player_properties_changed,
+        NULL,
+        NULL
+    );
+
+    if (mpris_state.all_players_subscription_id > 0) {
+        log_info("MPRIS: Subscribed to PropertiesChanged from all players (ID=%u)",
+                 mpris_state.all_players_subscription_id);
+    } else {
+        log_error("MPRIS: Failed to subscribe to global PropertiesChanged!");
+    }
 
     // Find initial player and setup subscriptions
     char *player = find_best_player();
@@ -919,6 +1229,11 @@ void mpris_cleanup(void) {
             mpris_state.name_owner_subscription_id = 0;
         }
 
+        if (mpris_state.all_players_subscription_id > 0) {
+            g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.all_players_subscription_id);
+            mpris_state.all_players_subscription_id = 0;
+        }
+
         g_object_unref(dbus_connection);
         dbus_connection = NULL;
     }
@@ -931,6 +1246,13 @@ void mpris_cleanup(void) {
     mpris_state.playback_status = NULL;
     mpris_state.position_us = 0;
     mpris_state.position_timestamp_us = 0;
+
+    // Clean up unique name mapping
+    if (mpris_state.unique_name_map) {
+        g_hash_table_destroy(mpris_state.unique_name_map);
+        mpris_state.unique_name_map = NULL;
+    }
+
     g_mutex_unlock(&mpris_state.mutex);
 
     g_mutex_clear(&mpris_state.mutex);
