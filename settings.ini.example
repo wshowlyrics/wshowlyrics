@@ -65,8 +65,10 @@ search_dirs =
 
 # File extensions to search (comma-separated, no dots)
 # Supported formats: lrcx, lrc, srt, vtt
-# If empty or not set, all formats are searched
-# Example: extensions = lrc,srt (this would skip .lrcx and .vtt files)
+# If empty: Skip local file search entirely and only use online provider (faster for online-only usage)
+# If set: Search local files with specified extensions, then fall back to online provider
+# Example: extensions = lrc,srt (only search .lrc and .srt files, skip .lrcx and .vtt)
+# Default: lrcx,lrc,srt,vtt (search all supported formats)
 extensions = lrcx,lrc,srt,vtt
 
 # Preferred music players (comma-separated player names)
