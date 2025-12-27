@@ -57,6 +57,7 @@ struct lyrics_data {
     // Translation progress (for async translation)
     bool translation_in_progress;
     bool translation_should_cancel;  // Set to true to cancel ongoing translation
+    bool translation_will_discard;   // True if translation will be discarded (below threshold)
     pthread_t translation_thread;    // Thread handle for cancellation
     int translation_current;
     int translation_total;

@@ -246,7 +246,11 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                     int A = state->lyrics.translation_total;
                     bool cached = (A > 0) && ((float)T / A >= cache_threshold);
 
-                    if (cached) {
+                    if (state->lyrics.translation_will_discard) {
+                        // Will be discarded - show trash icon
+                        snprintf(translation_text, sizeof(translation_text),
+                                "🗑️ %s", state->current_line->translation);
+                    } else if (cached) {
                         // Cached - show disk icon (safe to interrupt)
                         snprintf(translation_text, sizeof(translation_text),
                                 "💾 %s", state->current_line->translation);
@@ -283,7 +287,12 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
                 bool show_disk = (A > 0) && ((float)T / A >= cache_threshold);
 
                 // Build progress message
-                if (show_disk) {
+                if (state->lyrics.translation_will_discard) {
+                    // Will be discarded - show trash icon instead of disk
+                    snprintf(progress_text, sizeof(progress_text),
+                            "⏳ Translating... %d%% (%d/%d) 🗑️",
+                            R, T, C);
+                } else if (show_disk) {
                     snprintf(progress_text, sizeof(progress_text),
                             "⏳ Translating... %d%% (%d/%d) 💾",
                             R, T, C);

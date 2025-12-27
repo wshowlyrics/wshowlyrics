@@ -384,6 +384,9 @@ void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_
             int completion_percent = (int)(completion_ratio * 100);
             int required_rate_ms = (int)(track_length_us / 1000 / translatable_count / threshold);
 
+            // Mark translation as will-discard for UI indication
+            data->translation_will_discard = true;
+
             log_warn("Translation will be DISCARDED (below cache threshold)!");
             log_warn("  Estimated time: %.1fs (%d lines × %dms)",
                      estimated_sec, translatable_count, rate_limit_ms);
