@@ -765,10 +765,13 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     }
 
     // Length (mpris:length) - microseconds
+    // Note: Different players use different types (INT64 'x' or UINT64 't')
     value = get_dict_value(metadata_dict, "mpris:length");
     if (value) {
         if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64)) {
             metadata->length_us = g_variant_get_int64(value);
+        } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT64)) {
+            metadata->length_us = (int64_t)g_variant_get_uint64(value);
         }
         g_variant_unref(value);
     }
