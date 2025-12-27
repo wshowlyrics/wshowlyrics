@@ -19,6 +19,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <time.h>
 #include <gio/gio.h>
 
 // MPRIS2 D-Bus constants
@@ -37,6 +39,7 @@ static struct {
     int64_t position_us;            // Last known position in microseconds
     int64_t position_timestamp_us;  // Monotonic timestamp when position was updated
     bool metadata_changed;          // Flag: track metadata changed (needs refresh)
+    bool position_fix_in_progress;  // Flag: Spotify position fix in progress (prevents infinite loop)
     GMutex mutex;                   // Thread safety for signal callbacks
     guint subscription_id;          // PropertiesChanged subscription ID
     guint seeked_subscription_id;   // Seeked signal subscription ID
@@ -142,6 +145,41 @@ static int64_t get_monotonic_time_us(void) {
     return g_get_monotonic_time();
 }
 
+// Helper: Send MPRIS command (Pause, Play, etc.)
+static bool mpris_send_command(const char *method) {
+    if (!dbus_connection || !mpris_state.current_player) {
+        return false;
+    }
+
+    char bus_name[SMALL_BUFFER_SIZE];
+    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s",
+             mpris_state.current_player);
+
+    GError *error = NULL;
+    g_dbus_connection_call_sync(
+        dbus_connection,
+        bus_name,
+        MPRIS_OBJECT_PATH,
+        MPRIS_PLAYER_INTERFACE,
+        method,  // "Pause", "Play", "Next", "Previous", etc.
+        NULL,
+        NULL,
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
+
+    if (error) {
+        log_error("Failed to send %s command to %s: %s",
+                 method, mpris_state.current_player, error->message);
+        g_error_free(error);
+        return false;
+    }
+
+    return true;
+}
+
 // Callback: Handle PropertiesChanged signal
 static void on_properties_changed(
     G_GNUC_UNUSED GDBusConnection *connection,
@@ -187,6 +225,41 @@ static void on_properties_changed(
             mpris_state.position_us = 0;
             mpris_state.position_timestamp_us = get_monotonic_time_us();
             mpris_state.metadata_changed = true;  // Signal that metadata needs refresh
+
+            // Spotify position drift fix: Auto track change detected (Playing → Playing)
+            // Apply quick pause/play toggle to fix position reporting bug
+            bool is_spotify = mpris_state.current_player &&
+                             strcasecmp(mpris_state.current_player, "spotify") == 0;
+
+            struct config *cfg = config_get();
+            bool should_fix = is_spotify &&
+                             cfg->spotify.auto_position_fix &&
+                             !mpris_state.position_fix_in_progress;
+
+            if (should_fix) {
+                mpris_state.position_fix_in_progress = true;
+                g_mutex_unlock(&mpris_state.mutex);  // Unlock during D-Bus calls
+
+                log_info("Spotify auto track change - applying position fix");
+
+                // Quick pause/play toggle to fix position drift
+                mpris_send_command("Pause");
+
+                // Delay (default: 1ms, imperceptible to users)
+                struct timespec delay = {
+                    0,
+                    cfg->spotify.position_fix_delay_ms * 1000000L
+                };
+                nanosleep(&delay, NULL);
+
+                mpris_send_command("Play");
+
+                // Additional delay to ensure signal processing
+                nanosleep(&delay, NULL);
+
+                g_mutex_lock(&mpris_state.mutex);  // Re-lock after D-Bus calls
+                mpris_state.position_fix_in_progress = false;
+            }
         }
         g_variant_unref(metadata_variant);
     }

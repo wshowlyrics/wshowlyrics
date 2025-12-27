@@ -95,6 +95,18 @@ static void parse_lyrics_section(struct config *cfg, const char *key, const char
     }
 }
 
+// Parse [spotify] section
+static void parse_spotify_section(struct config *cfg, const char *key, const char *value) {
+    if (strcmp(key, "auto_position_fix") == 0) {
+        cfg->spotify.auto_position_fix = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+    } else if (strcmp(key, "position_fix_delay_ms") == 0) {
+        cfg->spotify.position_fix_delay_ms = atoi(value);
+        // Clamp to reasonable range [1, 1000] (1ms to 1 second)
+        if (cfg->spotify.position_fix_delay_ms < 1) cfg->spotify.position_fix_delay_ms = 1;
+        if (cfg->spotify.position_fix_delay_ms > 1000) cfg->spotify.position_fix_delay_ms = 1000;
+    }
+}
+
 // Parse common translation fields (shared between [translation] and deprecated [deepl])
 static bool parse_common_translation_fields(struct config *cfg, const char *key, const char *value) {
     if (strcmp(key, "api_key") == 0) {
@@ -261,6 +273,10 @@ void config_init_defaults(struct config *cfg) {
     cfg->lyrics.enable_itunes = true;
     cfg->lyrics.enable_notifications = true;  // Enabled by default
     cfg->lyrics.notification_timeout = 5000;  // 5 seconds by default
+
+    // Spotify defaults
+    cfg->spotify.auto_position_fix = true;  // Enabled by default
+    cfg->spotify.position_fix_delay_ms = 1;  // 1ms by default (imperceptible)
 
     // Translation defaults (multi-provider support)
     cfg->translation.provider = strdup("false");  // Disabled by default
@@ -470,6 +486,8 @@ bool config_load(struct config *cfg, const char *path) {
             parse_display_section(cfg, key, value);
         } else if (strcmp(section, "lyrics") == 0) {
             parse_lyrics_section(cfg, key, value);
+        } else if (strcmp(section, "spotify") == 0) {
+            parse_spotify_section(cfg, key, value);
         } else if (strcmp(section, "translation") == 0) {
             parse_translation_section(cfg, key, value);
         } else if (strcmp(section, "cache") == 0) {

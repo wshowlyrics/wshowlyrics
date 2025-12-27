@@ -98,6 +98,27 @@ enable_notifications = true
 # Examples: 3000 (3 seconds), 5000 (5 seconds), 7000 (7 seconds)
 notification_timeout = 5000
 
+[spotify]
+# Automatic position drift fix for Spotify track changes
+# Spotify has a known MPRIS bug where track position is incorrectly reported
+# after automatic track changes (e.g., playlist auto-advance).
+# When enabled, this feature automatically fixes the position by sending
+# a quick pause/play toggle when a track change is detected.
+#
+# The toggle is extremely fast (1ms) and imperceptible to users.
+# Position accuracy is restored without any noticeable audio interruption.
+#
+# Set to false if you experience issues or prefer manual sync adjustment
+# Default: true
+auto_position_fix = true
+
+# Delay in milliseconds for the pause/play toggle
+# Lower values (1-10ms) are imperceptible but may not work on all systems
+# Higher values (50-100ms) are more reliable but may cause brief audio gaps
+# Recommended: 1 (works well in most cases)
+# Default: 1
+position_fix_delay_ms = 1
+
 [translation]
 # Multi-Provider Translation Settings
 # Automatic translation of LRC lyrics files (does not apply to SRT, VTT, or LRCX)

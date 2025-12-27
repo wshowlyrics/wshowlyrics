@@ -52,6 +52,12 @@ struct cache_config {
     enum cache_cleanup_policy cleanup_policy;  // Automatic cleanup policy
 };
 
+// Spotify settings
+struct spotify_config {
+    bool auto_position_fix;      // Automatic position drift fix for track changes
+    int position_fix_delay_ms;   // Delay in milliseconds for pause/play toggle (default: 1)
+};
+
 // Translation settings (multi-provider support)
 struct translation_config {
     char *provider;              // Provider and model: "deepl", "gemini-2.5-flash", "claude-sonnet-4-5", "false"
@@ -69,6 +75,7 @@ struct translation_config {
 struct config {
     struct display_config display;
     struct lyrics_config lyrics;
+    struct spotify_config spotify;
     struct translation_config translation;
     struct cache_config cache;
 };
