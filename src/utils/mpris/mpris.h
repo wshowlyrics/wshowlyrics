@@ -30,6 +30,9 @@ bool mpris_is_playing(void);
 // Check if track metadata has changed (signal-based)
 bool mpris_check_metadata_changed(void);
 
+// Apply Spotify position fix if needed (call after lyrics load)
+void mpris_apply_position_fix_if_needed(void);
+
 // Free track metadata
 void mpris_free_metadata(struct track_metadata *metadata);
 

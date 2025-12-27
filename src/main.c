@@ -356,6 +356,10 @@ int main(int argc, char *argv[]) {
             if (lyrics_manager_update_track_info(&state)) {
                 // Track changed, load new lyrics
                 lyrics_manager_load_lyrics(&state);
+
+                // Apply Spotify position fix after lyrics load (better timing)
+                mpris_apply_position_fix_if_needed();
+
                 rendering_manager_set_dirty(&state);
             }
         }

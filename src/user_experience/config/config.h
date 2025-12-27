@@ -56,6 +56,7 @@ struct cache_config {
 struct spotify_config {
     bool auto_position_fix;      // Automatic position drift fix for track changes
     int position_fix_delay_ms;   // Delay in milliseconds for pause/play toggle (default: 1)
+    int position_fix_wait_ms;    // Wait time before applying position fix (default: 2000)
 };
 
 // Translation settings (multi-provider support)

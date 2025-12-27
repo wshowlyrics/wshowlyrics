@@ -104,6 +104,11 @@ static void parse_spotify_section(struct config *cfg, const char *key, const cha
         // Clamp to reasonable range [1, 1000] (1ms to 1 second)
         if (cfg->spotify.position_fix_delay_ms < 1) cfg->spotify.position_fix_delay_ms = 1;
         if (cfg->spotify.position_fix_delay_ms > 1000) cfg->spotify.position_fix_delay_ms = 1000;
+    } else if (strcmp(key, "position_fix_wait_ms") == 0) {
+        cfg->spotify.position_fix_wait_ms = atoi(value);
+        // Clamp to reasonable range [0, 5000] (0ms to 5 seconds)
+        if (cfg->spotify.position_fix_wait_ms < 0) cfg->spotify.position_fix_wait_ms = 0;
+        if (cfg->spotify.position_fix_wait_ms > 5000) cfg->spotify.position_fix_wait_ms = 5000;
     }
 }
 
@@ -277,6 +282,7 @@ void config_init_defaults(struct config *cfg) {
     // Spotify defaults
     cfg->spotify.auto_position_fix = true;  // Enabled by default
     cfg->spotify.position_fix_delay_ms = 1;  // 1ms by default (imperceptible)
+    cfg->spotify.position_fix_wait_ms = 2000;  // 2 seconds by default (allows track to start)
 
     // Translation defaults (multi-provider support)
     cfg->translation.provider = strdup("false");  // Disabled by default

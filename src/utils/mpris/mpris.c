@@ -39,6 +39,7 @@ static struct {
     int64_t position_us;            // Last known position in microseconds
     int64_t position_timestamp_us;  // Monotonic timestamp when position was updated
     bool metadata_changed;          // Flag: track metadata changed (needs refresh)
+    bool position_fix_needed;       // Flag: Spotify position fix needed after track change
     bool position_fix_in_progress;  // Flag: Spotify position fix in progress (prevents infinite loop)
     GMutex mutex;                   // Thread safety for signal callbacks
     guint subscription_id;          // PropertiesChanged subscription ID
@@ -226,39 +227,15 @@ static void on_properties_changed(
             mpris_state.position_timestamp_us = get_monotonic_time_us();
             mpris_state.metadata_changed = true;  // Signal that metadata needs refresh
 
-            // Spotify position drift fix: Auto track change detected (Playing → Playing)
-            // Apply quick pause/play toggle to fix position reporting bug
+            // Spotify position drift fix: Mark that position fix is needed
+            // Actual fix will be applied after lyrics load for better timing
             bool is_spotify = mpris_state.current_player &&
                              strcasecmp(mpris_state.current_player, "spotify") == 0;
 
             struct config *cfg = config_get();
-            bool should_fix = is_spotify &&
-                             cfg->spotify.auto_position_fix &&
-                             !mpris_state.position_fix_in_progress;
-
-            if (should_fix) {
-                mpris_state.position_fix_in_progress = true;
-                g_mutex_unlock(&mpris_state.mutex);  // Unlock during D-Bus calls
-
-                log_info("Spotify auto track change - applying position fix");
-
-                // Quick pause/play toggle to fix position drift
-                mpris_send_command("Pause");
-
-                // Delay (default: 1ms, imperceptible to users)
-                struct timespec delay = {
-                    0,
-                    cfg->spotify.position_fix_delay_ms * 1000000L
-                };
-                nanosleep(&delay, NULL);
-
-                mpris_send_command("Play");
-
-                // Additional delay to ensure signal processing
-                nanosleep(&delay, NULL);
-
-                g_mutex_lock(&mpris_state.mutex);  // Re-lock after D-Bus calls
-                mpris_state.position_fix_in_progress = false;
+            if (is_spotify && cfg->spotify.auto_position_fix) {
+                mpris_state.position_fix_needed = true;
+                log_info("Spotify auto track change detected - position fix will be applied after lyrics load");
             }
         }
         g_variant_unref(metadata_variant);
@@ -946,4 +923,70 @@ void mpris_cleanup(void) {
     g_mutex_unlock(&mpris_state.mutex);
 
     g_mutex_clear(&mpris_state.mutex);
+}
+
+// Apply Spotify position fix if needed (call after lyrics load)
+void mpris_apply_position_fix_if_needed(void) {
+    g_mutex_lock(&mpris_state.mutex);
+
+    // Check if position fix is needed
+    if (!mpris_state.position_fix_needed || mpris_state.position_fix_in_progress) {
+        g_mutex_unlock(&mpris_state.mutex);
+        return;
+    }
+
+    // Check if current player is Spotify
+    bool is_spotify = mpris_state.current_player &&
+                     strcasecmp(mpris_state.current_player, "spotify") == 0;
+
+    if (!is_spotify) {
+        mpris_state.position_fix_needed = false;
+        g_mutex_unlock(&mpris_state.mutex);
+        return;
+    }
+
+    // Get config
+    struct config *cfg = config_get();
+    if (!cfg->spotify.auto_position_fix) {
+        mpris_state.position_fix_needed = false;
+        g_mutex_unlock(&mpris_state.mutex);
+        return;
+    }
+
+    // Mark as in progress
+    mpris_state.position_fix_in_progress = true;
+    mpris_state.position_fix_needed = false;
+    g_mutex_unlock(&mpris_state.mutex);
+
+    log_info("Applying Spotify position fix after lyrics load");
+
+    // Wait for track to actually start playing
+    if (cfg->spotify.position_fix_wait_ms > 0) {
+        log_info("Waiting %dms for track to start...", cfg->spotify.position_fix_wait_ms);
+        struct timespec wait_delay = {
+            cfg->spotify.position_fix_wait_ms / 1000,  // seconds
+            (cfg->spotify.position_fix_wait_ms % 1000) * 1000000L  // nanoseconds
+        };
+        nanosleep(&wait_delay, NULL);
+    }
+
+    // Quick pause/play toggle to fix position drift
+    mpris_send_command("Pause");
+
+    // Delay (default: 1ms, imperceptible to users)
+    struct timespec delay = {
+        0,
+        cfg->spotify.position_fix_delay_ms * 1000000L
+    };
+    nanosleep(&delay, NULL);
+
+    mpris_send_command("Play");
+
+    // Additional delay to ensure signal processing
+    nanosleep(&delay, NULL);
+
+    // Mark as complete
+    g_mutex_lock(&mpris_state.mutex);
+    mpris_state.position_fix_in_progress = false;
+    g_mutex_unlock(&mpris_state.mutex);
 }

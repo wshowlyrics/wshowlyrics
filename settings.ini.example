@@ -108,6 +108,11 @@ notification_timeout = 5000
 # The toggle is extremely fast (1ms) and imperceptible to users.
 # Position accuracy is restored without any noticeable audio interruption.
 #
+# IMPORTANT: For best results, disable the following Spotify features:
+#   - Crossfade: Set to 0 seconds (Settings > Playback > Crossfade)
+#   - Automix: Disable (Settings > Playback > Automix)
+# These features can interfere with accurate position reporting.
+#
 # Set to false if you experience issues or prefer manual sync adjustment
 # Default: true
 auto_position_fix = true
@@ -118,6 +123,15 @@ auto_position_fix = true
 # Recommended: 1 (works well in most cases)
 # Default: 1
 position_fix_delay_ms = 1
+
+# Wait time in milliseconds before applying position fix
+# Spotify needs time to actually start playing the new track before position fix works.
+# If the fix is applied too early, it has no effect.
+# Lower values (0-500ms) may not work - track hasn't started yet
+# Higher values (2000-3000ms) are more reliable
+# Recommended: 2000 (2 seconds - allows track to start playing)
+# Default: 2000
+position_fix_wait_ms = 2000
 
 [translation]
 # Multi-Provider Translation Settings
