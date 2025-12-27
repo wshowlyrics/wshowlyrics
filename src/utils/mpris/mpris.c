@@ -233,6 +233,13 @@ static void on_properties_changed(
             free(current);
             g_mutex_lock(&mpris_state.mutex);  // Re-lock for rest of function
         }
+        // If playback started, check for metadata changes
+        // Some players (YouTube Music Desktop) don't emit Metadata PropertiesChanged
+        // when track changes, only PlaybackStatus changes (Paused -> Playing)
+        else if (strcmp(status, "Playing") == 0) {
+            // Force metadata check on next poll to catch track changes
+            mpris_state.metadata_changed = true;
+        }
 
         g_variant_unref(status_variant);
     }
