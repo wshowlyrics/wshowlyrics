@@ -30,6 +30,7 @@ struct lyrics_config {
     bool enable_itunes;
     bool enable_notifications;  // Desktop notifications for track changes
     int notification_timeout;   // Notification timeout in milliseconds (default: 5000)
+    int global_offset_ms;       // Global timing offset in milliseconds (default: 0, range: -5000 to +5000)
 };
 
 // Translation cache policy (save threshold presets)

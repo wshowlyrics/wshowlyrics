@@ -2,7 +2,8 @@
 # wshowlyrics-offset: Helper script for timing offset control via D-Bus
 # Usage: wshowlyrics-offset +100   (100ms slower)
 #        wshowlyrics-offset -100   (100ms faster)
-#        wshowlyrics-offset 0      (reset to 0)
+#        wshowlyrics-offset 0      (set to absolute 0)
+#        wshowlyrics-offset reset  (reset to global offset)
 #        wshowlyrics-offset toggle (toggle overlay)
 
 DBUS_SERVICE="org.wshowlyrics.Control"
@@ -10,11 +11,12 @@ DBUS_PATH="/org/wshowlyrics/Control"
 DBUS_INTERFACE="org.wshowlyrics.Control"
 
 if [ -z "$1" ]; then
-    echo "Usage: $0 <offset_in_milliseconds|toggle|show|hide>"
+    echo "Usage: $0 <offset_in_milliseconds|reset|toggle|show|hide>"
     echo "  Timing offset examples:"
     echo "    $0 +100    # 100ms slower (delay lyrics)"
     echo "    $0 -100    # 100ms faster (advance lyrics)"
-    echo "    $0 0       # reset to default"
+    echo "    $0 0       # set to absolute 0"
+    echo "    $0 reset   # reset to global offset (from settings.ini)"
     echo ""
     echo "  Overlay control:"
     echo "    $0 toggle  # toggle overlay visibility"
@@ -29,7 +31,7 @@ if ! busctl --user status "$DBUS_SERVICE" &>/dev/null; then
     exit 1
 fi
 
-# Handle overlay control commands
+# Handle special commands
 case "$1" in
     toggle)
         gdbus call --session --dest "$DBUS_SERVICE" \
@@ -50,6 +52,13 @@ case "$1" in
             --object-path "$DBUS_PATH" \
             --method "$DBUS_INTERFACE.SetOverlay" false &>/dev/null
         echo "Overlay hidden"
+        exit 0
+        ;;
+    reset)
+        gdbus call --session --dest "$DBUS_SERVICE" \
+            --object-path "$DBUS_PATH" \
+            --method "$DBUS_INTERFACE.ResetTimingOffset" &>/dev/null
+        echo "Timing offset reset to global offset"
         exit 0
         ;;
 esac

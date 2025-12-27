@@ -182,8 +182,8 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     state->prev_line = NULL;
     state->next_line = NULL;
 
-    // Reset timing offset for new track
-    state->timing_offset_ms = 0;
+    // Reset timing offset to global offset for new track
+    state->timing_offset_ms = g_config.lyrics.global_offset_ms;
 
     // Reset overlay visibility for new track
     if (!state->overlay_enabled) {

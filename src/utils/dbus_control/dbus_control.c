@@ -14,6 +14,7 @@
  * - SetOverlay(enabled: boolean) -> void
  * - SetTimingOffset(offset_ms: int32) -> void
  * - AdjustTimingOffset(delta_ms: int32) -> void
+ * - ResetTimingOffset() -> void
  *
  * Benefits over FIFO:
  * - No polling required (event-driven)
@@ -27,6 +28,7 @@
 #include "../../constants.h"
 #include "../../core/rendering/rendering_manager.h"
 #include "../../user_experience/system_tray/system_tray.h"
+#include "../../user_experience/config/config.h"
 #include <gio/gio.h>
 #include <stdio.h>
 
@@ -54,6 +56,8 @@ static const gchar introspection_xml[] =
     "    </method>"
     "    <method name='AdjustTimingOffset'>"
     "      <arg type='i' name='delta_ms' direction='in'/>"
+    "    </method>"
+    "    <method name='ResetTimingOffset'>"
     "    </method>"
     "  </interface>"
     "</node>";
@@ -121,6 +125,15 @@ static void handle_method_call(
         rendering_manager_set_dirty(state);
 
         log_info("D-Bus: Timing offset adjusted by %+dms, now: %dms", delta_ms, state->timing_offset_ms);
+        g_dbus_method_invocation_return_value(invocation, NULL);
+    }
+    else if (strcmp(method_name, "ResetTimingOffset") == 0) {
+        // Reset timing offset to global offset
+        state->timing_offset_ms = g_config.lyrics.global_offset_ms;
+
+        rendering_manager_set_dirty(state);
+
+        log_info("D-Bus: Timing offset reset to global offset: %dms", state->timing_offset_ms);
         g_dbus_method_invocation_return_value(invocation, NULL);
     }
     else {

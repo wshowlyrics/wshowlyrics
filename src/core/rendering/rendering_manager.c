@@ -31,37 +31,103 @@ static inline struct render_base_params make_render_base(
 // - Positive offset (advance lyrics): bar extends right from center
 // - Negative offset (delay lyrics): bar extends left from center
 // - Zero offset: no bar displayed
-static void render_offset_bar(cairo_t *cairo, int timing_offset_ms,
-                               int width, int height, uint32_t foreground) {
-    if (timing_offset_ms == 0) {
-        return; // 0일 때는 숨김
-    }
+static int offset_to_bar_width(int offset_ms, int max_offset, int max_bar_width) {
+    int abs_offset = abs(offset_ms);
+    if (abs_offset > max_offset) abs_offset = max_offset;
+    return (int)((double)abs_offset / max_offset * max_bar_width);
+}
 
+static void render_offset_bar(cairo_t *cairo, int global_offset_ms, int session_offset_ms,
+                               int width, int height, uint32_t foreground) {
     const int bar_height = 4; // 4픽셀 높이
     const int bar_y = height; // 텍스트 바로 아래
     const int center_x = width / 2;
     const int max_offset = 5000; // ±5초 (최대 범위)
     const int max_bar_width = width / 2; // 바의 최대 길이 (화면 절반)
 
-    // 바의 길이 계산 (절대값 사용)
-    int abs_offset = abs(timing_offset_ms);
-    if (abs_offset > max_offset) {
-        abs_offset = max_offset; // 범위 클램핑
+    // 합산 및 clamp
+    int total_offset = global_offset_ms + session_offset_ms;
+    if (total_offset > max_offset) {
+        total_offset = max_offset;
     }
-    int bar_width = (int)((double)abs_offset / max_offset * max_bar_width);
-
-    // 바 그리기
-    cairo_set_source_u32(cairo, foreground);
-
-    if (timing_offset_ms < 0) {
-        // 음수: 중심에서 왼쪽으로 (가사 늦게 - 재생보다 뒤처짐)
-        cairo_rectangle(cairo, center_x - bar_width, bar_y, bar_width, bar_height);
-    } else {
-        // 양수: 중심에서 오른쪽으로 (가사 빠르게 - 재생보다 앞서감)
-        cairo_rectangle(cairo, center_x, bar_y, bar_width, bar_height);
+    if (total_offset < -max_offset) {
+        total_offset = -max_offset;
     }
 
-    cairo_fill(cairo);
+    // 둘 다 0이면 숨김
+    if (global_offset_ms == 0 && session_offset_ms == 0) {
+        return;
+    }
+
+    // foreground에서 alpha 값 추출 (메인 텍스트의 불투명도)
+    uint32_t alpha = foreground & 0xFF;
+
+    // 노란색 (글로벌 오프셋용) - 메인 텍스트와 같은 불투명도 사용
+    uint32_t yellow = (0xFFFF00 << 8) | alpha; // RGB: 노란색, A: foreground와 동일
+
+    // 하얀색 (세션 오프셋용) - 메인 텍스트와 같은 불투명도 사용
+    uint32_t white = (0xFFFFFF << 8) | alpha; // RGB: 하얀색, A: foreground와 동일
+
+    // Sign이 같은 경우: 순차적으로 표시
+    if ((global_offset_ms >= 0 && session_offset_ms >= 0) ||
+        (global_offset_ms <= 0 && session_offset_ms <= 0)) {
+
+        int global_width = offset_to_bar_width(global_offset_ms, max_offset, max_bar_width);
+        int session_width = offset_to_bar_width(session_offset_ms, max_offset, max_bar_width);
+
+        if (total_offset >= 0) {
+            // 양수: 중심에서 오른쪽으로
+            // 글로벌 바 (노란색): 0 → global
+            if (global_offset_ms > 0) {
+                cairo_set_source_u32(cairo, yellow);
+                cairo_rectangle(cairo, center_x, bar_y, global_width, bar_height);
+                cairo_fill(cairo);
+            }
+
+            // 세션 바 (하얀색): global → total
+            if (session_offset_ms > 0) {
+                cairo_set_source_u32(cairo, white);
+                cairo_rectangle(cairo, center_x + global_width, bar_y, session_width, bar_height);
+                cairo_fill(cairo);
+            }
+        } else {
+            // 음수: 중심에서 왼쪽으로
+            // 세션 바 (하얀색): total → global
+            if (session_offset_ms < 0) {
+                cairo_set_source_u32(cairo, white);
+                cairo_rectangle(cairo, center_x - global_width - session_width, bar_y, session_width, bar_height);
+                cairo_fill(cairo);
+            }
+
+            // 글로벌 바 (노란색): global → 0
+            if (global_offset_ms < 0) {
+                cairo_set_source_u32(cairo, yellow);
+                cairo_rectangle(cairo, center_x - global_width, bar_y, global_width, bar_height);
+                cairo_fill(cairo);
+            }
+        }
+    }
+    // Sign이 다른 경우: 상쇄 후 남는 것만 표시
+    else {
+        int result_width = offset_to_bar_width(total_offset, max_offset, max_bar_width);
+
+        if (abs(global_offset_ms) > abs(session_offset_ms)) {
+            // 글로벌이 더 크므로 노란색만
+            cairo_set_source_u32(cairo, yellow);
+        } else {
+            // 세션이 더 크므로 하얀색만
+            cairo_set_source_u32(cairo, white);
+        }
+
+        if (total_offset >= 0) {
+            // 양수: 중심에서 오른쪽으로
+            cairo_rectangle(cairo, center_x, bar_y, result_width, bar_height);
+        } else {
+            // 음수: 중심에서 왼쪽으로
+            cairo_rectangle(cairo, center_x - result_width, bar_y, result_width, bar_height);
+        }
+        cairo_fill(cairo);
+    }
 }
 
 cairo_subpixel_order_t rendering_manager_to_cairo_subpixel(enum wl_output_subpixel subpixel) {
@@ -268,8 +334,12 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
 
     // Render timing offset progress bar (if offset is non-zero and lyrics are shown)
     // Hide progress bar during instrumental breaks (is_empty_line = true)
-    if (state->timing_offset_ms != 0 && has_lyrics && !is_empty_line) {
-        render_offset_bar(cairo, state->timing_offset_ms, *width, *height, state->foreground);
+    // Global offset: persistent across tracks (yellow bar)
+    // Session offset: temporary per-track adjustment (white bar)
+    int global_offset_ms = g_config.lyrics.global_offset_ms;
+    int session_offset_ms = state->timing_offset_ms - global_offset_ms; // Extract session-only offset
+    if ((global_offset_ms != 0 || session_offset_ms != 0) && has_lyrics && !is_empty_line) {
+        render_offset_bar(cairo, global_offset_ms, session_offset_ms, *width, *height, state->foreground);
         *height += 6; // Progress bar 높이 + 여백 (4px bar + 2px spacing)
     }
 }

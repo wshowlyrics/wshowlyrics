@@ -100,6 +100,19 @@ enable_notifications = true
 # Examples: 3000 (3 seconds), 5000 (5 seconds), 7000 (7 seconds)
 notification_timeout = 5000
 
+# Global timing offset in milliseconds (default: 0)
+# Persistent offset applied to all tracks (does not reset between songs)
+# Positive values advance lyrics (lyrics ahead of audio)
+# Negative values delay lyrics (lyrics behind audio)
+# Range: -5000 to +5000 (-5 seconds to +5 seconds)
+# Note: This is separate from per-track session offset (adjusted via D-Bus)
+# Visual indicator: Yellow bar (global) + White bar (session) below lyrics
+# Examples:
+#   global_offset_ms = 0     (no global offset, default)
+#   global_offset_ms = 500   (lyrics 0.5s ahead)
+#   global_offset_ms = -1000 (lyrics 1s behind)
+global_offset_ms = 0
+
 [spotify]
 # Automatic position drift fix for Spotify track changes
 # Spotify has a known MPRIS bug where track position is incorrectly reported

@@ -92,6 +92,11 @@ static void parse_lyrics_section(struct config *cfg, const char *key, const char
         cfg->lyrics.enable_notifications = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
     } else if (strcmp(key, "notification_timeout") == 0) {
         cfg->lyrics.notification_timeout = atoi(value);
+    } else if (strcmp(key, "global_offset_ms") == 0) {
+        cfg->lyrics.global_offset_ms = atoi(value);
+        // Clamp to reasonable range [-5000, +5000] (-5s to +5s)
+        if (cfg->lyrics.global_offset_ms < -5000) cfg->lyrics.global_offset_ms = -5000;
+        if (cfg->lyrics.global_offset_ms > 5000) cfg->lyrics.global_offset_ms = 5000;
     }
 }
 
@@ -278,6 +283,7 @@ void config_init_defaults(struct config *cfg) {
     cfg->lyrics.enable_itunes = true;
     cfg->lyrics.enable_notifications = true;  // Enabled by default
     cfg->lyrics.notification_timeout = 5000;  // 5 seconds by default
+    cfg->lyrics.global_offset_ms = 0;  // No global offset by default
 
     // Spotify defaults
     cfg->spotify.auto_position_fix = true;  // Enabled by default
