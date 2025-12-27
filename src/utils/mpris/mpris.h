@@ -9,6 +9,7 @@ struct track_metadata {
     char *artist;
     char *album;
     char *url; // File path or URL
+    char *trackid; // MPRIS track ID (mpris:trackid) - unique identifier
     char *art_url; // Album art URL (mpris:artUrl)
     char *player_name; // MPRIS player name (e.g., "spotify", "mpv")
     int64_t length_us; // Length in microseconds

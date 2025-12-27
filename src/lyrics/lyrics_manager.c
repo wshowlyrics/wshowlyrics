@@ -98,12 +98,26 @@ bool lyrics_manager_update_track_info(struct lyrics_state *state) {
         return false;
     }
 
-    // Check if track changed by comparing URL (unique identifier)
+    // Check if track changed by comparing trackid (preferred) or URL (fallback)
+    // trackid is more reliable for streaming services (Spotify, YouTube Music, etc.)
     bool changed = false;
-    if (!state->current_track.url ||
-        !new_track.url ||
-        strcmp(new_track.url, state->current_track.url) != 0) {
-        changed = true;
+    if (new_track.trackid && state->current_track.trackid) {
+        // Both have trackid - use it (most reliable)
+        if (strcmp(new_track.trackid, state->current_track.trackid) != 0) {
+            changed = true;
+        }
+    } else if (new_track.url || state->current_track.url) {
+        // Fallback to URL comparison (for players without trackid)
+        if (!state->current_track.url ||
+            !new_track.url ||
+            strcmp(new_track.url, state->current_track.url) != 0) {
+            changed = true;
+        }
+    } else {
+        // Neither trackid nor URL available - assume changed if we had a previous track
+        if (state->current_track.title) {
+            changed = true;
+        }
     }
 
     if (changed) {
@@ -112,6 +126,7 @@ bool lyrics_manager_update_track_info(struct lyrics_state *state) {
         log_info("Artist: %s", new_track.artist ? new_track.artist : "Unknown");
         log_info("Album: %s", new_track.album ? new_track.album : "Unknown");
         log_info("URL: %s", new_track.url ? new_track.url : "None");
+        log_info("Track ID: %s", new_track.trackid ? new_track.trackid : "None");
         log_info("Art URL: %s", new_track.art_url ? new_track.art_url : "None");
 
         // Cancel ongoing translation

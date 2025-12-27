@@ -757,6 +757,13 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
         g_variant_unref(value);
     }
 
+    // Track ID (mpris:trackid) - unique identifier for the track
+    value = get_dict_value(metadata_dict, "mpris:trackid");
+    if (value) {
+        metadata->trackid = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
     // Art URL (mpris:artUrl)
     value = get_dict_value(metadata_dict, "mpris:artUrl");
     if (value) {
@@ -888,6 +895,7 @@ void mpris_free_metadata(struct track_metadata *metadata) {
     free(metadata->artist);
     free(metadata->album);
     free(metadata->url);
+    free(metadata->trackid);
     free(metadata->art_url);
     free(metadata->player_name);
     memset(metadata, 0, sizeof(struct track_metadata));
