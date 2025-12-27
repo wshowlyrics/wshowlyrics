@@ -52,6 +52,8 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
   - Future words: dimmed (not yet sung)
 - **Synchronized Lyrics**: Supports LRC, LRCX, SRT, and VTT formats
 - **Real-time Sync**: Automatically displays lyrics based on music playback position
+- **Spotify Position Drift Fix**: Automatic position correction for track changes with configurable wait time (fixes common Spotify playback position issues)
+- **Dual-Mode Timing Offset**: Global (persistent) and session-based timing adjustments with visual indicator
 - Uses Wayland protocol (wlr-layer-shell)
 - Transparent background support
 - Full Unicode character support (Korean, Chinese, Japanese, etc. via Pango)
@@ -291,13 +293,14 @@ wshowlyrics --font="Sans Bold 28" --anchor=bottom --margin=40
 
 ## Timing Offset Control
 
-Adjust lyrics synchronization timing in real-time without restarting wshowlyrics using the D-Bus control interface.
+Adjust lyrics synchronization timing in real-time without restarting wshowlyrics using the D-Bus control interface. Supports both global (persistent across tracks) and session-based timing adjustments.
 
 ### Overview
 
 When lyrics are slightly out of sync with your music (due to audio latency, different player buffer times, or imperfect lyrics files), you can adjust the timing offset on the fly:
 
 ```bash
+# Session offset (temporary adjustments, resets to global offset when track changes)
 # Make lyrics appear 100ms later (slower)
 wshowlyrics-offset +100
 
@@ -307,9 +310,23 @@ wshowlyrics-offset -100
 # Set absolute offset
 wshowlyrics-offset 200    # Set to exactly 200ms delay
 
-# Reset offset to 0
+# Set to absolute 0
 wshowlyrics-offset 0
+
+# Reset to global offset (from settings.ini)
+wshowlyrics-offset reset
 ```
+
+**Note:** To set a **global offset** (persistent across all tracks), edit `~/.config/wshowlyrics/settings.ini`:
+```ini
+[lyrics]
+global_offset_ms = 500    # All tracks will have +500ms offset by default
+```
+
+**Visual Indicator:**
+The timing offset progress bar displays with a dual-color indicator:
+- Yellow: Global offset (persistent across tracks, set in settings.ini)
+- White: Session offset (temporary adjustments via wshowlyrics-offset command)
 
 ### wshowlyrics-offset Script
 
@@ -555,7 +572,7 @@ The program uses a two-stage approach to find lyrics:
 
 #### 1. Local File Search (Priority)
 
-Automatically searches for lyrics files in the following **priority order**:
+If the `extensions` setting in `settings.ini` is configured (default: enabled), the program automatically searches for lyrics files in the following **priority order**:
 
 1. **Same directory as the currently playing music file** (highest priority!)
    - First searches for a lyrics file with the same name as the music file
@@ -564,6 +581,8 @@ Automatically searches for lyrics files in the following **priority order**:
 3. `$XDG_MUSIC_DIR`
 4. `~/.lyrics/`
 5. `$HOME`
+
+**Skip Local Search**: If the `extensions` setting is empty (disabled), the program skips local file searching and jumps directly to online provider fallback.
 
 Filename formats (searched in order):
 - `filename.lrcx` / `filename.lrc` / `filename.srt` / `filename.vtt` (recommended! same name as music file)
@@ -586,6 +605,10 @@ If no local lyrics file is found, the program automatically fetches synchronized
   - This ensures lyrics stay perfectly synchronized with the music
 - **No internet connection?** The program will simply skip online search and continue
 - **Privacy**: Only sends song metadata (title, artist, album) to lrclib.net API
+- **Improved Error Messages**: The program specifies what was tried during lyrics search:
+  - Local files searched but not found
+  - Online API queried (when applicable)
+  - Clear indication of why lyrics were/weren't found
 
 ### Album Artwork
 
@@ -594,6 +617,8 @@ The program automatically displays album artwork in the system tray using a fall
 1. **MPRIS Metadata** (Priority): Loads album art from MPRIS metadata if the music player provides it
 2. **iTunes Search API Fallback**: If MPRIS doesn't provide album art, automatically fetches artwork from Apple's iTunes Search API
 3. **Default Icon**: Shows a default music icon from your system theme if no artwork is available
+
+**Player Icon Badge**: The album art display includes a player icon badge on the notification, showing which media player is currently playing music.
 
 The iTunes API feature can be disabled in `settings.ini` by setting `enable_itunes = false`.
 
