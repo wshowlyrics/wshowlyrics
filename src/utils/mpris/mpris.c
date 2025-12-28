@@ -54,6 +54,22 @@ static char* find_best_player(void);
 static void setup_player_subscription(char *player);
 static void populate_initial_name_mapping(void);
 
+// Helper: Check if player is a browser or MPRIS proxy (should be ignored)
+static inline bool is_browser_or_proxy(const char *player_name) {
+    return strstr(player_name, "chromium") ||
+           strstr(player_name, "firefox") ||
+           strstr(player_name, "vivaldi") ||
+           strstr(player_name, "brave") ||
+           strstr(player_name, "edge") ||
+           strstr(player_name, "opera") ||
+           strcmp(player_name, "playerctld") == 0;
+}
+
+// Helper: Build MPRIS D-Bus service name from player name
+static inline void build_mpris_bus_name(char *buf, size_t size, const char *player) {
+    snprintf(buf, size, "org.mpris.MediaPlayer2.%s", player);
+}
+
 // Helper: Get GVariant value from dictionary
 static GVariant* get_dict_value(GVariant *dict, const char *key) {
     GVariantIter iter;
@@ -125,9 +141,7 @@ static char** list_mpris_players(int *count) {
             const char *player_name = name + 23;
 
             // Skip browsers and playerctld (MPRIS proxy)
-            if (strstr(player_name, "chromium") ||
-                strstr(player_name, "firefox") ||
-                strcmp(player_name, "playerctld") == 0) {
+            if (is_browser_or_proxy(player_name)) {
                 continue;
             }
 
@@ -166,7 +180,7 @@ static bool mpris_send_command(const char *method) {
     }
 
     char bus_name[SMALL_BUFFER_SIZE];
-    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", player_name);
+    build_mpris_bus_name(bus_name, sizeof(bus_name), player_name);
 
     GError *error = NULL;
     g_dbus_connection_call_sync(
@@ -342,9 +356,7 @@ static void on_any_player_properties_changed(
     const char *player_name = well_known_name + 23;
 
     // Skip browsers and playerctld
-    if (strstr(player_name, "chromium") ||
-        strstr(player_name, "firefox") ||
-        strcmp(player_name, "playerctld") == 0) {
+    if (is_browser_or_proxy(player_name)) {
         return;
     }
 
@@ -429,9 +441,7 @@ static void on_name_owner_changed(
     const char *player_name = name + 23;
 
     // Skip browsers and playerctld (MPRIS proxy)
-    if (strstr(player_name, "chromium") ||
-        strstr(player_name, "firefox") ||
-        strcmp(player_name, "playerctld") == 0) {
+    if (is_browser_or_proxy(player_name)) {
         return;
     }
 
@@ -569,7 +579,7 @@ static char* find_best_player(void) {
         // Try to find a playing player first
         for (int i = 0; i < player_count; i++) {
             char bus_name[SMALL_BUFFER_SIZE];
-            snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", all_players[i]);
+            build_mpris_bus_name(bus_name, sizeof(bus_name), all_players[i]);
 
             GError *error = NULL;
             GVariant *status_variant = g_dbus_connection_call_sync(
@@ -637,7 +647,7 @@ static char* find_best_player(void) {
             if (strcmp(all_players[i], preferred) == 0) {
                 // Check if it's playing
                 char bus_name[SMALL_BUFFER_SIZE];
-                snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", preferred);
+                build_mpris_bus_name(bus_name, sizeof(bus_name), preferred);
 
                 GError *error = NULL;
                 GVariant *status_variant = g_dbus_connection_call_sync(
@@ -716,7 +726,7 @@ static void setup_player_subscription(char *player) {
     }
 
     char bus_name[SMALL_BUFFER_SIZE];
-    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", player);
+    build_mpris_bus_name(bus_name, sizeof(bus_name), player);
 
     // Unsubscribe from old player signals
     if (mpris_state.subscription_id > 0) {
@@ -878,9 +888,7 @@ static void populate_initial_name_mapping(void) {
         const char *player_name = name + 23;
 
         // Skip browsers and playerctld
-        if (strstr(player_name, "chromium") ||
-            strstr(player_name, "firefox") ||
-            strcmp(player_name, "playerctld") == 0) {
+        if (is_browser_or_proxy(player_name)) {
             continue;
         }
 
@@ -1023,7 +1031,7 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
 
     // Build D-Bus service name
     char bus_name[SMALL_BUFFER_SIZE];
-    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", player);
+    build_mpris_bus_name(bus_name, sizeof(bus_name), player);
 
     // Get Metadata property
     GError *error = NULL;
@@ -1145,7 +1153,7 @@ int64_t mpris_get_position(void) {
     }
 
     char bus_name[SMALL_BUFFER_SIZE];
-    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", player);
+    build_mpris_bus_name(bus_name, sizeof(bus_name), player);
 
     GError *error = NULL;
     GVariant *result = g_dbus_connection_call_sync(
