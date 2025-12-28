@@ -148,14 +148,8 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 bool lrc_parse_file(const char *filename, struct lyrics_data *data) {
     bool success = parse_file_generic(filename, "LRC", data, lrc_parse_string);
 
-    // Warn if critical metadata is missing (only for local files)
     if (success) {
-        if (!data->metadata.artist || data->metadata.artist[0] == '\0') {
-            log_warn("LRC file missing artist metadata [ar:Artist Name]");
-        }
-        if (!data->metadata.album || data->metadata.album[0] == '\0') {
-            log_warn("LRC file missing album metadata [al:Album Name]");
-        }
+        warn_missing_metadata(data, "LRC");
     }
 
     return success;

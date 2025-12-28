@@ -1005,7 +1005,7 @@ static void display_missing_keys_warning(struct config_key *missing_keys, const 
     log_warn("");
 
     // Build missing keys list for notification
-    char missing_keys_list[1024] = {0};
+    char missing_keys_list[PATH_BUFFER_SIZE] = {0};
     size_t offset = 0;
     int count = 0;
     int total_count = 0;
@@ -1164,7 +1164,7 @@ char* config_load_with_fallback(struct config *cfg) {
             if (src) {
                 FILE *dst = fdopen(fd, "w");
                 if (dst) {
-                    char buf[4096];
+                    char buf[CONTENT_BUFFER_SIZE];
                     size_t n;
                     while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
                         fwrite(buf, 1, n, dst);

@@ -441,14 +441,8 @@ bool lrcx_parse_string(const char *content, struct lyrics_data *data) {
 bool lrcx_parse_file(const char *filename, struct lyrics_data *data) {
     bool success = parse_file_generic(filename, "LRCX", data, lrcx_parse_string);
 
-    // Warn if critical metadata is missing (only for local files)
     if (success) {
-        if (!data->metadata.artist || data->metadata.artist[0] == '\0') {
-            log_warn("LRCX file missing artist metadata [ar:Artist Name]");
-        }
-        if (!data->metadata.album || data->metadata.album[0] == '\0') {
-            log_warn("LRCX file missing album metadata [al:Album Name]");
-        }
+        warn_missing_metadata(data, "LRCX");
     }
 
     return success;

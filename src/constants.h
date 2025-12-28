@@ -19,6 +19,12 @@
 #define CONTENT_BUFFER_SIZE 4096
 #define SMALL_BUFFER_SIZE 256
 
+// Translation buffers
+#define TRANSLATION_PROMPT_SIZE 8192
+
+// File processing buffers
+#define MD5_BUFFER_SIZE 8192
+
 // UI text buffers
 #define TOOLTIP_BUFFER_SIZE 512
 #define TITLE_BUFFER_SIZE 256

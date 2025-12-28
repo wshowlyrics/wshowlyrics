@@ -735,3 +735,17 @@ bool validate_timestamp_order(int64_t current_us, int64_t *last_us, const char *
 
     return true;
 }
+
+void warn_missing_metadata(struct lyrics_data *data, const char *format_name) {
+    if (!data) {
+        return;
+    }
+
+    // Warn if critical metadata is missing (only for local files)
+    if (!data->metadata.artist || data->metadata.artist[0] == '\0') {
+        log_warn("%s file missing artist metadata [ar:Artist Name]", format_name);
+    }
+    if (!data->metadata.album || data->metadata.album[0] == '\0') {
+        log_warn("%s file missing album metadata [al:Album Name]", format_name);
+    }
+}

@@ -433,8 +433,8 @@ void system_tray_send_notification(const struct notification_info *info) {
     snprintf(body, sizeof(body), "%s · %s\n%s", album_display, artist_display, player_capitalized);
 
     // Escape title and body for shell
-    char escaped_title[1024];
-    char escaped_body[1024];
+    char escaped_title[PATH_BUFFER_SIZE];
+    char escaped_body[PATH_BUFFER_SIZE];
     escape_shell_string(notification_title, escaped_title, sizeof(escaped_title));
     escape_shell_string(body, escaped_body, sizeof(escaped_body));
 

@@ -82,7 +82,7 @@ bool calculate_file_md5(const char *filepath, char *checksum_out) {
         return false;
     }
 
-    unsigned char buffer[8192];
+    unsigned char buffer[MD5_BUFFER_SIZE];
     size_t bytes_read;
 
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
@@ -234,7 +234,7 @@ bool calculate_metadata_md5(const char *artist, const char *title, const char *a
 
     // Combine metadata into single string: "artist|title|album"
     // Use | as separator to avoid conflicts with common metadata characters
-    char metadata[1024];
+    char metadata[PATH_BUFFER_SIZE];
     snprintf(metadata, sizeof(metadata), "%s|%s|%s",
              artist ? artist : "",
              title ? title : "",
@@ -332,7 +332,7 @@ static bool remove_directory_recursive(const char *path) {
 
         if (S_ISDIR(st.st_mode)) {
             // Recursively remove subdirectory
-            char full_path[1024];
+            char full_path[PATH_BUFFER_SIZE];
             snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
             if (!remove_directory_recursive(full_path)) {
                 success = false;

@@ -30,7 +30,7 @@ static char* build_request_json(const char *text, const char *target_lang, const
     json_object *message_obj = json_object_new_object();
 
     // Build standard translation prompt
-    char prompt[8192];
+    char prompt[TRANSLATION_PROMPT_SIZE];
     if (translator_build_translation_prompt(prompt, sizeof(prompt), text, target_lang) < 0) {
         return NULL;
     }
