@@ -70,8 +70,9 @@ pkgdesc="Wayland-native lyrics display for MPD with online fallback (git version
 arch=('x86_64')
 url="https://github.com/unstable-code/lyrics"
 license=('GPL-3.0-or-later')
-depends=('wayland' 'cairo' 'pango' 'curl' 'fontconfig' 'libappindicator-gtk3' 'gdk-pixbuf2' 'playerctl')
-optdepends=('snixembed: System tray support for Swaybar')
+depends=('wayland' 'cairo' 'pango' 'curl' 'fontconfig' 'libappindicator-gtk3' 'gdk-pixbuf2' 'glib2' 'json-c' 'openssl')
+optdepends=('snixembed: System tray support for Swaybar'
+            'libexttextcat: Language detection for translation')
 makedepends=('git' 'meson' 'ninja' 'wayland-protocols')
 provides=('wshowlyrics')
 conflicts=('wshowlyrics')
@@ -108,21 +109,16 @@ package() {
 
 ### 의존성 목록
 
-**Debian/Ubuntu (.deb)**:
-```
-Depends: libwayland-client0, libcairo2, libpango-1.0-0, libcurl4,
-         libfontconfig1, libappindicator3-1, libgdk-pixbuf-2.0-0,
-         playerctl, libjson-c5, libssl3
-Recommends: sway | hyprland
-```
+**참조**: `meson.build` 및 `.github/workflows/build-packages.yml`에 정의됨
 
-**Fedora/RHEL (.rpm)**:
-```
-Requires: wayland, cairo, pango, libcurl, fontconfig,
-          libappindicator-gtk3, gdk-pixbuf2, playerctl,
-          openssl-libs, json-c
-Recommends: sway OR hyprland
-```
+**주요 의존성** (AppImage 번들링 참고용):
+- 렌더링: cairo, pango, pangocairo, fontconfig
+- Wayland: wayland-client, wayland-protocols
+- 네트워크: libcurl, openssl
+- 데이터: json-c
+- 시스템 트레이: libappindicator-gtk3, gdk-pixbuf-2.0
+- DBus/MPRIS: glib2, gio-2.0 (playerctl 대체)
+- 언어 감지 (선택): libexttextcat
 
 ### 패키지 명명 규칙
 
@@ -350,7 +346,15 @@ x86_64, aarch64 AppImage 빌드 및 GPG 서명 자동화
    - [ ] Matrix 빌드: x86_64 (ubuntu-latest), aarch64 (ubuntu-24.04-arm)
    - [ ] Ubuntu 20.04 컨테이너 (glibc 호환성)
    - [ ] linuxdeploy 다운로드 및 AppDir 구조 생성
-   - [ ] 의존성 자동 번들링 (playerctl 포함)
+   - [ ] 의존성 자동 번들링:
+     - cairo, pango, pangocairo (렌더링)
+     - wayland-client (Wayland 통신)
+     - libcurl, openssl (네트워크)
+     - json-c (JSON 파싱)
+     - libappindicator-gtk3, gdk-pixbuf-2.0 (시스템 트레이)
+     - fontconfig (폰트 탐색)
+     - glib2/gio-2.0 (DBus/MPRIS 통신, playerctl 대체)
+     - libexttextcat (선택적, 언어 감지)
    - [ ] AppImage 생성 및 GPG detached signature (`.asc`)
    - [ ] 아티팩트 업로드
 
