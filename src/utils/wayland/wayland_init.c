@@ -28,7 +28,7 @@ bool wayland_init_surface(struct lyrics_state *state, unsigned int anchor, int m
 
     // Initialize MPRIS for automatic lyrics detection
     if (!mpris_init()) {
-        log_error("Failed to initialize MPRIS (playerctl not found?)");
+        log_error("Failed to initialize MPRIS (DBus connection failed?)");
         return false;
     }
     log_info("MPRIS mode enabled - will track currently playing music");
