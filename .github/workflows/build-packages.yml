@@ -398,8 +398,13 @@ jobs:
             chmod +x linuxdeploy-${ARCH}.AppImage
             ./linuxdeploy-${ARCH}.AppImage --appimage-extract
 
-            # Create AppImage
-            ARCH=${ARCH} ./squashfs-root/AppRun --appdir AppDir --output appimage
+            # Create AppImage with proper desktop/icon files
+            ARCH=${ARCH} ./squashfs-root/AppRun \
+              --appdir AppDir \
+              --executable AppDir/usr/bin/wshowlyrics \
+              --desktop-file AppDir/usr/share/applications/wshowlyrics.desktop \
+              --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/wshowlyrics.svg \
+              --output appimage
           "
 
           # Rename AppImage to include version

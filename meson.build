@@ -142,3 +142,15 @@ install_data(
 	install_dir: get_option('bindir'),
 	install_mode: 'rwxr-xr-x',
 )
+
+# Install desktop file
+install_data(
+	'wshowlyrics.desktop',
+	install_dir: get_option('datadir') / 'applications',
+)
+
+# Install icon
+install_data(
+	'wshowlyrics.svg',
+	install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps',
+)

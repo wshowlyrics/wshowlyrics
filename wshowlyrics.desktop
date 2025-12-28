@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=wshowlyrics
+GenericName=Lyrics Display
+Comment=Wayland-native lyrics display with online fallback
+Exec=wshowlyrics
+Icon=wshowlyrics
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=lyrics;music;karaoke;mpris;
+StartupNotify=false

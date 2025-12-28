@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- 부드러운 배경 (시스템 마스크와 조화) -->
+  <rect width="256" height="256" fill="#F8F6F0"/>
+
+  <!-- 노트지 메인 -->
+  <rect x="32" y="52" width="192" height="172" rx="2" fill="#FFFDF5"/>
+
+  <!-- 찢어진 상단 -->
+  <path d="M 32 52 Q 38 47, 44 52 T 56 52 T 68 52 T 80 52 T 92 52 T 104 52 T 116 52 T 128 52 T 140 52 T 152 52 T 164 52 T 176 52 T 188 52 T 200 52 T 212 52 T 224 52"
+        stroke="none" fill="#F8F6F0"/>
+
+  <!-- 찢어진 가장자리 그림자 -->
+  <path d="M 32 52 Q 38 47, 44 52 T 56 52 T 68 52 T 80 52 T 92 52 T 104 52 T 116 52 T 128 52 T 140 52 T 152 52 T 164 52 T 176 52 T 188 52 T 200 52 T 212 52 T 224 52"
+        stroke="#D4C8B4" stroke-width="0.5" fill="none" opacity="0.4"/>
+
+  <!-- 노트 구멍 -->
+  <circle cx="48" cy="88" r="4" fill="#DDD4C8" opacity="0.8"/>
+  <circle cx="48" cy="128" r="4" fill="#DDD4C8" opacity="0.8"/>
+  <circle cx="48" cy="168" r="4" fill="#DDD4C8" opacity="0.8"/>
+
+  <!-- 노트 줄 -->
+  <line x1="64" y1="100" x2="208" y2="100" stroke="#E8DED0" stroke-width="1.2" opacity="0.7"/>
+  <line x1="64" y1="128" x2="208" y2="128" stroke="#E8DED0" stroke-width="1.2" opacity="0.7"/>
+  <line x1="64" y1="156" x2="208" y2="156" stroke="#E8DED0" stroke-width="1.2" opacity="0.7"/>
+  <line x1="64" y1="184" x2="208" y2="184" stroke="#E8DED0" stroke-width="1.2" opacity="0.7"/>
+
+  <!-- 8분음표 (중앙) -->
+  <text x="128" y="150" font-size="80" fill="#5A4E42" text-anchor="middle"
+        font-family="Georgia, serif" font-weight="500" opacity="0.95">♪</text>
+</svg>
