@@ -134,7 +134,7 @@ jobs:
           Section: sound
           Priority: optional
           Architecture: ${ARCH}
-          Depends: libwayland-client0, libcairo2, libpango-1.0-0, libcurl4, libfontconfig1, libappindicator3-1, libgdk-pixbuf-2.0-0, playerctl, libjson-c5, libssl3
+          Depends: libwayland-client0, libcairo2, libpango-1.0-0, libcurl4, libfontconfig1, libappindicator3-1, libgdk-pixbuf-2.0-0, libglib2.0-0, libjson-c5, libssl3
           Recommends: sway | hyprland
           Maintainer: unstable-code <assa0620@gmail.com>
           Description: Wayland-native lyrics display with online fallback
@@ -252,7 +252,7 @@ jobs:
           Requires:       fontconfig
           Requires:       libappindicator-gtk3
           Requires:       gdk-pixbuf2
-          Requires:       playerctl
+          Requires:       glib2
           Requires:       json-c
           Requires:       openssl-libs
 
@@ -349,8 +349,84 @@ jobs:
           path: wshowlyrics-*.rpm
           retention-days: 7
 
+  build-appimage:
+    needs: prepare-build
+    if: needs.prepare-build.outputs.has_tag == 'true'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Build AppImage in Ubuntu 20.04 container
+        run: |
+          VERSION="${{ needs.prepare-build.outputs.version }}"
+          ARCH="${{ matrix.arch }}"
+
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+            --platform linux/${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }} \
+            ubuntu:20.04 bash -c "
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq \
+              meson ninja-build \
+              libwayland-dev wayland-protocols \
+              libcairo2-dev libpango1.0-dev \
+              libcurl4-openssl-dev libfontconfig1-dev \
+              libappindicator3-dev libgdk-pixbuf-2.0-dev \
+              libjson-c-dev libssl-dev libglib2.0-dev \
+              file wget desktop-file-utils
+
+            # Build with meson
+            meson setup build --prefix=/usr
+            meson compile -C build
+            DESTDIR=/workspace/AppDir meson install -C build
+
+            # Rename binary
+            mv /workspace/AppDir/usr/bin/lyrics /workspace/AppDir/usr/bin/wshowlyrics
+
+            # Download linuxdeploy
+            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage
+            chmod +x linuxdeploy-${ARCH}.AppImage
+            ./linuxdeploy-${ARCH}.AppImage --appimage-extract
+
+            # Create AppImage
+            ARCH=${ARCH} ./squashfs-root/AppRun --appdir AppDir --output appimage
+          "
+
+          # Rename AppImage to include version
+          mv wshowlyrics-*.AppImage wshowlyrics-${VERSION}-${ARCH}.AppImage
+
+      - name: Import GPG key and sign AppImage
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 -d | gpg --batch --yes --import
+
+          VERSION="${{ needs.prepare-build.outputs.version }}"
+          ARCH="${{ matrix.arch }}"
+          APPIMAGE_FILE="wshowlyrics-${VERSION}-${ARCH}.AppImage"
+
+          # Create detached signature
+          gpg --batch --yes --armor --detach-sign --default-key B4CD9B155AA3124C "${APPIMAGE_FILE}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: |
+            wshowlyrics-${{ needs.prepare-build.outputs.version }}-${{ matrix.arch }}.AppImage
+            wshowlyrics-${{ needs.prepare-build.outputs.version }}-${{ matrix.arch }}.AppImage.asc
+          retention-days: 7
+
   upload-to-release:
-    needs: [prepare-build, build-deb, build-rpm]
+    needs: [prepare-build, build-deb, build-rpm, build-appimage]
     if: needs.prepare-build.outputs.has_tag == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -390,6 +466,13 @@ jobs:
             sudo dnf install wshowlyrics-${{ needs.prepare-build.outputs.version }}-1.fc*.rpm
             ```
 
+            #### Universal (AppImage)
+            ```bash
+            # Download the appropriate AppImage file for your architecture
+            chmod +x wshowlyrics-${{ needs.prepare-build.outputs.version }}-x86_64.AppImage
+            ./wshowlyrics-${{ needs.prepare-build.outputs.version }}-x86_64.AppImage
+            ```
+
             ### Package Verification
 
             All packages are signed with GPG key `B4CD9B155AA3124C`.
@@ -402,5 +485,11 @@ jobs:
             #### Verify .rpm
             ```bash
             rpm --checksig wshowlyrics-${{ needs.prepare-build.outputs.version }}-1.fc*.rpm
+            ```
+
+            #### Verify AppImage
+            ```bash
+            gpg --verify wshowlyrics-${{ needs.prepare-build.outputs.version }}-x86_64.AppImage.asc \
+                         wshowlyrics-${{ needs.prepare-build.outputs.version }}-x86_64.AppImage
             ```
           generate_release_notes: true
