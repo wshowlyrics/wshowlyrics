@@ -93,7 +93,7 @@ jobs:
 
           Package: wshowlyrics
           Architecture: any
-          Depends: ${shlibs:Depends}, ${misc:Depends}, playerctl
+          Depends: ${shlibs:Depends}, ${misc:Depends}
           Recommends: sway | hyprland
           Description: Wayland-native lyrics display with online fallback
            wshowlyrics is a lightweight lyrics overlay for Wayland compositors

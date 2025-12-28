@@ -106,7 +106,7 @@ jobs:
           Requires:       fontconfig
           Requires:       libappindicator-gtk3
           Requires:       gdk-pixbuf2
-          Requires:       playerctl
+          Requires:       glib2
           Requires:       json-c
           Requires:       openssl-libs
 

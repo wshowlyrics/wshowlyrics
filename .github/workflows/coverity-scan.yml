@@ -24,7 +24,7 @@ jobs:
           libwayland-dev wayland-protocols \
           libcurl4-openssl-dev libssl-dev libjson-c-dev \
           libappindicator3-dev libgdk-pixbuf2.0-dev \
-          libfontconfig1-dev libexttextcat-dev
+          libfontconfig1-dev libglib2.0-dev libexttextcat-dev
 
     - name: Cache Coverity Build Tool
       id: cache-coverity
