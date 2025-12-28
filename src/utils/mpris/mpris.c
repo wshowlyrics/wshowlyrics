@@ -155,13 +155,18 @@ static int64_t get_monotonic_time_us(void) {
 
 // Helper: Send MPRIS command (Pause, Play, etc.)
 static bool mpris_send_command(const char *method) {
-    if (!dbus_connection || !mpris_state.current_player) {
+    // Thread-safe access to current_player
+    g_mutex_lock(&mpris_state.mutex);
+    bool has_player = (dbus_connection && mpris_state.current_player);
+    char *player_name = has_player ? strdup(mpris_state.current_player) : NULL;
+    g_mutex_unlock(&mpris_state.mutex);
+
+    if (!player_name) {
         return false;
     }
 
     char bus_name[SMALL_BUFFER_SIZE];
-    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s",
-             mpris_state.current_player);
+    snprintf(bus_name, sizeof(bus_name), "org.mpris.MediaPlayer2.%s", player_name);
 
     GError *error = NULL;
     g_dbus_connection_call_sync(
@@ -180,11 +185,13 @@ static bool mpris_send_command(const char *method) {
 
     if (error) {
         log_error("Failed to send %s command to %s: %s",
-                 method, mpris_state.current_player, error->message);
+                 method, player_name, error->message);
         g_error_free(error);
+        free(player_name);
         return false;
     }
 
+    free(player_name);
     return true;
 }
 
@@ -216,8 +223,12 @@ static void on_properties_changed(
         mpris_state.playback_status = strdup(status);
         log_info("PlaybackStatus changed: %s", status);
 
+        // Make a copy for thread-safe use after mutex unlock
+        char *status_copy = strdup(status);
+        g_variant_unref(status_variant);  // Unref early since we copied the string
+
         // If current player paused/stopped, check for other playing players
-        if (strcmp(status, "Paused") == 0 || strcmp(status, "Stopped") == 0) {
+        if (strcmp(status_copy, "Paused") == 0 || strcmp(status_copy, "Stopped") == 0) {
             char *current = mpris_state.current_player ? strdup(mpris_state.current_player) : NULL;
             g_mutex_unlock(&mpris_state.mutex);  // Unlock before D-Bus call
 
@@ -236,12 +247,12 @@ static void on_properties_changed(
         // If playback started, check for metadata changes
         // Some players (YouTube Music Desktop) don't emit Metadata PropertiesChanged
         // when track changes, only PlaybackStatus changes (Paused -> Playing)
-        else if (strcmp(status, "Playing") == 0) {
+        else if (strcmp(status_copy, "Playing") == 0) {
             // Force metadata check on next poll to catch track changes
             mpris_state.metadata_changed = true;
         }
 
-        g_variant_unref(status_variant);
+        free(status_copy);
     }
 
     // Check for Metadata change (track changed)
@@ -681,10 +692,8 @@ static char* find_best_player(void) {
 
     free(players_copy);
 
-    // If found a playing player, use it; otherwise use fallback or first available
-    if (best_player) {
-        free(fallback_player);
-    } else if (fallback_player) {
+    // Use fallback or first available (no playing player found in preferred list)
+    if (fallback_player) {
         best_player = fallback_player;
     } else {
         best_player = strdup(all_players[0]);
