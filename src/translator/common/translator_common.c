@@ -435,6 +435,47 @@ void translator_curl_response_free(struct translator_curl_response *response) {
     }
 }
 
+bool translator_init_curl_handle(void **handle, const char *name) {
+    if (!handle || !name) {
+        return false;
+    }
+
+    CURL **curl_handle = (CURL **)handle;
+
+    if (*curl_handle) {
+        return true; // Already initialized
+    }
+
+    *curl_handle = curl_easy_init();
+    if (!*curl_handle) {
+        log_error("%s: Failed to initialize CURL", name);
+        return false;
+    }
+
+    // Enforce TLS 1.2 or higher for security
+    if (curl_easy_setopt(*curl_handle, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
+        log_error("%s: Failed to set SSL version", name);
+        curl_easy_cleanup(*curl_handle);
+        *curl_handle = NULL;
+        return false;
+    }
+
+    return true;
+}
+
+void translator_cleanup_curl_handle(void **handle) {
+    if (!handle) {
+        return;
+    }
+
+    CURL **curl_handle = (CURL **)handle;
+
+    if (*curl_handle) {
+        curl_easy_cleanup(*curl_handle);
+        *curl_handle = NULL;
+    }
+}
+
 bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
                                           struct lyrics_data *data,
                                           int translatable_count,

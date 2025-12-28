@@ -136,32 +136,11 @@ static char* translate_single_line(const char *text, const char *target_lang,
 }
 
 bool claude_translator_init(void) {
-    if (curl_handle) {
-        return true; // Already initialized
-    }
-
-    curl_handle = curl_easy_init();
-    if (!curl_handle) {
-        log_error("claude_translator: Failed to initialize CURL");
-        return false;
-    }
-
-    // Enforce TLS 1.2 or higher for security
-    if (curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
-        log_error("claude_translator: Failed to set SSL version");
-        curl_easy_cleanup(curl_handle);
-        curl_handle = NULL;
-        return false;
-    }
-
-    return true;
+    return translator_init_curl_handle((void **)&curl_handle, "claude_translator");
 }
 
 void claude_translator_cleanup(void) {
-    if (curl_handle) {
-        curl_easy_cleanup(curl_handle);
-        curl_handle = NULL;
-    }
+    translator_cleanup_curl_handle((void **)&curl_handle);
 }
 
 bool claude_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {

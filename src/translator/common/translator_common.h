@@ -117,6 +117,24 @@ void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_
 // --- Common CURL and Threading Utilities ---
 
 /**
+ * Initialize a CURL handle with TLS 1.2+ enforcement.
+ * Common logic for OpenAI, Gemini, Claude translators.
+ *
+ * @param handle Pointer to CURL handle pointer
+ * @param name Translator name for logging (e.g., "openai_translator")
+ * @return true on success, false on failure
+ */
+bool translator_init_curl_handle(void **handle, const char *name);
+
+/**
+ * Cleanup a CURL handle.
+ * Common logic for OpenAI, Gemini, Claude translators.
+ *
+ * @param handle Pointer to CURL handle pointer
+ */
+void translator_cleanup_curl_handle(void **handle);
+
+/**
  * Common CURL response buffer structure.
  * Used by all translator implementations to collect API responses.
  */
