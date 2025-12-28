@@ -154,6 +154,8 @@ jobs:
           %{_bindir}/wshowlyrics-offset
           %config(noreplace) %{_sysconfdir}/wshowlyrics/settings.ini
           %{_userunitdir}/wshowlyrics.service
+          %{_datadir}/applications/wshowlyrics.desktop
+          %{_datadir}/icons/hicolor/scalable/apps/wshowlyrics.svg
 
           %changelog
           * DATE_PLACEHOLDER unstable-code <assa0620@gmail.com> - VERSION_PLACEHOLDER-1

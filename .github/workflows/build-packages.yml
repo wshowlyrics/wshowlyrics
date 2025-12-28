@@ -110,6 +110,8 @@ jobs:
           mkdir -p "${PKG_DIR}/etc/wshowlyrics"
           mkdir -p "${PKG_DIR}/usr/lib/systemd/user"
           mkdir -p "${PKG_DIR}/usr/share/doc/wshowlyrics"
+          mkdir -p "${PKG_DIR}/usr/share/applications"
+          mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/scalable/apps"
 
           # Copy binary
           cp build/lyrics "${PKG_DIR}/usr/bin/wshowlyrics"
@@ -123,6 +125,10 @@ jobs:
 
           # Copy systemd service
           cp wshowlyrics.service "${PKG_DIR}/usr/lib/systemd/user/"
+
+          # Copy desktop file and icon
+          cp wshowlyrics.desktop "${PKG_DIR}/usr/share/applications/"
+          cp wshowlyrics.svg "${PKG_DIR}/usr/share/icons/hicolor/scalable/apps/"
 
           # Copy documentation
           cp README.md LICENSE "${PKG_DIR}/usr/share/doc/wshowlyrics/"
@@ -294,6 +300,8 @@ jobs:
           %{_bindir}/wshowlyrics-offset
           %config(noreplace) %{_sysconfdir}/wshowlyrics/settings.ini
           %{_userunitdir}/wshowlyrics.service
+          %{_datadir}/applications/wshowlyrics.desktop
+          %{_datadir}/icons/hicolor/scalable/apps/wshowlyrics.svg
 
           %changelog
           * DATE_PLACEHOLDER unstable-code <assa0620@gmail.com> - VERSION_PLACEHOLDER-1
