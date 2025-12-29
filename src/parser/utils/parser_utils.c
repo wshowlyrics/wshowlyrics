@@ -5,78 +5,78 @@
 #include <string.h>
 #include <ctype.h>
 
-bool parse_lrc_timestamp_ex(const char *str, int64_t *timestamp_us, const char **end_ptr, bool *is_unfill) {
-    int minutes = 0, seconds = 0, centiseconds = 0;
-    const char *parse_str = str;
-    bool unfill = false;
-
-    // Check for unfill marker [<MM:SS.xx]
-    if (str[0] == '[' && str[1] == '<') {
-        unfill = true;
-        parse_str = str + 1; // Skip '[', leaving '<MM:SS.xx]' which we'll adjust
-        // Create temporary string without '<': [MM:SS.xx]
-        char temp[64];
-        temp[0] = '[';
-        snprintf(temp + 1, sizeof(temp) - 1, "%s", parse_str + 1);
-        parse_str = temp;
-
-        // Try [MM:SS.xx] format
-        int matched = sscanf(parse_str, "[%d:%d.%d]", &minutes, &seconds, &centiseconds);
-        if (matched == 3) {
-            // Handle both centiseconds (2 digits) and milliseconds (3 digits)
-            int len = 0;
-            const char *dot = strchr(parse_str, '.');
-            if (dot) {
-                const char *bracket = strchr(dot, ']');
-                if (bracket) {
-                    len = bracket - dot - 1;
-                    if (end_ptr) {
-                        // Point to character after ']' in original string
-                        const char *orig_dot = strchr(str, '.');
-                        if (orig_dot) {
-                            const char *orig_bracket = strchr(orig_dot, ']');
-                            if (orig_bracket) {
-                                *end_ptr = orig_bracket + 1;
-                            }
-                        }
-                    }
-                }
-            }
-
-            *timestamp_us = timestamp_to_microseconds(minutes, seconds, centiseconds, len == 2);
-
-            if (is_unfill) {
-                *is_unfill = unfill;
-            }
-            return true;
-        }
-    } else {
-        // Normal timestamp [MM:SS.xx]
-        int matched = sscanf(str, "[%d:%d.%d]", &minutes, &seconds, &centiseconds);
-        if (matched == 3) {
-            // Handle both centiseconds (2 digits) and milliseconds (3 digits)
-            int len = 0;
-            const char *dot = strchr(str, '.');
-            if (dot) {
-                const char *bracket = strchr(dot, ']');
-                if (bracket) {
-                    len = bracket - dot - 1;
-                    if (end_ptr) {
-                        *end_ptr = bracket + 1; // Point to character after ']'
-                    }
-                }
-            }
-
-            *timestamp_us = timestamp_to_microseconds(minutes, seconds, centiseconds, len == 2);
-
-            if (is_unfill) {
-                *is_unfill = unfill;
-            }
-            return true;
-        }
+// Helper: Find pointer after ']' character in timestamp string
+static const char* find_end_after_bracket(const char *str) {
+    const char *dot = strchr(str, '.');
+    if (!dot) {
+        return NULL;
     }
 
-    return false;
+    const char *bracket = strchr(dot, ']');
+    if (!bracket) {
+        return NULL;
+    }
+
+    return bracket + 1;
+}
+
+// Helper: Parse [MM:SS.xx] format and return timestamp components
+// Returns: true if parsing succeeded, false otherwise
+// Output: minutes, seconds, centiseconds, and digit length (2 or 3)
+static bool parse_timestamp_format(const char *str, int *minutes, int *seconds,
+                                   int *centiseconds, int *digit_len) {
+    int matched = sscanf(str, "[%d:%d.%d]", minutes, seconds, centiseconds);
+    if (matched != 3) {
+        return false;
+    }
+
+    // Determine if using centiseconds (2 digits) or milliseconds (3 digits)
+    const char *dot = strchr(str, '.');
+    if (!dot) {
+        return false;
+    }
+
+    const char *bracket = strchr(dot, ']');
+    if (!bracket) {
+        return false;
+    }
+
+    *digit_len = bracket - dot - 1;
+    return true;
+}
+
+bool parse_lrc_timestamp_ex(const char *str, int64_t *timestamp_us, const char **end_ptr, bool *is_unfill) {
+    int minutes = 0, seconds = 0, centiseconds = 0, digit_len = 0;
+    bool unfill = (str[0] == '[' && str[1] == '<');
+
+    // Prepare parse string (remove '<' for unfill timestamps)
+    char temp[64];
+    const char *parse_str = str;
+
+    if (unfill) {
+        // Convert [<MM:SS.xx] to [MM:SS.xx]
+        temp[0] = '[';
+        snprintf(temp + 1, sizeof(temp) - 1, "%s", str + 2);
+        parse_str = temp;
+    }
+
+    // Parse timestamp format
+    if (!parse_timestamp_format(parse_str, &minutes, &seconds, &centiseconds, &digit_len)) {
+        return false;
+    }
+
+    // Set output values
+    *timestamp_us = timestamp_to_microseconds(minutes, seconds, centiseconds, digit_len == 2);
+
+    if (end_ptr) {
+        *end_ptr = find_end_after_bracket(str);
+    }
+
+    if (is_unfill) {
+        *is_unfill = unfill;
+    }
+
+    return true;
 }
 
 bool parse_lrc_timestamp(const char *str, int64_t *timestamp_us, const char **end_ptr) {
@@ -407,6 +407,118 @@ static void free_ruby_segments_list(struct ruby_segment *head) {
     }
 }
 
+// Helper: Create and append a ruby segment to the list
+// Returns: true on success, false on allocation failure
+static bool create_and_append_segment(const char *text, size_t text_len,
+                                      const char *ruby, const char *translation,
+                                      struct ruby_segment ***next_seg, int *count) {
+    struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
+    if (!seg) {
+        return false;
+    }
+
+    seg->text = text_len > 0 ? strndup(text, text_len) : strdup(text);
+    seg->ruby = ruby ? strdup(ruby) : NULL;
+    seg->translation = translation ? strdup(translation) : NULL;
+
+    if (!seg->text || (ruby && !seg->ruby) || (translation && !seg->translation)) {
+        free(seg->text);
+        free(seg->ruby);
+        free(seg->translation);
+        free(seg);
+        return false;
+    }
+
+    **next_seg = seg;
+    *next_seg = &seg->next;
+    (*count)++;
+    return true;
+}
+
+// Helper: Handle translation segment at line start: {translation text}
+// Returns: closing brace position on success, NULL on malformed or allocation failure
+static const char* handle_translation(const char *pos, struct ruby_segment ***next_seg,
+                                     int *count, struct ruby_segment *head) {
+    const char *close_brace = strchr(pos, '}');
+    if (!close_brace) {
+        return NULL;  // Malformed
+    }
+
+    const char *trans_start = pos + 1;
+    size_t trans_len = close_brace - trans_start;
+
+    if (!create_and_append_segment("", 0, NULL, strndup(trans_start, trans_len),
+                                   next_seg, count)) {
+        free_ruby_segments_list(head);
+        return NULL;
+    }
+
+    return close_brace + 1;
+}
+
+// Helper: Handle newline - creates segment for text before it and newline segment
+// Returns: true on success, false on allocation failure
+static bool handle_newline(const char *seg_start, const char *pos,
+                          struct ruby_segment ***next_seg, int *count,
+                          struct ruby_segment *head) {
+    // Create segment for text before newline (if any)
+    if (pos > seg_start) {
+        if (!create_and_append_segment(seg_start, pos - seg_start, NULL, NULL,
+                                       next_seg, count)) {
+            free_ruby_segments_list(head);
+            return false;
+        }
+    }
+
+    // Create newline segment
+    if (!create_and_append_segment("\n", 1, NULL, NULL, next_seg, count)) {
+        free_ruby_segments_list(head);
+        return false;
+    }
+
+    return true;
+}
+
+// Helper: Handle ruby annotation - creates segments for text before word and word with ruby
+// Returns: closing brace position on success, NULL on allocation failure
+static const char* handle_ruby_annotation(const char *pos, const char *seg_start,
+                                         const char *text_end, struct ruby_segment ***next_seg,
+                                         int *count, struct ruby_segment *head) {
+    const char *close_brace = strchr(pos, '}');
+    if (!close_brace) {
+        return NULL;  // Malformed
+    }
+
+    // Extract ruby text
+    size_t ruby_len = close_brace - pos - 1;
+    char *ruby = ruby_len > 0 ? strndup(pos + 1, ruby_len) : NULL;
+
+    // Find the word that this ruby annotation applies to
+    const char *word_end = pos;
+    const char *word_start = find_word_start(seg_start, word_end, text_end);
+
+    // Create segment for text before the word (if any)
+    if (word_start > seg_start) {
+        if (!create_and_append_segment(seg_start, word_start - seg_start, NULL, NULL,
+                                       next_seg, count)) {
+            free(ruby);
+            free_ruby_segments_list(head);
+            return NULL;
+        }
+    }
+
+    // Create segment for the word with ruby
+    if (!create_and_append_segment(word_start, word_end - word_start, ruby, NULL,
+                                   next_seg, count)) {
+        free(ruby);
+        free_ruby_segments_list(head);
+        return NULL;
+    }
+
+    free(ruby);
+    return close_brace + 1;
+}
+
 int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
     if (!text || !segments) {
         return 0;
@@ -420,16 +532,13 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
     bool has_newline = (strchr(text, '\n') != NULL);
 
     if (!has_ruby && !has_translation && !has_newline) {
-        // No ruby text, translation, or newlines - create single segment with entire line
-        struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
-        if (!seg) {
+        // No ruby text, translation, or newlines - create single segment
+        int count = 0;
+        struct ruby_segment **next_seg = segments;
+        if (!create_and_append_segment(text, strlen(text), NULL, NULL, &next_seg, &count)) {
             return 0;
         }
-        seg->text = strdup(text);
-        seg->ruby = NULL;
-        seg->translation = NULL;
-        *segments = seg;
-        return 1;
+        return count;
     }
 
     // Parse text with ruby annotations and translation tags
@@ -442,126 +551,40 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
     const char *text_end = text + strlen(text);
 
     while (*pos) {
-        // Check for translation at line start: {translation text}
         if (*pos == '{' && pos == seg_start) {
-            // Find closing brace
-            const char *close_brace = strchr(pos, '}');
-            if (!close_brace) {
+            // Translation at line start
+            const char *new_pos = handle_translation(pos, &next_seg, &count, head);
+            if (!new_pos) {
+                if (strchr(pos, '}')) {
+                    free_ruby_segments_list(head);
+                    return 0;
+                }
                 // Malformed - treat as regular text
                 pos++;
                 continue;
             }
-
-            // Extract translation text and create translation-only segment
-            const char *trans_start = pos + 1;  // Skip "{"
-            size_t trans_len = close_brace - trans_start;
-
-            struct ruby_segment *trans_seg = calloc(1, sizeof(struct ruby_segment));
-            if (!trans_seg) {
-                free_ruby_segments_list(head);
-                return 0;
-            }
-            trans_seg->text = strdup("");  // Empty text for translation-only segment
-            if (!trans_seg->text) {
-                free(trans_seg);
-                free_ruby_segments_list(head);
-                return 0;
-            }
-            trans_seg->ruby = NULL;
-            trans_seg->translation = strndup(trans_start, trans_len);
-            if (!trans_seg->translation) {
-                free(trans_seg->text);
-                free(trans_seg);
-                free_ruby_segments_list(head);
-                return 0;
-            }
-            *next_seg = trans_seg;
-            next_seg = &trans_seg->next;
-            count++;
-
-            // Move past the translation
-            pos = close_brace + 1;  // Skip "}"
+            pos = new_pos;
             seg_start = pos;
         } else if (*pos == '\n') {
-            // Found newline - create segment for text before it
-            if (pos > seg_start) {
-                struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
-                if (!seg) {
-                    free_ruby_segments_list(head);
-                    return 0;
-                }
-                seg->text = strndup(seg_start, pos - seg_start);
-                seg->ruby = NULL;
-                seg->translation = NULL;
-                *next_seg = seg;
-                next_seg = &seg->next;
-                count++;
-            }
-
-            // Create a newline segment
-            struct ruby_segment *nl_seg = calloc(1, sizeof(struct ruby_segment));
-            if (!nl_seg) {
-                free_ruby_segments_list(head);
+            // Newline
+            if (!handle_newline(seg_start, pos, &next_seg, &count, head)) {
                 return 0;
             }
-            nl_seg->text = strdup("\n");
-            nl_seg->ruby = NULL;
-            nl_seg->translation = NULL;
-            *next_seg = nl_seg;
-            next_seg = &nl_seg->next;
-            count++;
-
             pos++;
             seg_start = pos;
         } else if (*pos == '{') {
-            // Found ruby annotation
-            const char *close_brace = strchr(pos, '}');
-            if (!close_brace) {
+            // Ruby annotation
+            const char *new_pos = handle_ruby_annotation(pos, seg_start, text_end,
+                                                         &next_seg, &count, head);
+            if (!new_pos) {
+                if (strchr(pos, '}')) {
+                    return 0;
+                }
                 // Malformed - treat as regular text
                 pos++;
                 continue;
             }
-
-            // Extract ruby text
-            size_t ruby_len = close_brace - pos - 1;
-            char *ruby = ruby_len > 0 ? strndup(pos + 1, ruby_len) : NULL;
-
-            // Find the word that this ruby annotation applies to
-            const char *word_end = pos;
-            const char *word_start = find_word_start(seg_start, word_end, text_end);
-
-            // Create segment for text before the word (if any)
-            if (word_start > seg_start) {
-                struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
-                if (!seg) {
-                    free(ruby);
-                    free_ruby_segments_list(head);
-                    return 0;
-                }
-                seg->text = strndup(seg_start, word_start - seg_start);
-                seg->ruby = NULL;
-                seg->translation = NULL;
-                *next_seg = seg;
-                next_seg = &seg->next;
-                count++;
-            }
-
-            // Create segment for the word with ruby
-            struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
-            if (!seg) {
-                free(ruby);
-                free_ruby_segments_list(head);
-                return 0;
-            }
-            seg->text = strndup(word_start, word_end - word_start);
-            seg->ruby = ruby;
-            seg->translation = NULL;
-            *next_seg = seg;
-            next_seg = &seg->next;
-            count++;
-
-            // Move past the ruby annotation
-            pos = close_brace + 1;
+            pos = new_pos;
             seg_start = pos;
         } else {
             pos++;
@@ -570,29 +593,19 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
 
     // Add remaining text as final segment
     if (seg_start < text_end) {
-        struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
-        if (!seg) {
+        if (!create_and_append_segment(seg_start, text_end - seg_start, NULL, NULL,
+                                       &next_seg, &count)) {
             free_ruby_segments_list(head);
             return 0;
         }
-        seg->text = strdup(seg_start);
-        seg->ruby = NULL;
-        seg->translation = NULL;
-        *next_seg = seg;
-        count++;
     }
 
     // If no segments created, create one with entire text
     if (count == 0) {
-        struct ruby_segment *seg = calloc(1, sizeof(struct ruby_segment));
-        if (!seg) {
+        if (!create_and_append_segment(text, strlen(text), NULL, NULL, &next_seg, &count)) {
             return 0;
         }
-        seg->text = strdup(text);
-        seg->ruby = NULL;
-        seg->translation = NULL;
-        head = seg;
-        count = 1;
+        head = *segments;
     }
 
     *segments = head;

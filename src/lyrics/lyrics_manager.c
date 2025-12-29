@@ -272,15 +272,91 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     return true;
 }
 
+// Helper: Check if text is empty or whitespace-only
+static bool is_whitespace_only(const char *text) {
+    if (!text) {
+        return true;
+    }
+
+    const char *p = text;
+    while (*p) {
+        if (!isspace(*p)) {
+            return false;
+        }
+        p++;
+    }
+    return true;
+}
+
+// Helper: Calculate line index in linked list
+static int calculate_line_index(struct lyrics_data *lyrics, struct lyrics_line *target) {
+    if (!target) {
+        return -1;
+    }
+
+    int index = 0;
+    struct lyrics_line *line = lyrics->lines;
+    while (line && line != target) {
+        index++;
+        line = line->next;
+    }
+
+    return line ? index : -1;
+}
+
+// Helper: Handle line changed - update state, log, and set context lines
+static void handle_line_changed(struct lyrics_state *state, struct lyrics_line *display_line,
+                                struct lyrics_line *new_line, bool is_empty_text) {
+    state->current_line = display_line;
+    state->current_segment = NULL;
+
+    // Calculate and store line index
+    state->current_line_index = calculate_line_index(&state->lyrics, display_line);
+
+    // Update prev/next lines for multi-line display (LRCX only)
+    if (lyrics_manager_is_format(state, ".lrcx") && g_config.display.enable_multiline_lrcx) {
+        struct lyrics_line *context_line = display_line ? display_line : new_line;
+        lrcx_find_context_lines(&state->lyrics, context_line,
+                               &state->prev_line, &state->next_line);
+    } else {
+        state->prev_line = NULL;
+        state->next_line = NULL;
+    }
+
+    // Log line change
+    if (display_line && display_line->text) {
+        int index = lrc_get_line_index(&state->lyrics, display_line);
+        char *escaped_text = state_helpers_escape_newlines(display_line->text);
+        if (escaped_text) {
+            log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, escaped_text);
+            free(escaped_text);
+        } else {
+            log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, display_line->text);
+        }
+
+        // For karaoke (LRCX), set initial segment
+        if (lyrics_manager_is_format(state, ".lrcx") && display_line->segments) {
+            state->current_segment = display_line->segments;
+        }
+    } else {
+        log_info("Instrumental break - clearing lyrics (new_line=%p, is_empty_text=%d, display_line=%p)",
+            (void*)new_line, is_empty_text, (void*)display_line);
+
+        if (!state->in_instrumental_break) {
+            state->in_instrumental_break = true;
+        }
+    }
+
+    rendering_manager_set_dirty(state);
+}
+
 void lyrics_manager_update_current_line(struct lyrics_state *state) {
     if (!state->lyrics.lines) {
-        // No lyrics loaded - clear instrumental break flag
         state->in_instrumental_break = false;
         return;
     }
 
     // Get current playback position with timing offset applied
-    // Positive offset = advance lyrics (faster), Negative offset = delay lyrics (slower)
     int64_t position_us = mpris_get_position();
     position_us += (int64_t)state->timing_offset_ms * 1000LL;
 
@@ -288,90 +364,19 @@ void lyrics_manager_update_current_line(struct lyrics_state *state) {
     struct lyrics_line *new_line = lrc_find_line_at_time(&state->lyrics, position_us);
 
     // Check if we should clear the lyrics for SRT/WEBVTT formats
-    // SRT/WEBVTT have explicit end timestamps, unlike LRC/LRCX
     if (new_line && new_line->end_timestamp_us > 0 &&
         (lyrics_manager_is_format(state, ".srt") || lyrics_manager_is_format(state, ".vtt")) &&
         position_us > new_line->end_timestamp_us) {
-        // SRT/WEBVTT: Clear line when end timestamp is reached
         new_line = NULL;
     }
 
-    // Check if line text is empty or whitespace-only (instrumental break in LRC/LRCX)
-    bool is_empty_text = false;
-    if (new_line && new_line->text) {
-        const char *p = new_line->text;
-        is_empty_text = true;
-        while (*p) {
-            if (!isspace(*p)) {
-                is_empty_text = false;
-                break;
-            }
-            p++;
-        }
-    }
-
     // Treat empty/whitespace-only text lines as NULL (no lyrics to display)
+    bool is_empty_text = is_whitespace_only(new_line ? new_line->text : NULL);
     struct lyrics_line *display_line = is_empty_text ? NULL : new_line;
 
-    bool line_changed = (display_line != state->current_line);
-    if (line_changed) {
-        state->current_line = display_line;
-        state->current_segment = NULL; // Reset word segment when line changes
-
-        // Calculate current line index
-        if (display_line) {
-            int index = 0;
-            struct lyrics_line *line = state->lyrics.lines;
-            while (line && line != display_line) {
-                index++;
-                line = line->next;
-            }
-            state->current_line_index = line ? index : -1;
-        } else {
-            state->current_line_index = -1;
-        }
-
-        // Update prev/next lines for multi-line display (LRCX only)
-        if (lyrics_manager_is_format(state, ".lrcx") && g_config.display.enable_multiline_lrcx) {
-            // For instrumental breaks (empty lines), use new_line instead of display_line
-            // to maintain context display
-            struct lyrics_line *context_line = display_line ? display_line : new_line;
-            lrcx_find_context_lines(&state->lyrics, context_line,
-                                   &state->prev_line, &state->next_line);
-        } else {
-            state->prev_line = NULL;
-            state->next_line = NULL;
-        }
-
-        if (display_line && display_line->text) {
-            int index = lrc_get_line_index(&state->lyrics, display_line);
-
-            // Escape newlines for cleaner log output
-            char *escaped_text = state_helpers_escape_newlines(display_line->text);
-            if (escaped_text) {
-                log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, escaped_text);
-                free(escaped_text);
-            } else {
-                // Fallback if allocation failed
-                log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, display_line->text);
-            }
-
-            // For karaoke (LRCX), set initial segment
-            if (lyrics_manager_is_format(state, ".lrcx") && display_line->segments) {
-                state->current_segment = display_line->segments;
-            }
-        } else {
-            // Debug: why is this being printed?
-            log_info("Instrumental break - clearing lyrics (new_line=%p, is_empty_text=%d, display_line=%p)",
-                (void*)new_line, is_empty_text, (void*)display_line);
-
-            // Mark that we're in instrumental break (for file check during idle time)
-            if (!state->in_instrumental_break) {
-                state->in_instrumental_break = true;
-            }
-        }
-
-        rendering_manager_set_dirty(state);
+    // Handle line change
+    if (display_line != state->current_line) {
+        handle_line_changed(state, display_line, new_line, is_empty_text);
     }
 
     // Clear instrumental break flag when lyrics are showing

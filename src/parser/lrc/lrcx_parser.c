@@ -8,6 +8,76 @@
 #include <string.h>
 #include <ctype.h>
 
+// Helper: Find text range after line timestamp (before next '[')
+// Returns: end pointer if text found, NULL otherwise
+static const char* find_first_text_range(const char *pos, const char **start_out) {
+    // Skip leading whitespace
+    const char *text_start = pos;
+    while (*text_start && isspace(*text_start)) {
+        text_start++;
+    }
+
+    // Check if text exists before next timestamp
+    if (!*text_start || *text_start == '[') {
+        return NULL;
+    }
+
+    // Find end of text (next '[' or end of string)
+    const char *text_end = text_start;
+    while (*text_end && *text_end != '[') {
+        text_end++;
+    }
+
+    // Trim trailing whitespace
+    while (text_end > text_start && isspace(*(text_end - 1))) {
+        text_end--;
+    }
+
+    if (text_end > text_start) {
+        *start_out = text_start;
+        return text_end;
+    }
+
+    return NULL;
+}
+
+// Helper: Build full_text buffer from word segments (base text only, no ruby)
+// Returns: false on allocation failure
+static bool build_full_text_from_segments(struct word_segment *segments,
+                                          char **full_text, size_t *full_text_len,
+                                          size_t *full_text_capacity) {
+    // Calculate required buffer size
+    size_t estimated_len = 0;
+    struct word_segment *seg = segments;
+    while (seg) {
+        if (seg->text && seg->text[0] != '\n') {
+            estimated_len += strlen(seg->text);
+        }
+        seg = seg->next;
+    }
+
+    // Allocate buffer
+    *full_text_capacity = estimated_len + 1;
+    *full_text = malloc(*full_text_capacity);
+    if (!*full_text) {
+        return false;
+    }
+
+    // Copy text from segments
+    seg = segments;
+    while (seg) {
+        if (seg->text && seg->text[0] != '\n') {
+            size_t seg_len = strlen(seg->text);
+            memcpy(*full_text + *full_text_len, seg->text, seg_len);
+            *full_text_len += seg_len;
+        }
+        seg = seg->next;
+    }
+    (*full_text)[*full_text_len] = '\0';
+
+    return true;
+}
+
 // Parse first text segment (text immediately after line timestamp, before first word timestamp)
 // Returns updated position and whether full_text was allocated
 static const char* parse_first_text_segment(const char *pos, int64_t line_timestamp_us,
@@ -15,77 +85,39 @@ static const char* parse_first_text_segment(const char *pos, int64_t line_timest
                                              struct word_segment ***next_segment_ptr,
                                              char **full_text, size_t *full_text_len,
                                              size_t *full_text_capacity) {
-    // Check if there's text immediately after first timestamp (before next '[')
-    // This handles: [00:01.00]今は[00:02.00]... where 今は should be first segment
-    const char *first_text_start = pos;
-    while (*first_text_start && isspace(*first_text_start)) {
-        first_text_start++;
+    // Find text range (handles: [00:01.00]今は[00:02.00]... where 今は is first segment)
+    const char *text_start = NULL;
+    const char *text_end = find_first_text_range(pos, &text_start);
+    if (!text_end) {
+        return pos;  // No text found
     }
 
-    if (*first_text_start && *first_text_start != '[') {
-        // Found text before next timestamp - create first segment with line timestamp
-        const char *first_text_end = first_text_start;
-        while (*first_text_end && *first_text_end != '[') {
-            first_text_end++;
-        }
+    // Parse text into segments (handles multiple ruby annotations)
+    char *raw_text = strndup(text_start, text_end - text_start);
+    struct word_segment *segments = NULL;
+    int64_t timestamp_us = apply_timestamp_offset(line_timestamp_us, data->metadata.offset_ms);
+    int seg_count = parse_karaoke_segments(raw_text, timestamp_us, &segments);
+    free(raw_text);
 
-        // Trim trailing whitespace
-        while (first_text_end > first_text_start && isspace(*(first_text_end - 1))) {
-            first_text_end--;
-        }
-
-        if (first_text_end > first_text_start) {
-            // Parse text into segments (handles multiple ruby annotations)
-            char *raw_text = strndup(first_text_start, first_text_end - first_text_start);
-
-            struct word_segment *segments = NULL;
-            int64_t timestamp_us = apply_timestamp_offset(line_timestamp_us, data->metadata.offset_ms);
-            int seg_count = parse_karaoke_segments(raw_text, timestamp_us, &segments);
-            free(raw_text);
-
-            if (seg_count > 0 && segments) {
-                // Add all segments to the line
-                struct word_segment *seg = segments;
-                while (seg) {
-                    **next_segment_ptr = seg;
-                    *next_segment_ptr = &seg->next;
-                    new_line->segment_count++;
-                    seg = seg->next;
-                }
-
-                // Build full text from segments (base text only, without ruby notation)
-                seg = segments;
-                size_t estimated_len = 0;
-                while (seg) {
-                    if (seg->text && seg->text[0] != '\n') {
-                        estimated_len += strlen(seg->text);
-                    }
-                    seg = seg->next;
-                }
-
-                *full_text_capacity = estimated_len + 1;
-                *full_text = malloc(*full_text_capacity);
-                if (!*full_text) {
-                    return NULL;  // Signal error
-                }
-
-                seg = segments;
-                while (seg) {
-                    if (seg->text && seg->text[0] != '\n') {
-                        size_t seg_len = strlen(seg->text);
-                        memcpy(*full_text + *full_text_len, seg->text, seg_len);
-                        *full_text_len += seg_len;
-                    }
-                    seg = seg->next;
-                }
-                (*full_text)[*full_text_len] = '\0';
-            }
-
-            return first_text_end;
-        }
+    if (seg_count <= 0 || !segments) {
+        return text_end;
     }
 
-    return pos;
+    // Add all segments to the line
+    struct word_segment *seg = segments;
+    while (seg) {
+        **next_segment_ptr = seg;
+        *next_segment_ptr = &seg->next;
+        new_line->segment_count++;
+        seg = seg->next;
+    }
+
+    // Build full text buffer from segments
+    if (!build_full_text_from_segments(segments, full_text, full_text_len, full_text_capacity)) {
+        return NULL;  // Allocation error
+    }
+
+    return text_end;
 }
 
 // Ensure full_text buffer has enough capacity and append text with optional space
