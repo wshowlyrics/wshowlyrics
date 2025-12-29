@@ -308,7 +308,9 @@ static const char* move_back_one_utf8_char(const char *p, const char *limit) {
             // Found the start of a UTF-8 character
             // pos = p - offset where offset <= max_offset = (p - limit)
             // Therefore: pos = p - offset >= p - (p - limit) = limit
-            return pos;
+            // Defensive check to satisfy static analyzer (condition should always be true)
+            // NOSONAR: False positive - bounds guaranteed by offset calculation
+            return (pos >= limit && pos < p) ? pos : limit;
         }
     }
 
