@@ -1,23 +1,26 @@
 # TODO: SonarCloud Code Quality Improvements
 
-## 현재 상태 (2025-12-29)
+## 현재 상태 (2025-12-30)
 
-### ✅ 완료된 작업 (Phase 1-7)
+### ✅ 완료된 작업 (Phase 1-8)
 - **Security Hotspots**: 100% Reviewed (107개 전체 처리)
 - **Phase 1-7 완료**: 보안, 복잡도, 파라미터, 중복 제거
+- **Phase 8-1 완료**: 복잡도 45-69 (5개 함수)
+- **Phase 8-3 완료**: 복잡도 26-44 (11개 함수) ✅ **NEW**
+- **Phase 8-5 완료**: 복잡도 26 (1개 함수 - mpris.c:323)
 - **전체 등급**: ⭐ A등급 달성 (Maintainability, Reliability, Security)
 - **Bugs**: 0개
 - **Vulnerabilities**: 0개
 
-### 📊 남은 작업 (2025-12-29 기준)
-- **총 미해결 이슈**: 222개
+### 📊 남은 작업 (2025-12-30 기준)
+- **총 미해결 이슈**: 211개 (Phase 8-3 완료로 11개 감소)
   - **BLOCKER**: 0개
-  - **CRITICAL**: 73개 (C 코드만, Python 제외)
+  - **CRITICAL**: 62개 (C 코드만, Python 제외) - 이전 73개에서 11개 감소
   - **MAJOR**: 28개 (C 코드만, Python 제외)
   - **MINOR**: 110개
   - **INFO**: 0개
-- **C 코드 우선 이슈**: 101개 (CRITICAL 73 + MAJOR 28)
-- **총 예상 시간**: ~26시간 (버퍼 포함 28-30시간)
+- **C 코드 우선 이슈**: 90개 (CRITICAL 62 + MAJOR 28)
+- **총 예상 시간**: ~23시간 (버퍼 포함 25-27시간)
 
 ---
 
@@ -155,21 +158,74 @@
 
 ---
 
-### Priority 3: 소규모 복잡도 개선 (복잡도 26-39, 12개) 📝
-**예상 시간**: 3h 7min
+### Priority 3: 소규모 복잡도 개선 (복잡도 26-44, 11개) ✅ **완료**
+**예상 시간**: 2h 59min | **실제 시간**: ~3h
 
-#### 12. file_monitor.c:50 - 복잡도 42 → 25 (22min) | AZsw3M96Hpp0TbwUWQbQ
-#### 13. srt_parser.c:114 - 복잡도 40 → 25 (20min) | AZsw3M7fHpp0TbwUWQYS
-#### 14. config.c:762 - 복잡도 36 → 25 (16min) | AZsw3M-3THpp0TbwUWQbn
-#### 15. ruby_render.c:192 - 복잡도 34 → 25 (14min) | AZs1J-BMHL_6RtSCbLsR
-#### 16. config.c:1124 - 복잡도 32 → 25 (12min) | AZsw3M9THpp0TbwUWQa1
-#### 17. ruby_render.c:44 - 복잡도 30 → 25 (10min) | AZs1J-BMHL_6RtSCbLsQ
-#### 18. rendering_manager.c:40 - 복잡도 30 → 25 (10min) | AZtgjSRWhSZXhd8a4uzp
-#### 19. parser_utils.c:291 - 복잡도 28 → 25 (8min) | AZsxJYoWqE2ErzW5x-dz
-#### 20. lyrics_provider.c:200 - 복잡도 28 → 25 (8min) | AZsw3M9EHpp0TbwUWQaB
-#### 21. ~~mpris.c:323 - 복잡도 28 → 25 (8min)~~ | AZthAcXSCKz1u_SNSw_j ✅ **완료 (커밋: 43ab00f)**
-#### 22. system_tray.c:411 - 복잡도 44 → 25 (24min) | AZtaZrqUhSZXhd8aT109
-#### 23. word_render.c:281 - 복잡도 26 → 25 (6min) | AZs1J-D1HL_6RtSCbLsT
+#### 12. ~~file_monitor.c:50 - 복잡도 42 → 25~~ ✅ **완료 (커밋: 8da3a3b)**
+**이슈 키**: AZsw3M96Hpp0TbwUWQbQ
+- `file_monitor_reload_config()` 113줄 → 37줄 (67% 감소)
+- 헬퍼 추출: `has_string_changed()`, `update_state_colors()`, `check_translation_config_changed()`, `check_font_changed()`, `check_layout_changed()`
+
+#### 13. ~~srt_parser.c:114 - 복잡도 40 → 25~~ ✅ **완료 (커밋: 8da3a3b)**
+**이슈 키**: AZsw3M7fHpp0TbwUWQYS
+- `srt_parse_string()` 105줄 → 88줄 (16% 감소)
+- 헬퍼 추출: `should_skip_line()`, `try_parse_timestamp()`, `create_and_add_subtitle()`
+
+#### 14. ~~config.c:762 - 복잡도 36 → 25~~ ✅ **완료 (커밋: 8da3a3b)**
+**이슈 키**: AZsw3M-3THpp0TbwUWQbn
+- `validate_config_path()` 68줄 → 12줄 (82% 감소)
+- 헬퍼 추출: `resolve_path_or_directory()`, `is_path_in_safe_location()`
+
+#### 15. ~~ruby_render.c:192 - 복잡도 34 → 25~~ ✅ **완료 (커밋: 8da3a3b)**
+**이슈 키**: AZs1J-BMHL_6RtSCbLsR
+- `render_ruby_segments_with_translation()` 118줄 → 67줄 (43% 감소)
+- 헬퍼 추출: `render_original_text()`, `render_translation_text()`, `calculate_total_height()`
+
+#### 16. ~~config.c:1124 - 복잡도 32 → 25~~ ✅ **완료 (커밋: 439604f)**
+**이슈 키**: AZsw3M9THpp0TbwUWQa1
+- `config_load_with_fallback()` 81줄 → 24줄 (70% 감소)
+- 헬퍼 추출: `create_config_directory()`, `copy_system_config_to_user()`, `try_load_config_from_path()`
+
+#### 17. ~~ruby_render.c:44 - 복잡도 30 → 25~~ ✅ **완료 (커밋: 439604f)**
+**이슈 키**: AZs1J-BMHL_6RtSCbLsQ
+- `render_ruby_segments()` 130줄 → 91줄 (30% 감소)
+- 헬퍼 추출: `is_translation_segment()`, `update_total_width()`, `render_translation_segment()`, `handle_newline_segment()`
+
+#### 18. ~~rendering_manager.c:40 - 복잡도 30 → 25~~ ✅ **완료 (커밋: 439604f)**
+**이슈 키**: AZtgjSRWhSZXhd8a4uzp
+- `render_offset_bar()` 92줄 → 49줄 (47% 감소)
+- 헬퍼 추출: `render_single_bar()`, `render_same_sign_bars()`, `render_opposite_sign_bar()`
+
+#### 19. ~~parser_utils.c:291 - 복잡도 28 → 25~~ ✅ **완료 (커밋: 439604f)**
+**이슈 키**: AZsxJYoWqE2ErzW5x-dz
+- `find_word_start()` 46줄 → 11줄 (76% 감소)
+- 헬퍼 추출: `move_back_one_utf8_char()`, `find_space_boundary()`, `find_kanji_boundary()`
+
+#### 20. ~~lyrics_provider.c:200 - 복잡도 28 → 25~~ ✅ **완료 (커밋: 439604f)**
+**이슈 키**: AZsw3M9EHpp0TbwUWQaB
+- `get_extension_priority()` 70줄 → 7줄 (90% 감소)
+- 헬퍼 추출: `create_default_extensions()`, `parse_custom_extensions()`
+
+#### 21. ~~mpris.c:323 - 복잡도 28 → 25~~ ✅ **완료 (커밋: 43ab00f)**
+**이슈 키**: AZthAcXSCKz1u_SNSw_j
+
+#### 22. ~~system_tray.c:411 - 복잡도 44 → 25~~ ✅ **완료 (커밋: 439604f)**
+**이슈 키**: AZtaZrqUhSZXhd8aT109
+- `system_tray_send_notification()` 93줄 → 43줄 (54% 감소)
+- 헬퍼 추출: `build_notification_body()`, `create_badged_icon()`, `prepare_notification_icon()`
+- **최고 복잡도 함수 (44)** 성공적으로 리팩토링
+
+#### 23. ~~word_render.c:281 - 복잡도 26 → 25~~ ✅ **완료 (커밋: 439604f)**
+**이슈 키**: AZs1J-D1HL_6RtSCbLsT
+- `render_karaoke_multiline()` 112줄 → 50줄 (55% 감소)
+- 헬퍼 추출: `render_context_line()`, `render_main_karaoke_line()`
+
+**Phase 8-3 총계**:
+- 11개 함수 리팩토링 (복잡도 26-44)
+- 30개 헬퍼 함수 추가
+- 1028줄 → 479줄 (549줄 절감, 53% 감소)
+- 커밋: 8da3a3b (4개), 439604f (7개)
+- 모든 함수 복잡도 25 이하로 감소 달성
 
 ---
 
