@@ -333,9 +333,12 @@ static char* config_get_user_path(void) {
 
     int result;
     if (config_home) {
-        result = build_path(path, CONFIG_PATH_SIZE, "%s/wshowlyrics/settings.ini", config_home);
+        result = build_config_path(path, CONFIG_PATH_SIZE, config_home);
     } else {
-        result = build_path(path, CONFIG_PATH_SIZE, "%s/.config/wshowlyrics/settings.ini", home);
+        result = snprintf(path, CONFIG_PATH_SIZE, "%s/.config/wshowlyrics/settings.ini", home);
+        if (result < 0 || result >= CONFIG_PATH_SIZE) {
+            result = -1;
+        }
     }
 
     if (result < 0) {

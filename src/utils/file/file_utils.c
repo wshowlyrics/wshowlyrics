@@ -133,21 +133,87 @@ bool file_has_changed(const char *filepath, const char *expected_checksum) {
     return strcmp(current_checksum, expected_checksum) != 0;
 }
 
-int build_path(char *dest, size_t dest_size, const char *fmt, ...) {
-    if (!dest || !fmt || dest_size == 0) {
+// Safe path building functions (no variadic args, no format string vulnerabilities)
+
+// Join two path components: "dir/file"
+int join_path_2(char *dest, size_t dest_size, const char *part1, const char *part2) {
+    if (!dest || !part1 || !part2 || dest_size == 0) {
         return -1;
     }
 
-    va_list args;
-    va_start(args, fmt);
-    int written = vsnprintf(dest, dest_size, fmt, args);
-    va_end(args);
-
-    // Check for error or truncation
+    int written = snprintf(dest, dest_size, "%s/%s", part1, part2);
     if (written < 0 || written >= (int)dest_size) {
         return -1;
     }
+    return written;
+}
 
+// Build path with extension: "dir/name.ext"
+int build_path_with_ext(char *dest, size_t dest_size, const char *dir,
+                        const char *name, const char *ext) {
+    if (!dest || !dir || !name || !ext || dest_size == 0) {
+        return -1;
+    }
+
+    int written = snprintf(dest, dest_size, "%s/%s.%s", dir, name, ext);
+    if (written < 0 || written >= (int)dest_size) {
+        return -1;
+    }
+    return written;
+}
+
+// Build path with subdirectory and extension: "dir/subdir/name.ext"
+int build_path_with_subdir_ext(char *dest, size_t dest_size, const char *dir,
+                               const char *subdir, const char *name, const char *ext) {
+    if (!dest || !dir || !subdir || !name || !ext || dest_size == 0) {
+        return -1;
+    }
+
+    int written = snprintf(dest, dest_size, "%s/%s/%s.%s", dir, subdir, name, ext);
+    if (written < 0 || written >= (int)dest_size) {
+        return -1;
+    }
+    return written;
+}
+
+// Build path for "artist - title" format: "dir/artist - title.ext"
+int build_path_artist_title(char *dest, size_t dest_size, const char *dir,
+                            const char *artist, const char *title, const char *ext) {
+    if (!dest || !dir || !artist || !title || !ext || dest_size == 0) {
+        return -1;
+    }
+
+    int written = snprintf(dest, dest_size, "%s/%s - %s.%s", dir, artist, title, ext);
+    if (written < 0 || written >= (int)dest_size) {
+        return -1;
+    }
+    return written;
+}
+
+// Build config path: "base/wshowlyrics/settings.ini"
+int build_config_path(char *dest, size_t dest_size, const char *base) {
+    if (!dest || !base || dest_size == 0) {
+        return -1;
+    }
+
+    int written = snprintf(dest, dest_size, "%s/wshowlyrics/settings.ini", base);
+    if (written < 0 || written >= (int)dest_size) {
+        return -1;
+    }
+    return written;
+}
+
+// Build translation cache path helper: "dir/md5_lang.json"
+static int build_translation_cache_path_internal(char *dest, size_t dest_size, const char *dir,
+                                                  const char *md5, const char *lang) {
+    if (!dest || !dir || !md5 || !lang || dest_size == 0) {
+        return -1;
+    }
+
+    int written = snprintf(dest, dest_size, "%s/%s_%s.json", dir, md5, lang);
+    if (written < 0 || written >= (int)dest_size) {
+        return -1;
+    }
     return written;
 }
 
@@ -209,7 +275,7 @@ int build_album_art_cache_path(char *dest, size_t dest_size, const char *md5_has
     }
 
     init_cache_directories();
-    return build_path(dest, dest_size, "%s/%s.png", g_cache_album_art_dir, md5_hash);
+    return build_path_with_ext(dest, dest_size, g_cache_album_art_dir, md5_hash, "png");
 }
 
 int build_lyrics_cache_path(char *dest, size_t dest_size, const char *md5_hash) {
@@ -224,7 +290,7 @@ int build_lyrics_cache_path(char *dest, size_t dest_size, const char *md5_hash) 
     }
 
     init_cache_directories();
-    return build_path(dest, dest_size, "%s/%s.lrc", g_cache_lyrics_dir, md5_hash);
+    return build_path_with_ext(dest, dest_size, g_cache_lyrics_dir, md5_hash, "lrc");
 }
 
 bool calculate_metadata_md5(const char *artist, const char *title, const char *album, char *md5_out) {
@@ -274,6 +340,7 @@ bool calculate_metadata_md5(const char *artist, const char *title, const char *a
     return true;
 }
 
+// Note: This is a wrapper function - the actual implementation is the helper above
 int build_translation_cache_path(char *dest, size_t dest_size,
                                   const char *original_md5,
                                   const char *target_lang) {
@@ -288,8 +355,9 @@ int build_translation_cache_path(char *dest, size_t dest_size,
     }
 
     init_cache_directories();
-    return build_path(dest, dest_size, "%s/%s_%s.json",
-                      g_cache_translated_dir, original_md5, target_lang);
+
+    return build_translation_cache_path_internal(dest, dest_size, g_cache_translated_dir,
+                                                   original_md5, target_lang);
 }
 
 // Recursively remove directory and its contents

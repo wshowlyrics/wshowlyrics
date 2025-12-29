@@ -13,10 +13,26 @@ bool calculate_file_md5(const char *filepath, char *checksum_out);
 // Returns true if the file exists and checksum differs from expected
 bool file_has_changed(const char *filepath, const char *expected_checksum);
 
-// Build a file path safely with bounds checking
-// Returns number of characters written (excluding null), or -1 on error/truncation
-// Pattern examples: "%s/%s.%s" for "dir/file.ext", "%s/.lyrics" for "home/.lyrics"
-int build_path(char *dest, size_t dest_size, const char *fmt, ...);
+// Safe path building functions (no variadic args, no format string vulnerabilities)
+// All functions return number of characters written (excluding null), or -1 on error/truncation
+
+// Join two path components: "dir/file"
+int join_path_2(char *dest, size_t dest_size, const char *part1, const char *part2);
+
+// Build path with extension: "dir/name.ext"
+int build_path_with_ext(char *dest, size_t dest_size, const char *dir,
+                        const char *name, const char *ext);
+
+// Build path with subdirectory and extension: "dir/subdir/name.ext"
+int build_path_with_subdir_ext(char *dest, size_t dest_size, const char *dir,
+                               const char *subdir, const char *name, const char *ext);
+
+// Build path for "artist - title" format: "dir/artist - title.ext"
+int build_path_artist_title(char *dest, size_t dest_size, const char *dir,
+                            const char *artist, const char *title, const char *ext);
+
+// Build config path: "base/wshowlyrics/settings.ini"
+int build_config_path(char *dest, size_t dest_size, const char *base);
 
 // Get cache base directory path
 // Returns $XDG_CACHE_HOME/wshowlyrics or $HOME/.cache/wshowlyrics
