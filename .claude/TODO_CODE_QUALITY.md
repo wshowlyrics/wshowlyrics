@@ -389,16 +389,18 @@ struct parser_config {
 
 ## 구현 계획
 
-### Phase 8-1: 최우선 복잡도 (1-5번) 🔥
+### Phase 8-1: 최우선 복잡도 (1-5번) 🔥 ✅ **완료**
 **예상 시간**: 6h 23min
+**실제 시간**: ~8h (테스트 포함)
+**커밋**: 8d665ab
 
-- [ ] main.c:37 리팩토링 (2h 2min) - 최우선
-- [ ] word_render.c:86 리팩토링 (1h 14min)
-- [ ] lrc_parser.c:11 리팩토링 (1h 4min)
-- [ ] lyrics_provider.c:556 리팩토링 (57min)
-- [ ] mpris.c:421 리팩토링 (50min)
-- [ ] 빌드 검증
-- [ ] 기능 회귀 테스트
+- [x] main.c:37 리팩토링 (2h 2min) - 최우선
+- [x] word_render.c:86 리팩토링 (1h 14min)
+- [x] lrc_parser.c:11 리팩토링 (1h 4min)
+- [x] lyrics_provider.c:556 리팩토링 (57min)
+- [x] mpris.c:421 리팩토링 (50min)
+- [x] 빌드 검증
+- [x] 기능 회귀 테스트
 
 ---
 
@@ -441,13 +443,15 @@ struct parser_config {
 
 ---
 
-### Phase 8-5: 보안/품질 이슈 (70-72번) 🔒
+### Phase 8-5: 보안/품질 이슈 (70-72번) 🔒 ✅ **완료**
 **예상 시간**: 45min
+**실제 시간**: ~1h (컴파일 에러 수정 포함)
+**커밋**: 73adfae
 
-- [ ] parser_utils.c:152 0바이트 malloc 수정 (5min)
-- [ ] file_utils.c:88 ellipsis 제거 (30min)
-- [ ] file_utils.c:95 format string 수정 (10min)
-- [ ] 빌드 검증
+- [x] parser_utils.c:152 0바이트 malloc 수정 (5min) - 이미 검증 존재
+- [x] file_utils.c:88 ellipsis 제거 (30min) - 6개 타입 안전 함수로 대체
+- [x] file_utils.c:95 format string 수정 (10min) - 리터럴 포맷 스트링 사용
+- [x] 빌드 검증
 
 ---
 
@@ -565,13 +569,20 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ## 상태
 
 - **생성일**: 2025-12-19
-- **최종 업데이트**: 2025-12-29 (SonarCloud API 기반 전체 재검증, Python 제외)
-- **현재 Phase**: Phase 8 시작 전
-- **완료 Phases**: 1-7 (보안, 일부 복잡도, 파라미터, 중복 제거)
+- **최종 업데이트**: 2025-12-29 (Phase 8-1, 8-5 완료)
+- **현재 Phase**: Phase 8 진행 중
+- **완료 Phases**:
+  - 1-7 (보안, 일부 복잡도, 파라미터, 중복 제거)
+  - 8-1 (최우선 복잡도 5개, 커밋: 8d665ab)
+  - 8-5 (보안/품질 3개, 커밋: 73adfae)
+- **남은 Phase 8 작업**:
+  - 8-2: 중간 복잡도 (6개, ~3h)
+  - 8-3: 소규모 복잡도 (12개, ~3h)
+  - 8-4: 중첩 깊이 (46개, ~8h)
 - **남은 이슈 (C 코드만)**:
-  - CRITICAL: 73개
+  - CRITICAL: ~65개 (8개 해결됨)
   - MAJOR: 28개 (Python 내부 테스트 스크립트 제외)
-  - 총: 101개
+  - 총: ~93개
 - **우선순위**: High (코드 품질, 유지보수성)
 - **목표**: 모든 C 코드 CRITICAL/MAJOR 이슈 해결, A등급 유지
-- **예상 소요 시간**: 26h 8min (버퍼 포함 28-30시간)
+- **남은 예상 시간**: ~19h (Phase 8-2,3,4 + Phase 9)
