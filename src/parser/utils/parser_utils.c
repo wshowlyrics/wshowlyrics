@@ -294,16 +294,21 @@ static const char* move_back_one_utf8_char(const char *p, const char *limit) {
     if (p <= limit) {
         return limit;
     }
-    const char *prev = p - 1;
-    while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
-        prev--;
+
+    // Move backwards from p-1, looking for a non-continuation byte
+    // Use explicit loop with range check to satisfy static analyzer
+    for (const char *pos = p - 1; pos >= limit; pos--) {
+        // Check if this is NOT a continuation byte (10xxxxxx)
+        if (((unsigned char)*pos & 0xC0) != 0x80) {
+            // Found the start of a UTF-8 character
+            // pos is guaranteed to be in range [limit, p) by loop condition
+            return pos;
+        }
     }
-    // Defensive bounds check to satisfy static analyzer
-    // prev should always be in range [limit, p), but verify explicitly
-    if (prev < limit || prev >= p) {
-        return limit;
-    }
-    return prev;
+
+    // All bytes between limit and p were continuation bytes
+    // This shouldn't happen with valid UTF-8, but return limit as fallback
+    return limit;
 }
 
 // Helper: Find space-based word boundary
