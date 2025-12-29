@@ -326,9 +326,76 @@ void render_word_segments_static(const struct word_static_params *params) {
     RENDER_SEGMENTS_IMPL(struct word_segment, calculate_max_ruby_height_word);
 }
 
+// Helper: Render a context line (prev or next) with dimmed color
+// Returns: line height (0 if line not rendered)
+static int render_context_line(cairo_t *cairo, const char *font, int scale,
+                               uint32_t foreground, double context_scale,
+                               double opacity, struct lyrics_line *line,
+                               int y_offset, int *total_width) {
+    if (!line || !line->text || line->text[0] == '\0') {
+        return 0;
+    }
+
+    char *stripped = strip_ruby_notation(line->text);
+    if (!stripped || stripped[0] == '\0') {
+        free(stripped);
+        return 0;
+    }
+
+    // Render with dimmed color
+    uint32_t dimmed = create_color_with_opacity(foreground, opacity);
+    cairo_set_source_u32(cairo, dimmed);
+
+    int w, h;
+    get_text_size(cairo, font, &w, &h, NULL, scale * context_scale, stripped);
+
+    cairo_save(cairo);
+    cairo_translate(cairo, 0, y_offset);
+    cairo_move_to(cairo, 0, 0);
+    pango_printf(cairo, font, scale * context_scale, stripped);
+    cairo_restore(cairo);
+
+    if (w > *total_width) *total_width = w;
+    free(stripped);
+    return h;
+}
+
+// Helper: Render main karaoke line
+// Returns: line height (0 if line not rendered)
+static int render_main_karaoke_line(cairo_t *cairo, const char *font, int scale,
+                                   uint32_t foreground, int64_t position_us,
+                                   struct lyrics_line *line, int y_offset,
+                                   int *total_width) {
+    if (!line || !line->segments) {
+        return 0;
+    }
+
+    int w, h;
+    cairo_save(cairo);
+    cairo_translate(cairo, 0, y_offset);
+
+    struct karaoke_params seg_params = {
+        .base = {
+            .cairo = cairo,
+            .font = font,
+            .scale = scale,
+            .foreground = foreground,
+            .width = &w,
+            .height = &h
+        },
+        .segments = line->segments,
+        .position_us = position_us
+    };
+    render_karaoke_segments(&seg_params);
+
+    cairo_restore(cairo);
+
+    if (w > *total_width) *total_width = w;
+    return h;
+}
+
 void render_karaoke_multiline(const struct multiline_params *params) {
     // For LRCX, we render prev/next lines even during instrumental breaks (current_line = NULL)
-    // This provides context during silent sections
     if (!params || (!params->prev_line && !params->current_line && !params->next_line)) {
         if (params && params->base.width && params->base.height) {
             *params->base.width = 0;
@@ -337,102 +404,42 @@ void render_karaoke_multiline(const struct multiline_params *params) {
         return;
     }
 
-    // Extract parameters for readability
-    cairo_t *cairo = params->base.cairo;
-    const char *font = params->base.font;
-    int scale = params->base.scale;
-    uint32_t foreground = params->base.foreground;
-    int64_t position_us = params->position_us;
-    struct lyrics_line *prev_line = params->prev_line;
-    struct lyrics_line *current_line = params->current_line;
-    struct lyrics_line *next_line = params->next_line;
+    // Extract parameters
+    const double context_scale = 0.7;  // 70% for prev/next
+    const int context_spacing = 2;     // Minimal spacing for context lines
+    const int main_spacing = 4;        // Spacing before/after main line
 
-    const double context_scale = 0.7;  // 70% for prev/next (matches translation scale)
     int total_width = 0;
     int total_height = 0;
     int y_offset = 0;
 
-    // Calculate base text height for line spacing
-    // Minimal spacing to fit all 3 lines without clipping
-    const int context_spacing = 2;  // Minimal spacing for prev/next lines
-    const int main_spacing = 4;     // Small spacing before/after main line
-
-    // --- Line 1: Previous line (small, no ruby, 75% opacity) ---
-    if (prev_line && prev_line->text && prev_line->text[0] != '\0') {
-        char *stripped = strip_ruby_notation(prev_line->text);
-        if (stripped && stripped[0] != '\0') {
-            uint32_t dimmed = create_color_with_opacity(foreground, 0.75);
-            cairo_set_source_u32(cairo, dimmed);
-
-            int w, h;
-            get_text_size(cairo, font, &w, &h, NULL, scale * context_scale,
-                         stripped);
-
-            cairo_save(cairo);
-            cairo_translate(cairo, 0, y_offset);
-            cairo_move_to(cairo, 0, 0);  // Set explicit starting position
-            pango_printf(cairo, font, scale * context_scale, stripped);
-            cairo_restore(cairo);
-
-            if (w > total_width) total_width = w;
-            total_height += h;
-            y_offset += h + main_spacing;  // Larger spacing before main line
-        }
-        free(stripped);
+    // Render previous line (75% opacity)
+    int prev_h = render_context_line(params->base.cairo, params->base.font,
+                                     params->base.scale, params->base.foreground,
+                                     context_scale, 0.75, params->prev_line,
+                                     y_offset, &total_width);
+    if (prev_h > 0) {
+        total_height += prev_h;
+        y_offset += prev_h + main_spacing;
     }
 
-    // --- Line 2: Current line (normal size, ruby + karaoke) ---
-    // During instrumental breaks, current_line may be NULL, so we skip this section
-    if (current_line && current_line->segments) {
-        int w, h;
-
-        cairo_save(cairo);
-        cairo_translate(cairo, 0, y_offset);
-
-        // Call render_karaoke_segments with struct params
-        struct karaoke_params seg_params = {
-            .base = {
-                .cairo = cairo,
-                .font = font,
-                .scale = scale,
-                .foreground = foreground,
-                .width = &w,
-                .height = &h
-            },
-            .segments = current_line->segments,
-            .position_us = position_us
-        };
-        render_karaoke_segments(&seg_params);
-
-        cairo_restore(cairo);
-
-        if (w > total_width) total_width = w;
-        total_height += h;
-        y_offset += h + context_spacing;  // Smaller spacing after main line
+    // Render current line (full karaoke)
+    int main_h = render_main_karaoke_line(params->base.cairo, params->base.font,
+                                         params->base.scale, params->base.foreground,
+                                         params->position_us, params->current_line,
+                                         y_offset, &total_width);
+    if (main_h > 0) {
+        total_height += main_h;
+        y_offset += main_h + context_spacing;
     }
 
-    // --- Line 3: Next line (small, no ruby, 50% opacity) ---
-    if (next_line && next_line->text && next_line->text[0] != '\0') {
-        char *stripped = strip_ruby_notation(next_line->text);
-        if (stripped && stripped[0] != '\0') {
-            uint32_t dimmed = create_color_with_opacity(foreground, 0.5);
-            cairo_set_source_u32(cairo, dimmed);
-
-            int w, h;
-            get_text_size(cairo, font, &w, &h, NULL, scale * context_scale,
-                         stripped);
-
-            cairo_save(cairo);
-            cairo_translate(cairo, 0, y_offset);
-            cairo_move_to(cairo, 0, 0);  // Set explicit starting position
-            pango_printf(cairo, font, scale * context_scale, stripped);
-            cairo_restore(cairo);
-
-            if (w > total_width) total_width = w;
-            total_height += h;
-            // No spacing after last line
-        }
-        free(stripped);
+    // Render next line (50% opacity)
+    int next_h = render_context_line(params->base.cairo, params->base.font,
+                                     params->base.scale, params->base.foreground,
+                                     context_scale, 0.5, params->next_line,
+                                     y_offset, &total_width);
+    if (next_h > 0) {
+        total_height += next_h;
     }
 
     *params->base.width = total_width;

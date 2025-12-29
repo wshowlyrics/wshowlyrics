@@ -1138,87 +1138,108 @@ void config_validate_user_config(void) {
     free(user_path);
 }
 
+// Helper: Create config directory if it doesn't exist
+static void create_config_directory(const char *config_path) {
+    char *dir_path = strdup(config_path);
+    char *last_slash = strrchr(dir_path, '/');
+
+    if (last_slash) {
+        *last_slash = '\0';
+        if (mkdir(dir_path, 0700) == -1 && errno != EEXIST) {
+            log_warn("Failed to create config directory %s: %s", dir_path, strerror(errno));
+        }
+    }
+
+    free(dir_path);
+}
+
+// Helper: Copy system config to newly created user config file
+// fd: File descriptor of the newly created user config file (will be closed)
+static void copy_system_config_to_user(int fd, const char *user_config_path) {
+    const char *system_config = "/etc/wshowlyrics/settings.ini";
+    FILE *src = fopen(system_config, "r");
+
+    if (!src) {
+        close(fd);  // System config not found, close the empty file
+        return;
+    }
+
+    FILE *dst = fdopen(fd, "w");
+    if (!dst) {
+        close(fd);  // fdopen failed, close manually
+        fclose(src);
+        return;
+    }
+
+    // Copy contents
+    char buf[CONTENT_BUFFER_SIZE];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+        fwrite(buf, 1, n, dst);
+    }
+
+    fclose(dst);  // Also closes fd
+    fclose(src);
+    printf("Copied system config to user config: %s\n", user_config_path);
+}
+
+// Helper: Try to load config from a specific path
+// Returns: path if successful (caller must free), NULL otherwise
+static char* try_load_config_from_path(struct config *cfg, const char *path, bool is_user_path) {
+    // Validate path before file operations (security)
+    if (is_user_path && !validate_config_path(path)) {
+        log_error("Config path validation failed: %s", path);
+        return NULL;
+    }
+
+    // For user config path, try to create if it doesn't exist
+    if (is_user_path) {
+        // Try to create config file atomically - if it exists, open() will fail
+        // This eliminates TOCTOU by combining check and create into single atomic operation
+        mode_t old_mask = umask(0077);  // Ensure rw------- permissions (privacy)
+        int fd = open(path, O_CREAT | O_EXCL | O_WRONLY, 0600);
+        umask(old_mask);
+
+        // If file was just created (fd >= 0), copy from system config
+        if (fd >= 0) {
+            copy_system_config_to_user(fd, path);
+        }
+        // If fd < 0 and errno == EEXIST, file already exists - continue normally
+    }
+
+    // Try to load config
+    if (config_load(cfg, path)) {
+        return strdup(path);
+    }
+
+    return NULL;
+}
+
 // Load configuration with automatic fallback (user -> system)
 char* config_load_with_fallback(struct config *cfg) {
     if (!cfg) {
         return NULL;
     }
 
-    bool config_loaded = false;
-    char *config_loaded_path = NULL;
-
     // Try user config first
     char *user_config_path = config_get_path();
     if (user_config_path) {
-        // Create config directory if it doesn't exist
-        char *dir_path = strdup(user_config_path);
-        char *last_slash = strrchr(dir_path, '/');
-        if (last_slash) {
-            *last_slash = '\0';
-            if (mkdir(dir_path, 0700) == -1 && errno != EEXIST) {
-                // Failed to create directory and it's not because it already exists
-                log_warn("Failed to create config directory %s: %s", dir_path, strerror(errno));
-            }
-        }
-        free(dir_path);
+        create_config_directory(user_config_path);
 
-        // Validate path before file operations (security)
-        if (!validate_config_path(user_config_path)) {
-            log_error("Config path validation failed: %s", user_config_path);
+        char *loaded_path = try_load_config_from_path(cfg, user_config_path, true);
+        if (loaded_path) {
             free(user_config_path);
-            return NULL;
+            return loaded_path;
         }
 
-        // Try to create config file atomically - if it exists, open() will fail
-        // This eliminates TOCTOU by combining check and create into single atomic operation
-        mode_t old_mask = umask(0077);  // Ensure rw------- permissions (privacy)
-        int fd = open(user_config_path, O_CREAT | O_EXCL | O_WRONLY, 0600);
-        umask(old_mask);
-
-        // If file was just created (fd >= 0), copy from system config
-        if (fd >= 0) {
-            const char *system_config = "/etc/wshowlyrics/settings.ini";
-            FILE *src = fopen(system_config, "r");
-            if (src) {
-                FILE *dst = fdopen(fd, "w");
-                if (dst) {
-                    char buf[CONTENT_BUFFER_SIZE];
-                    size_t n;
-                    while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
-                        fwrite(buf, 1, n, dst);
-                    }
-                    fclose(dst);  // Also closes fd
-                    printf("Copied system config to user config: %s\n", user_config_path);
-                } else {
-                    close(fd);  // fdopen failed, close manually
-                }
-                fclose(src);
-            } else {
-                close(fd);  // System config not found, close the empty file
-            }
-        }
-        // If fd < 0 and errno == EEXIST, file already exists - continue normally
-
-        // Try to load user config
-        if (config_load(cfg, user_config_path)) {
-            config_loaded = true;
-            config_loaded_path = user_config_path;
-        } else {
-            free(user_config_path);
-        }
+        free(user_config_path);
     }
 
     // If user config not found, try system-wide config
-    if (!config_loaded) {
-        const char *system_config = "/etc/wshowlyrics/settings.ini";
-        if (config_load(cfg, system_config)) {
-            config_loaded_path = strdup(system_config);
-        }
-        // Note: config_load returns false if file doesn't exist, which is fine
-        // We'll just use the defaults initialized by caller
-    }
-
-    return config_loaded_path;
+    const char *system_config = "/etc/wshowlyrics/settings.ini";
+    return try_load_config_from_path(cfg, system_config, false);
+    // Note: Returns NULL if system config also not found, which is fine
+    // Caller will use the defaults initialized earlier
 }
 
 float config_get_cache_threshold(enum translation_cache_policy policy) {

@@ -194,39 +194,34 @@ static void cleanup_partial_extensions(char **exts, int count) {
     free(exts);
 }
 
-// Get ordered list of extensions from config
-// Returns NULL-terminated array of extension strings
-// Caller must free the array and all strings
-static char** get_extension_priority(void) {
-    if (!g_config.lyrics.extensions || g_config.lyrics.extensions[0] == '\0') {
-        // Default: all extensions in default order
-        char **exts = malloc(5 * sizeof(char*));
-        if (!exts) return NULL;
+// Helper: Create default extension priority list
+static char** create_default_extensions(void) {
+    const char *defaults[] = {"lrcx", "lrc", "srt", "vtt", NULL};
+    const int count = 5; // 4 extensions + NULL terminator
 
-        // Initialize all pointers to NULL for safe cleanup
-        for (int i = 0; i < 5; i++) {
-            exts[i] = NULL;
-        }
+    char **exts = malloc(count * sizeof(char*));
+    if (!exts) return NULL;
 
-        // Allocate strings with NULL checks
-        exts[0] = strdup("lrcx");
-        if (!exts[0]) goto cleanup_default;
-        exts[1] = strdup("lrc");
-        if (!exts[1]) goto cleanup_default;
-        exts[2] = strdup("srt");
-        if (!exts[2]) goto cleanup_default;
-        exts[3] = strdup("vtt");
-        if (!exts[3]) goto cleanup_default;
-        exts[4] = NULL;
-        return exts;
-
-cleanup_default:
-        cleanup_partial_extensions(exts, 5);
-        return NULL;
+    // Initialize all pointers to NULL for safe cleanup
+    for (int i = 0; i < count; i++) {
+        exts[i] = NULL;
     }
 
-    // Parse comma-separated list
-    char *exts_copy = strdup(g_config.lyrics.extensions);
+    // Allocate strings with error checking
+    for (int i = 0; defaults[i] != NULL; i++) {
+        exts[i] = strdup(defaults[i]);
+        if (!exts[i]) {
+            cleanup_partial_extensions(exts, count);
+            return NULL;
+        }
+    }
+
+    return exts;
+}
+
+// Helper: Parse comma-separated custom extension list
+static char** parse_custom_extensions(const char *extensions) {
+    char *exts_copy = strdup(extensions);
     if (!exts_copy) return NULL;
 
     // Count extensions
@@ -254,7 +249,6 @@ cleanup_default:
         char *trimmed = config_trim_whitespace(token);
         result[idx] = strdup(trimmed);
         if (!result[idx]) {
-            // Cleanup on allocation failure
             cleanup_partial_extensions(result, idx);
             free(exts_copy);
             return NULL;
@@ -266,6 +260,17 @@ cleanup_default:
 
     free(exts_copy);
     return result;
+}
+
+// Get ordered list of extensions from config
+// Returns NULL-terminated array of extension strings
+// Caller must free the array and all strings
+static char** get_extension_priority(void) {
+    if (!g_config.lyrics.extensions || g_config.lyrics.extensions[0] == '\0') {
+        return create_default_extensions();
+    }
+
+    return parse_custom_extensions(g_config.lyrics.extensions);
 }
 
 // Free extension priority array

@@ -285,54 +285,56 @@ static bool is_cjk_ideograph(const char *p, const char *limit, const char *text_
     return false;
 }
 
+// Helper: Move back one UTF-8 character (skip continuation bytes)
+static const char* move_back_one_utf8_char(const char *p, const char *limit) {
+    const char *prev = p - 1;
+    while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
+        prev--;
+    }
+    return prev;
+}
+
+// Helper: Find space-based word boundary
+static const char* find_space_boundary(const char *p, const char *limit, const char *text_end) {
+    while (p > limit) {
+        const char *prev = move_back_one_utf8_char(p, limit);
+        if (is_space_char(prev, text_end)) {
+            return p;
+        }
+        p = prev;
+    }
+    return limit;
+}
+
+// Helper: Find kanji-based word boundary
+static const char* find_kanji_boundary(const char *p, const char *limit, const char *text_end) {
+    while (p > limit) {
+        const char *prev = move_back_one_utf8_char(p, limit);
+
+        // Check if previous character is a space or not a kanji
+        if (is_space_char(prev, text_end) || !is_cjk_ideograph(prev, limit, text_end)) {
+            return p;  // Found word boundary
+        }
+
+        p = prev;
+    }
+    return limit;
+}
+
 // Helper: Find the start of the word that ends at 'end'
 // For ruby text, scan backwards to find kanji sequence
 // Will not go before 'limit'
 static const char* find_word_start(const char *limit, const char *end, const char *text_end) {
-    const char *p = end;
-
-    // First, check if the character right before '{' is a kanji
-    // If not, use space-based word boundary (old behavior)
-    const char *check = p - 1;
-    while (check > limit && ((unsigned char)*check & 0xC0) == 0x80) {
-        check--;
-    }
+    // Check if the character right before '{' is a kanji
+    const char *check = move_back_one_utf8_char(end, limit);
 
     if (!is_cjk_ideograph(check, limit, text_end)) {
         // Not a kanji - use space-based boundary
-        while (p > limit) {
-            const char *prev = p - 1;
-            while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
-                prev--;
-            }
-            if (is_space_char(prev, text_end)) {
-                return (p >= limit && p <= end) ? p : limit;
-            }
-            p = prev;
-        }
-        return limit;
+        return find_space_boundary(end, limit, text_end);
     }
 
-    // Scan backwards to find start of kanji sequence
-    while (p > limit) {
-        // Move back one character
-        const char *prev = p - 1;
-
-        // Move back over UTF-8 continuation bytes
-        while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
-            prev--;
-        }
-
-        // Check if previous character is a space or not a kanji
-        if (is_space_char(prev, text_end) || !is_cjk_ideograph(prev, limit, text_end)) {
-            return (p >= limit && p <= end) ? p : limit; // Found word boundary
-        }
-
-        // Move pointer to start of previous character
-        p = prev;
-    }
-
-    return limit;
+    // Kanji - scan backwards to find start of kanji sequence
+    return find_kanji_boundary(end, limit, text_end);
 }
 
 int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_segment **segments) {

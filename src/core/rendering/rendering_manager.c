@@ -37,6 +37,66 @@ static int offset_to_bar_width(int offset_ms, int max_offset, int max_bar_width)
     return (int)((double)abs_offset / max_offset * max_bar_width);
 }
 
+// Helper: Render a single bar segment
+static void render_single_bar(cairo_t *cairo, uint32_t color, int center_x,
+                              int bar_y, int bar_height, int width, bool is_positive,
+                              int position_offset) {
+    if (width <= 0) {
+        return;
+    }
+
+    cairo_set_source_u32(cairo, color);
+    if (is_positive) {
+        cairo_rectangle(cairo, center_x + position_offset, bar_y, width, bar_height);
+    } else {
+        cairo_rectangle(cairo, center_x - position_offset - width, bar_y, width, bar_height);
+    }
+    cairo_fill(cairo);
+}
+
+// Helper: Render bars when both offsets have the same sign
+static void render_same_sign_bars(cairo_t *cairo, int center_x, int bar_y, int bar_height,
+                                  int global_offset_ms, int session_offset_ms,
+                                  int global_width, int session_width,
+                                  int total_offset, uint32_t yellow, uint32_t white) {
+    bool is_positive = (total_offset >= 0);
+
+    if (is_positive) {
+        // Positive: center → right (global then session)
+        if (global_offset_ms > 0) {
+            render_single_bar(cairo, yellow, center_x, bar_y, bar_height,
+                            global_width, true, 0);
+        }
+        if (session_offset_ms > 0) {
+            render_single_bar(cairo, white, center_x, bar_y, bar_height,
+                            session_width, true, global_width);
+        }
+    } else {
+        // Negative: center ← left (session then global)
+        if (session_offset_ms < 0) {
+            render_single_bar(cairo, white, center_x, bar_y, bar_height,
+                            session_width, false, global_width);
+        }
+        if (global_offset_ms < 0) {
+            render_single_bar(cairo, yellow, center_x, bar_y, bar_height,
+                            global_width, false, 0);
+        }
+    }
+}
+
+// Helper: Render bar when offsets have opposite signs
+static void render_opposite_sign_bar(cairo_t *cairo, int center_x, int bar_y, int bar_height,
+                                     int global_offset_ms, int session_offset_ms,
+                                     int total_offset, int result_width,
+                                     uint32_t yellow, uint32_t white) {
+    // Use color of the larger offset
+    uint32_t color = (abs(global_offset_ms) > abs(session_offset_ms)) ? yellow : white;
+    bool is_positive = (total_offset >= 0);
+
+    render_single_bar(cairo, color, center_x, bar_y, bar_height,
+                     result_width, is_positive, 0);
+}
+
 static void render_offset_bar(cairo_t *cairo, int global_offset_ms, int session_offset_ms,
                                int width, int height, uint32_t foreground) {
     const int bar_height = 4; // 4픽셀 높이
@@ -45,7 +105,12 @@ static void render_offset_bar(cairo_t *cairo, int global_offset_ms, int session_
     const int max_offset = 5000; // ±5초 (최대 범위)
     const int max_bar_width = width / 2; // 바의 최대 길이 (화면 절반)
 
-    // 합산 및 clamp
+    // Hide if both offsets are zero
+    if (global_offset_ms == 0 && session_offset_ms == 0) {
+        return;
+    }
+
+    // Calculate total offset and clamp to max range
     int total_offset = global_offset_ms + session_offset_ms;
     if (total_offset > max_offset) {
         total_offset = max_offset;
@@ -54,79 +119,32 @@ static void render_offset_bar(cairo_t *cairo, int global_offset_ms, int session_
         total_offset = -max_offset;
     }
 
-    // 둘 다 0이면 숨김
-    if (global_offset_ms == 0 && session_offset_ms == 0) {
-        return;
-    }
-
-    // foreground에서 alpha 값 추출 (메인 텍스트의 불투명도)
+    // Prepare colors with foreground alpha
     uint32_t alpha = foreground & 0xFF;
+    uint32_t yellow = (0xFFFF00 << 8) | alpha; // Global offset color
+    uint32_t white = (0xFFFFFF << 8) | alpha;  // Session offset color
 
-    // 노란색 (글로벌 오프셋용) - 메인 텍스트와 같은 불투명도 사용
-    uint32_t yellow = (0xFFFF00 << 8) | alpha; // RGB: 노란색, A: foreground와 동일
+    // Render bars based on offset signs
+    bool same_sign = ((global_offset_ms >= 0 && session_offset_ms >= 0) ||
+                      (global_offset_ms <= 0 && session_offset_ms <= 0));
 
-    // 하얀색 (세션 오프셋용) - 메인 텍스트와 같은 불투명도 사용
-    uint32_t white = (0xFFFFFF << 8) | alpha; // RGB: 하얀색, A: foreground와 동일
-
-    // Sign이 같은 경우: 순차적으로 표시
-    if ((global_offset_ms >= 0 && session_offset_ms >= 0) ||
-        (global_offset_ms <= 0 && session_offset_ms <= 0)) {
-
+    if (same_sign) {
+        // Same sign: render sequentially (global then session)
         int global_width = offset_to_bar_width(global_offset_ms, max_offset, max_bar_width);
         int session_width = offset_to_bar_width(session_offset_ms, max_offset, max_bar_width);
 
-        if (total_offset >= 0) {
-            // 양수: 중심에서 오른쪽으로
-            // 글로벌 바 (노란색): 0 → global
-            if (global_offset_ms > 0) {
-                cairo_set_source_u32(cairo, yellow);
-                cairo_rectangle(cairo, center_x, bar_y, global_width, bar_height);
-                cairo_fill(cairo);
-            }
-
-            // 세션 바 (하얀색): global → total
-            if (session_offset_ms > 0) {
-                cairo_set_source_u32(cairo, white);
-                cairo_rectangle(cairo, center_x + global_width, bar_y, session_width, bar_height);
-                cairo_fill(cairo);
-            }
-        } else {
-            // 음수: 중심에서 왼쪽으로
-            // 세션 바 (하얀색): total → global
-            if (session_offset_ms < 0) {
-                cairo_set_source_u32(cairo, white);
-                cairo_rectangle(cairo, center_x - global_width - session_width, bar_y, session_width, bar_height);
-                cairo_fill(cairo);
-            }
-
-            // 글로벌 바 (노란색): global → 0
-            if (global_offset_ms < 0) {
-                cairo_set_source_u32(cairo, yellow);
-                cairo_rectangle(cairo, center_x - global_width, bar_y, global_width, bar_height);
-                cairo_fill(cairo);
-            }
-        }
-    }
-    // Sign이 다른 경우: 상쇄 후 남는 것만 표시
-    else {
+        render_same_sign_bars(cairo, center_x, bar_y, bar_height,
+                             global_offset_ms, session_offset_ms,
+                             global_width, session_width,
+                             total_offset, yellow, white);
+    } else {
+        // Opposite signs: render only the net result
         int result_width = offset_to_bar_width(total_offset, max_offset, max_bar_width);
 
-        if (abs(global_offset_ms) > abs(session_offset_ms)) {
-            // 글로벌이 더 크므로 노란색만
-            cairo_set_source_u32(cairo, yellow);
-        } else {
-            // 세션이 더 크므로 하얀색만
-            cairo_set_source_u32(cairo, white);
-        }
-
-        if (total_offset >= 0) {
-            // 양수: 중심에서 오른쪽으로
-            cairo_rectangle(cairo, center_x, bar_y, result_width, bar_height);
-        } else {
-            // 음수: 중심에서 왼쪽으로
-            cairo_rectangle(cairo, center_x - result_width, bar_y, result_width, bar_height);
-        }
-        cairo_fill(cairo);
+        render_opposite_sign_bar(cairo, center_x, bar_y, bar_height,
+                                global_offset_ms, session_offset_ms,
+                                total_offset, result_width,
+                                yellow, white);
     }
 }
 

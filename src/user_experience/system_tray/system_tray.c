@@ -408,6 +408,82 @@ void system_tray_reset_icon(void) {
     log_info("Icon reset to default: %s", ICON_PATH);
 }
 
+// Helper: Build notification body with artist, album, and player
+static void build_notification_body(const struct notification_info *info,
+                                   char *body, size_t body_size,
+                                   char *player_capitalized, size_t player_cap_size) {
+    const char *artist = (info->artist && info->artist[0]) ? info->artist : "Unknown";
+    const char *album = (info->album && info->album[0]) ? info->album : "Unknown";
+    const char *player = (info->player_name && info->player_name[0]) ? info->player_name : "Unknown";
+
+    // Capitalize first letter of player name
+    snprintf(player_capitalized, player_cap_size, "%s", player);
+    if (player_capitalized[0] >= 'a' && player_capitalized[0] <= 'z') {
+        player_capitalized[0] = player_capitalized[0] - 'a' + 'A';
+    }
+
+    snprintf(body, body_size, "%s · %s\n%s", album, artist, player_capitalized);
+}
+
+// Helper: Create badged notification icon (album art + player badge)
+// Returns: icon path to use (NOTIFICATION_ICON_PATH if successful, ICON_PATH otherwise)
+static const char* create_badged_icon(const char *player_display,
+                                     const char *notification_icon_path) {
+    GError *error = NULL;
+    GdkPixbuf *album_art = gdk_pixbuf_new_from_file(ICON_PATH, &error);
+
+    if (!album_art) {
+        log_warn("Failed to load album art for notification: %s",
+                error ? error->message : "unknown error");
+        if (error) g_error_free(error);
+        return ICON_PATH;
+    }
+
+    // Load player icon and add badge
+    GdkPixbuf *player_icon = icon_utils_load_player_icon(player_display, 16);
+    GdkPixbuf *badged = icon_utils_add_badge(album_art, player_icon);
+
+    if (badged) {
+        // Save badged image
+        GError *save_error = NULL;
+        if (gdk_pixbuf_save(badged, notification_icon_path, "png", &save_error, NULL)) {
+            log_info("Created notification icon with %s badge", player_display);
+            g_object_unref(badged);
+            if (player_icon) g_object_unref(player_icon);
+            g_object_unref(album_art);
+            return notification_icon_path;
+        } else {
+            log_warn("Failed to save notification icon: %s",
+                    save_error ? save_error->message : "unknown error");
+            if (save_error) g_error_free(save_error);
+        }
+        g_object_unref(badged);
+    }
+
+    if (player_icon) g_object_unref(player_icon);
+    g_object_unref(album_art);
+    return ICON_PATH;
+}
+
+// Helper: Prepare notification icon (album art with badge, or player icon)
+static const char* prepare_notification_icon(const char *player_display,
+                                            const char *notification_icon_path) {
+    struct stat st;
+    bool has_album_art = (stat(ICON_PATH, &st) == 0);
+
+    if (has_album_art && player_display && strcmp(player_display, "Unknown") != 0) {
+        // Album art exists - add player badge
+        return create_badged_icon(player_display, notification_icon_path);
+    } else if (!has_album_art) {
+        // No album art - use player-specific icon
+        const char *player_icon_name = icon_utils_get_player_icon_name(player_display);
+        log_info("Using player icon '%s' for notification", player_icon_name);
+        return player_icon_name;
+    }
+
+    return ICON_PATH;
+}
+
 void system_tray_send_notification(const struct notification_info *info) {
     if (!info || !info->title) {
         return;
@@ -417,20 +493,13 @@ void system_tray_send_notification(const struct notification_info *info) {
     char notification_title[512];
     snprintf(notification_title, sizeof(notification_title), "🎵 %s", info->title);
 
-    // Build notification body: "Album · Artist\nPlayer" (2 lines, capitalized player)
+    // Build notification body
     char body[512];
-    const char *artist_display = (info->artist && info->artist[0] != '\0') ? info->artist : "Unknown";
-    const char *album_display = (info->album && info->album[0] != '\0') ? info->album : "Unknown";
-    const char *player_display = (info->player_name && info->player_name[0] != '\0') ? info->player_name : "Unknown";
-
-    // Capitalize first letter of player name for notification
     char player_capitalized[256];
-    snprintf(player_capitalized, sizeof(player_capitalized), "%s", player_display);
-    if (player_capitalized[0] >= 'a' && player_capitalized[0] <= 'z') {
-        player_capitalized[0] = player_capitalized[0] - 'a' + 'A';
-    }
+    build_notification_body(info, body, sizeof(body), player_capitalized, sizeof(player_capitalized));
 
-    snprintf(body, sizeof(body), "%s · %s\n%s", album_display, artist_display, player_capitalized);
+    // Get player display name for logging
+    const char *player_display = (info->player_name && info->player_name[0]) ? info->player_name : "Unknown";
 
     // Escape title and body for shell
     char escaped_title[PATH_BUFFER_SIZE];
@@ -438,64 +507,22 @@ void system_tray_send_notification(const struct notification_info *info) {
     escape_shell_string(notification_title, escaped_title, sizeof(escaped_title));
     escape_shell_string(body, escaped_body, sizeof(escaped_body));
 
-    // Prepare notification icon with player badge
+    // Prepare notification icon
     static const char *NOTIFICATION_ICON_PATH = "/tmp/wshowlyrics/notification-icon.png";
-    const char *icon_path = ICON_PATH;
-    struct stat st;
-    bool has_album_art = (stat(icon_path, &st) == 0);
+    const char *icon_path = prepare_notification_icon(player_display, NOTIFICATION_ICON_PATH);
 
-    if (has_album_art && player_display && strcmp(player_display, "Unknown") != 0) {
-        // Album art exists - add player badge for notification
-        GError *error = NULL;
-        GdkPixbuf *album_art = gdk_pixbuf_new_from_file(ICON_PATH, &error);
-
-        if (album_art) {
-            // Load player icon (16x16 will be scaled to 1/4 of album art size)
-            GdkPixbuf *player_icon = icon_utils_load_player_icon(player_display, 16);
-            GdkPixbuf *badged = icon_utils_add_badge(album_art, player_icon);
-
-            if (badged) {
-                // Save badged image for notification
-                GError *save_error = NULL;
-                if (gdk_pixbuf_save(badged, NOTIFICATION_ICON_PATH, "png", &save_error, NULL)) {
-                    icon_path = NOTIFICATION_ICON_PATH;
-                    log_info("Created notification icon with %s badge", player_display);
-                } else {
-                    log_warn("Failed to save notification icon: %s",
-                            save_error ? save_error->message : "unknown error");
-                    if (save_error) g_error_free(save_error);
-                }
-                g_object_unref(badged);
-            }
-
-            if (player_icon) g_object_unref(player_icon);
-            g_object_unref(album_art);
-        } else {
-            log_warn("Failed to load album art for notification: %s",
-                    error ? error->message : "unknown error");
-            if (error) g_error_free(error);
-        }
-    } else if (!has_album_art) {
-        // No album art, use player-specific icon
-        const char *player_icon_name = icon_utils_get_player_icon_name(player_display);
-        icon_path = player_icon_name;
-        log_info("Using player icon '%s' for notification", player_icon_name);
-    }
-
-    // Build notify-send command with ephemeral flag and timeout
-    // -e: ephemeral (don't save to notification center)
-    // -t: timeout in milliseconds (configurable, default 5 seconds)
+    // Build and execute notify-send command
     char cmd[3072];
     snprintf(cmd, sizeof(cmd), "notify-send -a wshowlyrics -i \"%s\" -e -t %d \"%s\" \"%s\" 2>/dev/null",
              icon_path, g_config.lyrics.notification_timeout, escaped_title, escaped_body);
 
-    // Create log-friendly version: "Album · Artist (player)" (lowercase, with parentheses)
-    char log_body[512];
-    snprintf(log_body, sizeof(log_body), "%s · %s (%s)", album_display, artist_display, player_display);
+    // Log notification
+    const char *artist = (info->artist && info->artist[0]) ? info->artist : "Unknown";
+    const char *album = (info->album && info->album[0]) ? info->album : "Unknown";
+    log_info("Sending desktop notification: %s - %s · %s (%s)",
+            notification_title, album, artist, player_display);
 
-    log_info("Sending desktop notification: %s - %s", notification_title, log_body);
-
-    // Execute notify-send in background
+    // Execute notify-send
     int ret = system(cmd);
     if (ret != 0) {
         log_warn("notify-send command failed with exit code: %d", ret);
