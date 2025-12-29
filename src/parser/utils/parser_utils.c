@@ -287,6 +287,10 @@ static bool is_cjk_ideograph(const char *p, const char *limit, const char *text_
 
 // Helper: Move back one UTF-8 character (skip continuation bytes)
 static const char* move_back_one_utf8_char(const char *p, const char *limit) {
+    // Prevent buffer underflow when p == limit
+    if (p <= limit) {
+        return limit;
+    }
     const char *prev = p - 1;
     while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
         prev--;
@@ -372,6 +376,7 @@ int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_s
                 struct ruby_segment *next = ruby_seg->next;
                 free(ruby_seg->text);
                 free(ruby_seg->ruby);
+                free(ruby_seg->translation);
                 free(ruby_seg);
                 ruby_seg = next;
             }
@@ -381,15 +386,22 @@ int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_s
         // Copy data and add timestamp
         word_seg->timestamp_us = timestamp_us;
         word_seg->end_timestamp_us = 0;
-        word_seg->text = ruby_seg->text; // Transfer ownership
-        word_seg->ruby = ruby_seg->ruby; // Transfer ownership
+
+        // Transfer ownership of text and ruby from ruby_seg to word_seg
+        // After transfer, ruby_seg no longer owns these pointers
+        word_seg->text = ruby_seg->text;
+        word_seg->ruby = ruby_seg->ruby;
         word_seg->is_unfill = false;
+
+        // Prevent double-free by nullifying transferred pointers
+        ruby_seg->text = NULL;
+        ruby_seg->ruby = NULL;
 
         *next_word = word_seg;
         next_word = &word_seg->next;
 
         struct ruby_segment *next_ruby = ruby_seg->next;
-        free(ruby_seg); // Free the ruby_segment shell (but not text/ruby which were transferred)
+        free(ruby_seg);  // Free the ruby_segment shell (text/ruby already transferred)
         ruby_seg = next_ruby;
     }
 
@@ -439,6 +451,7 @@ static bool create_and_append_segment(const char *text, size_t text_len,
 
 // Helper: Handle translation segment at line start: {translation text}
 // Returns: closing brace position on success, NULL on malformed or allocation failure
+// Note: Caller is responsible for cleanup on failure
 static const char* handle_translation(const char *pos, struct ruby_segment ***next_seg,
                                      int *count, struct ruby_segment *head) {
     const char *close_brace = strchr(pos, '}');
@@ -449,9 +462,14 @@ static const char* handle_translation(const char *pos, struct ruby_segment ***ne
     const char *trans_start = pos + 1;
     size_t trans_len = close_brace - trans_start;
 
-    if (!create_and_append_segment("", 0, NULL, strndup(trans_start, trans_len),
-                                   next_seg, count)) {
-        free_ruby_segments_list(head);
+    // Allocate translation string separately to prevent leak on failure
+    char *translation = strndup(trans_start, trans_len);
+    if (!translation) {
+        return NULL;
+    }
+
+    if (!create_and_append_segment("", 0, NULL, translation, next_seg, count)) {
+        free(translation);  // Free on failure to prevent leak
         return NULL;
     }
 
@@ -460,6 +478,7 @@ static const char* handle_translation(const char *pos, struct ruby_segment ***ne
 
 // Helper: Handle newline - creates segment for text before it and newline segment
 // Returns: true on success, false on allocation failure
+// Note: Caller is responsible for cleanup on failure
 static bool handle_newline(const char *seg_start, const char *pos,
                           struct ruby_segment ***next_seg, int *count,
                           struct ruby_segment *head) {
@@ -467,14 +486,12 @@ static bool handle_newline(const char *seg_start, const char *pos,
     if (pos > seg_start) {
         if (!create_and_append_segment(seg_start, pos - seg_start, NULL, NULL,
                                        next_seg, count)) {
-            free_ruby_segments_list(head);
             return false;
         }
     }
 
     // Create newline segment
     if (!create_and_append_segment("\n", 1, NULL, NULL, next_seg, count)) {
-        free_ruby_segments_list(head);
         return false;
     }
 
@@ -483,6 +500,7 @@ static bool handle_newline(const char *seg_start, const char *pos,
 
 // Helper: Handle ruby annotation - creates segments for text before word and word with ruby
 // Returns: closing brace position on success, NULL on allocation failure
+// Note: Caller is responsible for cleanup on failure
 static const char* handle_ruby_annotation(const char *pos, const char *seg_start,
                                          const char *text_end, struct ruby_segment ***next_seg,
                                          int *count, struct ruby_segment *head) {
@@ -504,7 +522,6 @@ static const char* handle_ruby_annotation(const char *pos, const char *seg_start
         if (!create_and_append_segment(seg_start, word_start - seg_start, NULL, NULL,
                                        next_seg, count)) {
             free(ruby);
-            free_ruby_segments_list(head);
             return NULL;
         }
     }
@@ -513,7 +530,6 @@ static const char* handle_ruby_annotation(const char *pos, const char *seg_start
     if (!create_and_append_segment(word_start, word_end - word_start, ruby, NULL,
                                    next_seg, count)) {
         free(ruby);
-        free_ruby_segments_list(head);
         return NULL;
     }
 
@@ -521,6 +537,9 @@ static const char* handle_ruby_annotation(const char *pos, const char *seg_start
     return close_brace + 1;
 }
 
+// Parse text into ruby segments with ruby annotations, translations, and newlines
+// Precondition: text must be a valid NULL-terminated string
+// Returns: number of segments created, or 0 on failure
 int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
     if (!text || !segments) {
         return 0;
@@ -537,6 +556,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
         // No ruby text, translation, or newlines - create single segment
         int count = 0;
         struct ruby_segment **next_seg = segments;
+        // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
         if (!create_and_append_segment(text, strlen(text), NULL, NULL, &next_seg, &count)) {
             return 0;
         }
@@ -550,6 +570,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
 
     const char *pos = text;
     const char *seg_start = pos;
+    // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
     const char *text_end = text + strlen(text);
 
     while (*pos) {
@@ -558,6 +579,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             const char *new_pos = handle_translation(pos, &next_seg, &count, head);
             if (!new_pos) {
                 if (strchr(pos, '}')) {
+                    // Failed with valid closing brace - allocation error
                     free_ruby_segments_list(head);
                     return 0;
                 }
@@ -570,6 +592,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
         } else if (*pos == '\n') {
             // Newline
             if (!handle_newline(seg_start, pos, &next_seg, &count, head)) {
+                free_ruby_segments_list(head);
                 return 0;
             }
             pos++;
@@ -580,6 +603,8 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
                                                          &next_seg, &count, head);
             if (!new_pos) {
                 if (strchr(pos, '}')) {
+                    // Failed with valid closing brace - allocation error
+                    free_ruby_segments_list(head);
                     return 0;
                 }
                 // Malformed - treat as regular text
@@ -604,7 +629,9 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
 
     // If no segments created, create one with entire text
     if (count == 0) {
+        // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
         if (!create_and_append_segment(text, strlen(text), NULL, NULL, &next_seg, &count)) {
+            free_ruby_segments_list(head);
             return 0;
         }
         head = *segments;
