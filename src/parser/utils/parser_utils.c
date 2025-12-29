@@ -5,6 +5,9 @@
 #include <string.h>
 #include <ctype.h>
 
+// Forward declarations
+static void free_ruby_segments_list(struct ruby_segment *head);
+
 // Helper: Find pointer after ']' character in timestamp string
 static const char* find_end_after_bracket(const char *str) {
     const char *dot = strchr(str, '.');
@@ -295,8 +298,11 @@ static const char* move_back_one_utf8_char(const char *p, const char *limit) {
     while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
         prev--;
     }
-    // Ensure returned pointer is within valid range [limit, p]
-    return (prev >= limit) ? prev : limit;
+    // Defensive check to satisfy static analyzer (prev should always be >= limit)
+    if (prev < limit) {
+        return limit;
+    }
+    return prev;
 }
 
 // Helper: Find space-based word boundary
@@ -353,6 +359,8 @@ int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_s
     struct ruby_segment *ruby_segs = NULL;
     int count = parse_ruby_segments(text, &ruby_segs);
     if (count == 0) {
+        // Explicit cleanup to prevent potential leak (parse_ruby_segments should already cleanup on failure)
+        free_ruby_segments_list(ruby_segs);
         return 0;
     }
 
