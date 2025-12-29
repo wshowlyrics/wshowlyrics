@@ -298,8 +298,9 @@ static const char* move_back_one_utf8_char(const char *p, const char *limit) {
     while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
         prev--;
     }
-    // Defensive check to satisfy static analyzer (prev should always be >= limit)
-    if (prev < limit) {
+    // Defensive bounds check to satisfy static analyzer
+    // prev should always be in range [limit, p), but verify explicitly
+    if (prev < limit || prev >= p) {
         return limit;
     }
     return prev;
