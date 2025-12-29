@@ -149,7 +149,7 @@
 #### 18. rendering_manager.c:40 - 복잡도 30 → 25 (10min) | AZtgjSRWhSZXhd8a4uzp
 #### 19. parser_utils.c:291 - 복잡도 28 → 25 (8min) | AZsxJYoWqE2ErzW5x-dz
 #### 20. lyrics_provider.c:200 - 복잡도 28 → 25 (8min) | AZsw3M9EHpp0TbwUWQaB
-#### 21. mpris.c:323 - 복잡도 28 → 25 (8min) | AZthAcXSCKz1u_SNSw_j
+#### 21. ~~mpris.c:323 - 복잡도 28 → 25 (8min)~~ | AZthAcXSCKz1u_SNSw_j ✅ **완료 (커밋: 43ab00f)**
 #### 22. system_tray.c:411 - 복잡도 44 → 25 (24min) | AZtaZrqUhSZXhd8aT109
 #### 23. word_render.c:281 - 복잡도 26 → 25 (6min) | AZs1J-D1HL_6RtSCbLsT
 
@@ -404,16 +404,18 @@ struct parser_config {
 
 ---
 
-### Phase 8-2: 중간 복잡도 (6-11번) ⚠️
+### Phase 8-2: 중간 복잡도 (6-11번) ⚠️ **진행 중**
 **예상 시간**: 2h 58min
+**실제 시간**: ~1h (3개 완료)
+**커밋**: 43ab00f
 
-- [ ] mpris.c:564 (34min)
-- [ ] parser_utils.c:410 (37min)
-- [ ] lyrics_manager.c:290 (30min)
-- [ ] parser_utils.c:8 (30min)
-- [ ] lyrics_manager.c:54 (25min)
-- [ ] lrcx_parser.c:13 (24min)
-- [ ] 빌드 검증
+- [x] mpris.c:564 (34min) - find_best_player (복잡도 54 → 감소)
+- [ ] parser_utils.c:410 (37min) - parse_ruby_segments (복잡도 57)
+- [ ] lyrics_manager.c:290 (30min) - sync_lyrics_content (복잡도 50)
+- [ ] parser_utils.c:8 (30min) - parse_lrc_timestamp_ex (복잡도 50)
+- [x] lyrics_manager.c:54 (25min) - lyrics_manager_update_track_info (복잡도 45 → 감소)
+- [ ] lrcx_parser.c:13 (24min) - parse_lrcx_file (복잡도 44)
+- [x] 빌드 검증
 
 ---
 
@@ -569,20 +571,21 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ## 상태
 
 - **생성일**: 2025-12-19
-- **최종 업데이트**: 2025-12-29 (Phase 8-1, 8-5 완료)
+- **최종 업데이트**: 2025-12-30 (Phase 8-2 일부 완료)
 - **현재 Phase**: Phase 8 진행 중
 - **완료 Phases**:
   - 1-7 (보안, 일부 복잡도, 파라미터, 중복 제거)
   - 8-1 (최우선 복잡도 5개, 커밋: 8d665ab)
   - 8-5 (보안/품질 3개, 커밋: 73adfae)
+  - 8-2 일부 (중간 복잡도 3개/6개, 커밋: 43ab00f)
 - **남은 Phase 8 작업**:
-  - 8-2: 중간 복잡도 (6개, ~3h)
-  - 8-3: 소규모 복잡도 (12개, ~3h)
+  - 8-2: 중간 복잡도 남은 3개 (parser_utils.c 2개, lrcx_parser.c 1개, ~2h)
+  - 8-3: 소규모 복잡도 11개 (1개 완료, ~3h)
   - 8-4: 중첩 깊이 (46개, ~8h)
 - **남은 이슈 (C 코드만)**:
-  - CRITICAL: ~65개 (8개 해결됨)
+  - CRITICAL: ~62개 (11개 해결됨: Phase 8-1 5개 + 8-2 3개 + 8-5 3개)
   - MAJOR: 28개 (Python 내부 테스트 스크립트 제외)
-  - 총: ~93개
+  - 총: ~90개
 - **우선순위**: High (코드 품질, 유지보수성)
 - **목표**: 모든 C 코드 CRITICAL/MAJOR 이슈 해결, A등급 유지
 - **남은 예상 시간**: ~19h (Phase 8-2,3,4 + Phase 9)
