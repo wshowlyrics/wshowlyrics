@@ -691,6 +691,77 @@ static void free_section_list(struct section_list *head) {
     }
 }
 
+// Helper: Resolve path or fallback to directory validation
+// Returns: true if path was resolved successfully
+static bool resolve_path_or_directory(const char *path, char *resolved_path) {
+    // Try to resolve the full path (for existing files)
+    if (realpath(path, resolved_path)) {
+        return true;
+    }
+
+    // If file doesn't exist, try to validate the directory path instead
+    // Extract directory from path
+    char dir_path[PATH_MAX];
+    snprintf(dir_path, sizeof(dir_path), "%s", path);
+    char *last_slash = strrchr(dir_path, '/');
+
+    if (!last_slash) {
+        // No directory component - invalid path
+        return false;
+    }
+
+    *last_slash = '\0';
+
+    // Try to resolve the directory
+    if (realpath(dir_path, resolved_path)) {
+        return true;
+    }
+
+    // Directory doesn't exist either - this might be okay for new files
+    // Just validate the input path directly (must be absolute)
+    if (path[0] != '/') {
+        return false;  // Relative paths not allowed
+    }
+
+    snprintf(resolved_path, PATH_MAX, "%s", path);
+    return true;
+}
+
+// Helper: Check if resolved path is in a safe location
+// Config files must be in one of these safe directories:
+// 1. User's home directory or XDG config (for user configs)
+// 2. /etc/ (for system-wide configs)
+// 3. /usr/share/ (for installed example configs)
+// 4. Current working directory (for local development builds only)
+static bool is_path_in_safe_location(const char *resolved_path) {
+    // Check user directories
+    const char *home = getenv("HOME");
+    if (home && strncmp(resolved_path, home, strlen(home)) == 0) {
+        return true;
+    }
+
+    const char *xdg_config = getenv("XDG_CONFIG_HOME");
+    if (xdg_config && strncmp(resolved_path, xdg_config, strlen(xdg_config)) == 0) {
+        return true;
+    }
+
+    // Check system directories
+    if (strncmp(resolved_path, "/etc/", 5) == 0) {
+        return true;
+    }
+    if (strncmp(resolved_path, "/usr/share/", 11) == 0) {
+        return true;
+    }
+
+    // Check current directory (only for local builds)
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) && strncmp(resolved_path, cwd, strlen(cwd)) == 0) {
+        return true;
+    }
+
+    return false;
+}
+
 // Validate config file path for security (path traversal prevention)
 static bool validate_config_path(const char *path) {
     if (!path) {
@@ -698,67 +769,11 @@ static bool validate_config_path(const char *path) {
     }
 
     char resolved_path[PATH_MAX];
-
-    // Try to resolve the full path (for existing files)
-    if (!realpath(path, resolved_path)) {
-        // If file doesn't exist, try to validate the directory path instead
-
-        // Extract directory from path
-        char dir_path[PATH_MAX];
-        snprintf(dir_path, sizeof(dir_path), "%s", path);
-        char *last_slash = strrchr(dir_path, '/');
-        if (last_slash) {
-            *last_slash = '\0';
-
-            // Try to resolve the directory
-            if (!realpath(dir_path, resolved_path)) {
-                // Directory doesn't exist either - this might be okay for new files
-                // Just validate the input path directly (must be absolute)
-                if (path[0] != '/') {
-                    return false;  // Relative paths not allowed
-                }
-                snprintf(resolved_path, sizeof(resolved_path), "%s", path);
-            }
-        } else {
-            // No directory component - invalid path
-            return false;
-        }
+    if (!resolve_path_or_directory(path, resolved_path)) {
+        return false;
     }
 
-    // Config files must be in one of these safe directories:
-    // 1. User's home directory or XDG config (for user configs)
-    // 2. /etc/ (for system-wide configs)
-    // 3. /usr/share/ (for installed example configs)
-    // 4. Current working directory (for local development builds only)
-    const char *home = getenv("HOME");
-    const char *xdg_config = getenv("XDG_CONFIG_HOME");
-
-    // Check if resolved path is in a safe location
-    bool is_safe = false;
-
-    // Check user directories
-    if (home && strncmp(resolved_path, home, strlen(home)) == 0) {
-        is_safe = true;
-    }
-    if (xdg_config && strncmp(resolved_path, xdg_config, strlen(xdg_config)) == 0) {
-        is_safe = true;
-    }
-
-    // Check system directories
-    if (strncmp(resolved_path, "/etc/", 5) == 0) {
-        is_safe = true;
-    }
-    if (strncmp(resolved_path, "/usr/share/", 11) == 0) {
-        is_safe = true;
-    }
-
-    // Check current directory (only for local builds)
-    char cwd[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd)) && strncmp(resolved_path, cwd, strlen(cwd)) == 0) {
-        is_safe = true;
-    }
-
-    return is_safe;
+    return is_path_in_safe_location(resolved_path);
 }
 
 // Parse user config to extract all sections (including empty ones)

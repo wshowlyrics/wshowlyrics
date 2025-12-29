@@ -111,6 +111,59 @@ static void append_text_to_buffer(char *text_buffer, int *text_len, const char *
     }
 }
 
+// Helper: Check if line should be skipped (WEBVTT headers, empty lines, etc.)
+static bool should_skip_line(const char *line) {
+    if (*line == '\0') {
+        return true;
+    }
+
+    // Skip WEBVTT headers
+    if (strncmp(line, "WEBVTT", 6) == 0 ||
+        strncmp(line, "Kind:", 5) == 0 ||
+        strncmp(line, "NOTE", 4) == 0) {
+        return true;
+    }
+
+    return false;
+}
+
+// Helper: Try to parse timestamp and transition state if successful
+// Returns: true if timestamp was parsed and state should transition to TEXT
+static bool try_parse_timestamp(const char *line, int64_t *start_us, int64_t *end_us) {
+    if (!strstr(line, "-->")) {
+        return false;
+    }
+
+    return parse_srt_timestamp(line, start_us, end_us);
+}
+
+// Helper: Create subtitle line and add to list
+// Returns: true if line was created successfully
+static bool create_and_add_subtitle(const char *text_buffer, int text_len,
+                                    int64_t start_us, int64_t end_us,
+                                    int64_t *last_timestamp_us,
+                                    struct lyrics_line ***next_line_ptr,
+                                    struct lyrics_data *data) {
+    if (text_len <= 0) {
+        return false;
+    }
+
+    // Validate timestamp order (warn if going backwards)
+    validate_timestamp_order(start_us, last_timestamp_us, "SRT");
+    *last_timestamp_us = start_us;
+
+    // Create and append line
+    struct lyrics_line *new_line = create_srt_line(start_us, end_us, text_buffer);
+    if (!new_line) {
+        return false;
+    }
+
+    **next_line_ptr = new_line;
+    *next_line_ptr = &new_line->next;
+    data->line_count++;
+    return true;
+}
+
 bool srt_parse_string(const char *content, struct lyrics_data *data) {
     char *content_copy = NULL;
     if (!parse_init(content, data, &content_copy)) {
@@ -147,17 +200,15 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
         switch (state) {
         case STATE_INDEX:
             // Skip empty lines and WEBVTT headers
-            if (*line == '\0' || strncmp(line, "WEBVTT", 6) == 0 ||
-                strncmp(line, "Kind:", 5) == 0 || strncmp(line, "NOTE", 4) == 0) {
+            if (should_skip_line(line)) {
                 break;
             }
+
             // Check for timestamp directly (WEBVTT may not have index numbers)
-            if (strstr(line, "-->")) {
-                if (parse_srt_timestamp(line, &current_start_us, &current_end_us)) {
-                    state = STATE_TEXT;
-                    text_len = 0;
-                    text_buffer[0] = '\0';
-                }
+            if (try_parse_timestamp(line, &current_start_us, &current_end_us)) {
+                state = STATE_TEXT;
+                text_len = 0;
+                text_buffer[0] = '\0';
             }
             // Or expecting a number (SRT format)
             else if (*line && isdigit(*line)) {
@@ -167,7 +218,7 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 
         case STATE_TIMESTAMP:
             // Expecting timestamp
-            if (strstr(line, "-->") && parse_srt_timestamp(line, &current_start_us, &current_end_us)) {
+            if (try_parse_timestamp(line, &current_start_us, &current_end_us)) {
                 state = STATE_TEXT;
                 text_len = 0;
                 text_buffer[0] = '\0';
@@ -178,18 +229,9 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
             // Collecting text until empty line
             if (*line == '\0') {
                 // End of subtitle, create line
-                if (text_len > 0) {
-                    // Validate timestamp order (warn if going backwards)
-                    validate_timestamp_order(current_start_us, &last_timestamp_us, "SRT");
-                    last_timestamp_us = current_start_us;
-
-                    struct lyrics_line *new_line = create_srt_line(current_start_us, current_end_us, text_buffer);
-                    if (new_line) {
-                        *next_line = new_line;
-                        next_line = &new_line->next;
-                        data->line_count++;
-                    }
-                }
+                create_and_add_subtitle(text_buffer, text_len,
+                                       current_start_us, current_end_us,
+                                       &last_timestamp_us, &next_line, data);
                 state = STATE_INDEX;
             } else {
                 // Append text with proper bounds checking
@@ -202,15 +244,10 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
     }
 
     // Handle last subtitle if file doesn't end with empty line
-    if (state == STATE_TEXT && text_len > 0) {
-        // Validate timestamp order (warn if going backwards)
-        validate_timestamp_order(current_start_us, &last_timestamp_us, "SRT");
-
-        struct lyrics_line *new_line = create_srt_line(current_start_us, current_end_us, text_buffer);
-        if (new_line) {
-            *next_line = new_line;
-            data->line_count++;
-        }
+    if (state == STATE_TEXT) {
+        create_and_add_subtitle(text_buffer, text_len,
+                               current_start_us, current_end_us,
+                               &last_timestamp_us, &next_line, data);
     }
 
     free(content_copy);
