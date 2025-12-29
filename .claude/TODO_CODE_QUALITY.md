@@ -108,32 +108,50 @@
 
 ---
 
-### Priority 2: 중간 복잡도 개선 (복잡도 40-69, 6개) ⚠️
+### Priority 2: 중간 복잡도 개선 (복잡도 40-69, 6개) ✅ **완료**
 **예상 시간**: 2h 58min
+**실제 시간**: ~3h 30min
 
-#### 6. mpris.c:564 - 복잡도 54 → 25 이하
+#### 6. ~~mpris.c:564 - 복잡도 54 → 25 이하~~ ✅ **완료 (커밋: 43ab00f)**
 **이슈 키**: AZtFyzUj-JPgH9NPV58t
 **예상 시간**: 34min
+- `find_best_player()` 156줄 → 39줄 (117줄 절감)
+- 헬퍼 추출: `is_player_playing()`, `find_first_playing_player()`, `find_preferred_player()`
 
-#### 7. parser_utils.c:410 - 복잡도 57 → 25 이하
+#### 7. ~~parser_utils.c:410 - 복잡도 57 → 25 이하~~ ✅ **완료 (커밋: c8b40dc)**
 **이슈 키**: AZsw3M7sHpp0TbwUWQYe
 **예상 시간**: 37min
+- `parse_ruby_segments()` 191줄 → 92줄 (99줄 절감)
+- 헬퍼 추출: `create_and_append_segment()`, `handle_translation()`, `handle_newline()`, `handle_ruby_annotation()`
 
-#### 8. lyrics_manager.c:290 - 복잡도 50 → 25 이하
+#### 8. ~~lyrics_manager.c:290 - 복잡도 50 → 25 이하~~ ✅ **완료 (커밋: c8b40dc)**
 **이슈 키**: AZsw3M-5Hpp0TbwUWQb6
 **예상 시간**: 30min
+- `lyrics_manager_update_current_line()` 116줄 → 43줄 (73줄 절감)
+- 헬퍼 추출: `is_whitespace_only()`, `calculate_line_index()`, `handle_line_changed()`
 
-#### 9. parser_utils.c:8 - 복잡도 50 → 25 이하
+#### 9. ~~parser_utils.c:8 - 복잡도 50 → 25 이하~~ ✅ **완료 (커밋: c8b40dc)**
 **이슈 키**: AZsw3M7sHpp0TbwUWQYY
 **예상 시간**: 30min
+- `parse_lrc_timestamp_ex()` 73줄 → 32줄 (41줄 절감)
+- 헬퍼 추출: `find_end_after_bracket()`, `parse_timestamp_format()`
 
-#### 10. lyrics_manager.c:54 - 복잡도 45 → 25 이하
+#### 10. ~~lyrics_manager.c:54 - 복잡도 45 → 25 이하~~ ✅ **완료 (커밋: 43ab00f)**
 **이슈 키**: AZsw3M-5Hpp0TbwUWQb1
 **예상 시간**: 25min
+- `lyrics_manager_update_track_info()` 118줄 → 22줄 (96줄 절감)
+- 헬퍼 추출: `cancel_and_wait_translation()`, `handle_no_player_found()`, `detect_track_change()`, `handle_track_changed()`
 
-#### 11. lrcx_parser.c:13 - 복잡도 44 → 25 이하
+#### 11. ~~lrcx_parser.c:13 - 복잡도 44 → 25 이하~~ ✅ **완료 (커밋: c8b40dc)**
 **이슈 키**: AZsw3M7KHpp0TbwUWQXx
 **예상 시간**: 24min
+- `parse_first_text_segment()` 77줄 → 33줄 (44줄 절감)
+- 헬퍼 추출: `find_first_text_range()`, `build_full_text_from_segments()`
+
+**Phase 8-2 총계**:
+- 7개 함수 리팩토링
+- 827줄 → 305줄 (522줄 절감, 63% 감소)
+- 커밋: 43ab00f (3개), c8b40dc (4개)
 
 ---
 
@@ -571,21 +589,20 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ## 상태
 
 - **생성일**: 2025-12-19
-- **최종 업데이트**: 2025-12-30 (Phase 8-2 일부 완료)
+- **최종 업데이트**: 2025-12-30 (Phase 8-2 완료)
 - **현재 Phase**: Phase 8 진행 중
 - **완료 Phases**:
   - 1-7 (보안, 일부 복잡도, 파라미터, 중복 제거)
   - 8-1 (최우선 복잡도 5개, 커밋: 8d665ab)
   - 8-5 (보안/품질 3개, 커밋: 73adfae)
-  - 8-2 일부 (중간 복잡도 3개/6개, 커밋: 43ab00f)
+  - 8-2 (중간 복잡도 7개, 커밋: 43ab00f, c8b40dc) ✅ **완료**
 - **남은 Phase 8 작업**:
-  - 8-2: 중간 복잡도 남은 3개 (parser_utils.c 2개, lrcx_parser.c 1개, ~2h)
   - 8-3: 소규모 복잡도 11개 (1개 완료, ~3h)
   - 8-4: 중첩 깊이 (46개, ~8h)
 - **남은 이슈 (C 코드만)**:
-  - CRITICAL: ~62개 (11개 해결됨: Phase 8-1 5개 + 8-2 3개 + 8-5 3개)
+  - CRITICAL: ~58개 (15개 해결됨: Phase 8-1 5개 + 8-2 7개 + 8-5 3개)
   - MAJOR: 28개 (Python 내부 테스트 스크립트 제외)
-  - 총: ~90개
+  - 총: ~86개
 - **우선순위**: High (코드 품질, 유지보수성)
 - **목표**: 모든 C 코드 CRITICAL/MAJOR 이슈 해결, A등급 유지
-- **남은 예상 시간**: ~19h (Phase 8-2,3,4 + Phase 9)
+- **남은 예상 시간**: ~15h (Phase 8-3,4 + Phase 9)
