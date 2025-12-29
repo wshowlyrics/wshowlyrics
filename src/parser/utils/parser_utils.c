@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stddef.h>
 
 // Forward declarations
 static void free_ruby_segments_list(struct ruby_segment *head);
@@ -295,13 +296,18 @@ static const char* move_back_one_utf8_char(const char *p, const char *limit) {
         return limit;
     }
 
-    // Move backwards from p-1, looking for a non-continuation byte
-    // Use explicit loop with range check to satisfy static analyzer
-    for (const char *pos = p - 1; pos >= limit; pos--) {
+    // Use offset-based iteration to satisfy static analyzer
+    // Calculate maximum safe offset from limit to p
+    ptrdiff_t max_offset = p - limit;
+
+    // Move backwards using offset, looking for a non-continuation byte
+    for (ptrdiff_t offset = 1; offset <= max_offset; offset++) {
+        const char *pos = p - offset;
         // Check if this is NOT a continuation byte (10xxxxxx)
         if (((unsigned char)*pos & 0xC0) != 0x80) {
             // Found the start of a UTF-8 character
-            // pos is guaranteed to be in range [limit, p) by loop condition
+            // pos = p - offset where offset <= max_offset = (p - limit)
+            // Therefore: pos = p - offset >= p - (p - limit) = limit
             return pos;
         }
     }
