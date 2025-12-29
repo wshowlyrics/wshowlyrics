@@ -295,7 +295,8 @@ static const char* move_back_one_utf8_char(const char *p, const char *limit) {
     while (prev > limit && ((unsigned char)*prev & 0xC0) == 0x80) {
         prev--;
     }
-    return prev;
+    // Ensure returned pointer is within valid range [limit, p]
+    return (prev >= limit) ? prev : limit;
 }
 
 // Helper: Find space-based word boundary
@@ -473,6 +474,8 @@ static const char* handle_translation(const char *pos, struct ruby_segment ***ne
         return NULL;
     }
 
+    // Free original pointer since create_and_append_segment() makes a copy via strdup()
+    free(translation);
     return close_brace + 1;
 }
 
@@ -634,7 +637,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             free_ruby_segments_list(head);
             return 0;
         }
-        head = *segments;
+        // No need to assign head = *segments; next_seg already updated head via &head
     }
 
     *segments = head;
