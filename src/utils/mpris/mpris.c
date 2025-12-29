@@ -417,6 +417,132 @@ static void on_any_player_properties_changed(
     g_variant_unref(invalidated_properties);
 }
 
+// Check if should switch to a new player based on preferred_players
+static bool should_switch_to_player(const char *player_name) {
+    bool should_switch = false;
+
+    g_mutex_lock(&mpris_state.mutex);
+
+    // Switch if no current player
+    if (!mpris_state.current_player) {
+        should_switch = true;
+        log_info("No current player, switching to: %s", player_name);
+        g_mutex_unlock(&mpris_state.mutex);
+        return should_switch;
+    }
+
+    // Check if new player is preferred over current
+    struct config *cfg = config_get();
+    if (cfg->lyrics.preferred_players && cfg->lyrics.preferred_players[0] != '\0') {
+        char *players_copy = strdup(cfg->lyrics.preferred_players);
+        char *saveptr;
+        char *preferred = strtok_r(players_copy, ",", &saveptr);
+
+        while (preferred) {
+            // Trim whitespace
+            while (*preferred == ' ') preferred++;
+            if (*preferred == '\0') {
+                preferred = strtok_r(NULL, ",", &saveptr);
+                continue;
+            }
+            size_t len = strlen(preferred);
+            if (len > 0) {
+                char *end = preferred + len - 1;
+                while (end > preferred && *end == ' ') *end-- = '\0';
+            }
+
+            // If new player matches preferred, switch
+            if (strcmp(player_name, preferred) == 0) {
+                should_switch = true;
+                log_info("Preferred player appeared, switching to: %s", player_name);
+                break;
+            }
+
+            // If we found current player first, don't switch
+            if (strcmp(mpris_state.current_player, preferred) == 0) {
+                break;
+            }
+
+            preferred = strtok_r(NULL, ",", &saveptr);
+        }
+        free(players_copy);
+    }
+
+    g_mutex_unlock(&mpris_state.mutex);
+    return should_switch;
+}
+
+// Clean up current player subscriptions and state
+static void cleanup_current_player(void) {
+    // Unsubscribe from old player signals
+    if (mpris_state.subscription_id > 0) {
+        g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.subscription_id);
+        mpris_state.subscription_id = 0;
+    }
+    if (mpris_state.seeked_subscription_id > 0) {
+        g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.seeked_subscription_id);
+        mpris_state.seeked_subscription_id = 0;
+    }
+
+    g_mutex_lock(&mpris_state.mutex);
+    free(mpris_state.current_player);
+    free(mpris_state.playback_status);
+    mpris_state.current_player = NULL;
+    mpris_state.playback_status = NULL;
+    mpris_state.metadata_changed = true;
+    g_mutex_unlock(&mpris_state.mutex);
+}
+
+// Handle player appeared event
+static void handle_player_appeared(const char *player_name, const char *new_owner, const char *name) {
+    log_info("MPRIS player appeared: %s (unique name: %s)", player_name, new_owner);
+
+    // Add to unique name mapping for signal routing
+    g_mutex_lock(&mpris_state.mutex);
+    if (mpris_state.unique_name_map) {
+        g_hash_table_insert(mpris_state.unique_name_map,
+                          g_strdup(new_owner),  // key: :1.xxxxx
+                          g_strdup(name));      // value: org.mpris.MediaPlayer2.xxx
+    }
+    g_mutex_unlock(&mpris_state.mutex);
+
+    // Check if should switch to this player
+    if (should_switch_to_player(player_name)) {
+        char *new_player = strdup(player_name);
+        setup_player_subscription(new_player);
+    }
+}
+
+// Handle player disappeared event
+static void handle_player_disappeared(const char *player_name, const char *old_owner) {
+    log_info("MPRIS player disappeared: %s (unique name: %s)", player_name, old_owner);
+
+    // Remove from unique name mapping
+    g_mutex_lock(&mpris_state.mutex);
+    if (mpris_state.unique_name_map) {
+        g_hash_table_remove(mpris_state.unique_name_map, old_owner);
+    }
+    g_mutex_unlock(&mpris_state.mutex);
+
+    // Check if this was the current player
+    g_mutex_lock(&mpris_state.mutex);
+    bool is_current = mpris_state.current_player &&
+                     strcmp(mpris_state.current_player, player_name) == 0;
+    g_mutex_unlock(&mpris_state.mutex);
+
+    // If current player disappeared, find another one
+    if (is_current) {
+        log_info("Current player disappeared, finding alternative...");
+        char *new_player = find_best_player();
+        if (new_player) {
+            setup_player_subscription(new_player);
+        } else {
+            log_info("No alternative player found");
+            cleanup_current_player();
+        }
+    }
+}
+
 // Callback: Handle NameOwnerChanged signal (player appearance/disappearance)
 static void on_name_owner_changed(
     G_GNUC_UNUSED GDBusConnection *connection,
@@ -447,116 +573,11 @@ static void on_name_owner_changed(
 
     // Player appeared (new_owner is not empty)
     if (new_owner && new_owner[0] != '\0') {
-        log_info("MPRIS player appeared: %s (unique name: %s)", player_name, new_owner);
-
-        // Add to unique name mapping for signal routing
-        g_mutex_lock(&mpris_state.mutex);
-        if (mpris_state.unique_name_map) {
-            g_hash_table_insert(mpris_state.unique_name_map,
-                              g_strdup(new_owner),  // key: :1.xxxxx
-                              g_strdup(name));      // value: org.mpris.MediaPlayer2.xxx
-        }
-        g_mutex_unlock(&mpris_state.mutex);
-
-        g_mutex_lock(&mpris_state.mutex);
-        bool should_switch = false;
-
-        // Switch if:
-        // 1. No current player, OR
-        // 2. New player is in preferred_players list
-        if (!mpris_state.current_player) {
-            should_switch = true;
-            log_info("No current player, switching to: %s", player_name);
-        } else {
-            // Check if new player is preferred over current
-            struct config *cfg = config_get();
-            if (cfg->lyrics.preferred_players && cfg->lyrics.preferred_players[0] != '\0') {
-                char *players_copy = strdup(cfg->lyrics.preferred_players);
-                char *saveptr;
-                char *preferred = strtok_r(players_copy, ",", &saveptr);
-
-                while (preferred) {
-                    // Trim whitespace
-                    while (*preferred == ' ') preferred++;
-                    if (*preferred == '\0') {
-                        preferred = strtok_r(NULL, ",", &saveptr);
-                        continue;
-                    }
-                    size_t len = strlen(preferred);
-                    if (len > 0) {
-                        char *end = preferred + len - 1;
-                        while (end > preferred && *end == ' ') *end-- = '\0';
-                    }
-
-                    // If new player matches preferred, switch
-                    if (strcmp(player_name, preferred) == 0) {
-                        should_switch = true;
-                        log_info("Preferred player appeared, switching to: %s", player_name);
-                        break;
-                    }
-
-                    // If we found current player first, don't switch
-                    if (strcmp(mpris_state.current_player, preferred) == 0) {
-                        break;
-                    }
-
-                    preferred = strtok_r(NULL, ",", &saveptr);
-                }
-                free(players_copy);
-            }
-        }
-        g_mutex_unlock(&mpris_state.mutex);
-
-        if (should_switch) {
-            char *new_player = strdup(player_name);
-            setup_player_subscription(new_player);
-        }
+        handle_player_appeared(player_name, new_owner, name);
     }
     // Player disappeared (old_owner is not empty, new_owner is empty)
     else if (old_owner && old_owner[0] != '\0') {
-        log_info("MPRIS player disappeared: %s (unique name: %s)", player_name, old_owner);
-
-        // Remove from unique name mapping
-        g_mutex_lock(&mpris_state.mutex);
-        if (mpris_state.unique_name_map) {
-            g_hash_table_remove(mpris_state.unique_name_map, old_owner);
-        }
-        g_mutex_unlock(&mpris_state.mutex);
-
-        g_mutex_lock(&mpris_state.mutex);
-        bool is_current = mpris_state.current_player &&
-                         strcmp(mpris_state.current_player, player_name) == 0;
-        g_mutex_unlock(&mpris_state.mutex);
-
-        // If current player disappeared, find another one
-        if (is_current) {
-            log_info("Current player disappeared, finding alternative...");
-            char *new_player = find_best_player();
-            if (new_player) {
-                setup_player_subscription(new_player);
-            } else {
-                log_info("No alternative player found");
-                // Unsubscribe from old player signals
-                if (mpris_state.subscription_id > 0) {
-                    g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.subscription_id);
-                    mpris_state.subscription_id = 0;
-                }
-                if (mpris_state.seeked_subscription_id > 0) {
-                    g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.seeked_subscription_id);
-                    mpris_state.seeked_subscription_id = 0;
-                }
-
-                g_mutex_lock(&mpris_state.mutex);
-                free(mpris_state.current_player);
-                free(mpris_state.playback_status);
-                mpris_state.current_player = NULL;
-                mpris_state.playback_status = NULL;
-                // Set metadata_changed to trigger lyrics_manager_update_track_info()
-                // which will reset the system tray icon to default
-                mpris_state.metadata_changed = true;
-                g_mutex_unlock(&mpris_state.mutex);
-            }
-        }
+        handle_player_disappeared(player_name, old_owner);
     }
 }
 

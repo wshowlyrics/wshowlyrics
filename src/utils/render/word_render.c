@@ -83,6 +83,196 @@ double calculate_fill_progress(int64_t current_time, int64_t start_time,
     return is_unfill ? (1.0 - progress) : progress;
 }
 
+// Calculate segment dimensions (width and height)
+static void calculate_segment_size(cairo_t *cairo, const char *font, int scale,
+                                   struct word_segment *segment,
+                                   int *width, int *height) {
+    if (segment->ruby) {
+        get_ruby_text_size(cairo, font, width, height, scale, segment->text, segment->ruby);
+    } else {
+        get_text_size(cairo, font, width, height, NULL, scale, segment->text);
+    }
+}
+
+// Render all segments in dimmed color (first pass)
+static int render_dimmed_pass(cairo_t *cairo, const char *font, int scale,
+                             struct word_segment *segments, uint32_t dimmed_color,
+                             int max_ruby_height) {
+    cairo_set_source_u32(cairo, dimmed_color);
+
+    struct word_segment *seg_iter = segments;
+    int x_iter = 0;
+
+    while (seg_iter) {
+        bool is_empty_seg = (!seg_iter->text || seg_iter->text[0] == '\0');
+
+        if (!is_empty_seg) {
+            int seg_w, seg_h;
+            calculate_segment_size(cairo, font, scale, seg_iter, &seg_w, &seg_h);
+
+            cairo_move_to(cairo, x_iter, max_ruby_height);
+            pango_printf_ruby(cairo, font, scale, seg_iter->text, seg_iter->ruby);
+
+            x_iter += seg_w;
+            if (seg_iter->next) {
+                int space_w, space_h;
+                get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
+                x_iter += space_w;
+            }
+        }
+        seg_iter = seg_iter->next;
+    }
+
+    return x_iter;
+}
+
+// Calculate fill ratio for a segment
+static double calculate_segment_fill_ratio(struct word_segment *segment,
+                                           int64_t position_us,
+                                           bool has_active_unfill,
+                                           double unfill_override_ratio) {
+    if (has_active_unfill) {
+        return unfill_override_ratio;
+    }
+
+    if (position_us < segment->timestamp_us) {
+        return 0.0;
+    }
+
+    int64_t segment_end_us = segment->end_timestamp_us;
+    if (segment_end_us == 0 && segment->next) {
+        segment_end_us = segment->next->timestamp_us;
+    }
+
+    if (segment_end_us > 0 && position_us < segment_end_us) {
+        int64_t segment_duration = segment_end_us - segment->timestamp_us;
+        if (segment_duration > 0) {
+            int64_t elapsed = position_us - segment->timestamp_us;
+            double fill_ratio = (double)elapsed / (double)segment_duration;
+            if (fill_ratio > 1.0) fill_ratio = 1.0;
+            if (fill_ratio < 0.0) fill_ratio = 0.0;
+
+            if (segment->is_unfill) {
+                fill_ratio = (1.0 - fill_ratio) * 0.5;
+            }
+            return fill_ratio;
+        } else {
+            return segment->is_unfill ? 0.0 : 1.0;
+        }
+    }
+
+    return segment->is_unfill ? 0.0 : 1.0;
+}
+
+// Render single segment with fill effect
+static void render_segment_with_fill(cairo_t *cairo, const char *font, int scale,
+                                    struct word_segment *segment, uint32_t foreground,
+                                    int x_offset, int max_ruby_height,
+                                    double fill_ratio) {
+    if (fill_ratio <= 0.0) {
+        return;
+    }
+
+    int seg_w, seg_h;
+    calculate_segment_size(cairo, font, scale, segment, &seg_w, &seg_h);
+
+    cairo_save(cairo);
+
+    double fill_width = seg_w * fill_ratio;
+    int clip_height = segment->ruby ? seg_h : (seg_h + max_ruby_height);
+
+    cairo_rectangle(cairo, x_offset, 0, fill_width, clip_height);
+    cairo_clip(cairo);
+
+    cairo_set_source_u32(cairo, foreground);
+    cairo_move_to(cairo, x_offset, max_ruby_height);
+    pango_printf_ruby(cairo, font, scale, segment->text, segment->ruby);
+
+    cairo_restore(cairo);
+}
+
+// Render filled portions with clipping (second pass)
+static void render_filled_pass(cairo_t *cairo, const char *font, int scale,
+                              struct word_segment *segments, uint32_t foreground,
+                              int64_t position_us, int max_ruby_height) {
+    int x_offset = 0;
+    struct word_segment *segment = segments;
+
+    while (segment) {
+        // Check for active unfill effect
+        bool has_active_unfill = false;
+        double unfill_override_ratio = 0.0;
+
+        if (segment->text && segment->text[0] != '\0') {
+            struct word_segment *unfill_seg = find_active_unfill_segment(segment->next, position_us);
+            if (unfill_seg) {
+                has_active_unfill = true;
+                unfill_override_ratio = calculate_unfill_ratio(unfill_seg, position_us);
+            }
+        }
+
+        bool is_empty_unfill = segment->is_unfill && (!segment->text || segment->text[0] == '\0');
+        if (is_empty_unfill) {
+            segment = segment->next;
+            continue;
+        }
+
+        // Calculate fill ratio
+        double fill_ratio = calculate_segment_fill_ratio(segment, position_us,
+                                                         has_active_unfill, unfill_override_ratio);
+
+        // Render segment with fill
+        render_segment_with_fill(cairo, font, scale, segment, foreground,
+                                x_offset, max_ruby_height, fill_ratio);
+
+        // Update x_offset
+        if (segment->text && segment->text[0] != '\0') {
+            int seg_w, seg_h;
+            calculate_segment_size(cairo, font, scale, segment, &seg_w, &seg_h);
+            x_offset += seg_w;
+
+            if (segment->next) {
+                int space_w, space_h;
+                get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
+                x_offset += space_w;
+            }
+        }
+
+        segment = segment->next;
+    }
+}
+
+// Calculate total width and height of all segments
+static void calculate_total_dimensions(cairo_t *cairo, const char *font, int scale,
+                                      struct word_segment *segments, int max_ruby_height,
+                                      int *total_width, int *total_height) {
+    *total_width = 0;
+    *total_height = 0;
+
+    struct word_segment *size_iter = segments;
+    while (size_iter) {
+        int seg_w, seg_h;
+        calculate_segment_size(cairo, font, scale, size_iter, &seg_w, &seg_h);
+
+        if (!size_iter->ruby) {
+            seg_h += max_ruby_height;
+        }
+
+        *total_width += seg_w;
+        if (seg_h > *total_height) {
+            *total_height = seg_h;
+        }
+
+        if (size_iter->next) {
+            int space_w, space_h;
+            get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
+            *total_width += space_w;
+        }
+
+        size_iter = size_iter->next;
+    }
+}
+
 void render_karaoke_segments(const struct karaoke_params *params) {
     if (!params || !params->segments) {
         if (params && params->base.width && params->base.height) {
@@ -105,156 +295,14 @@ void render_karaoke_segments(const struct karaoke_params *params) {
 
     // First pass: draw all text in dimmed color
     uint32_t dimmed = create_dimmed_color(foreground);
-    cairo_set_source_u32(cairo, dimmed);
-
-    struct word_segment *seg_iter = segments;
-    int x_iter = 0;
-    while (seg_iter) {
-        bool is_empty_seg = (!seg_iter->text || seg_iter->text[0] == '\0');
-
-        if (!is_empty_seg) {
-            int seg_w, seg_h;
-            if (seg_iter->ruby) {
-                get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg_iter->text, seg_iter->ruby);
-            } else {
-                get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, seg_iter->text);
-            }
-            // All text at same baseline (max_ruby_height gives space for ruby above)
-            cairo_move_to(cairo, x_iter, max_ruby_height);
-            pango_printf_ruby(cairo, font, scale, seg_iter->text, seg_iter->ruby);
-
-            x_iter += seg_w;
-            if (seg_iter->next) {
-                int space_w, space_h;
-                get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
-                x_iter += space_w;
-            }
-        }
-        seg_iter = seg_iter->next;
-    }
+    render_dimmed_pass(cairo, font, scale, segments, dimmed, max_ruby_height);
 
     // Second pass: draw filled portions with clipping
-    int x_offset = 0;
-    struct word_segment *segment = segments;
-
-    while (segment) {
-        // Check for active unfill
-        // Check for active unfill effect in upcoming segments
-        bool has_active_unfill = false;
-        double unfill_override_ratio = 0.0;
-
-        if (segment->text && segment->text[0] != '\0') {
-            struct word_segment *unfill_seg = find_active_unfill_segment(segment->next, position_us);
-            if (unfill_seg) {
-                has_active_unfill = true;
-                unfill_override_ratio = calculate_unfill_ratio(unfill_seg, position_us);
-            }
-        }
-
-        const char *display_text = segment->text;
-        const char *display_ruby = segment->ruby;
-        bool is_empty_unfill = segment->is_unfill && (!segment->text || segment->text[0] == '\0');
-
-        if (is_empty_unfill) {
-            segment = segment->next;
-            continue;
-        }
-
-        int seg_w, seg_h;
-        if (display_ruby) {
-            get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, display_text, display_ruby);
-        } else {
-            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, display_text ? display_text : "");
-        }
-
-        // Calculate fill ratio
-        double fill_ratio = 0.0;
-
-        if (has_active_unfill) {
-            fill_ratio = unfill_override_ratio;
-        } else if (position_us >= segment->timestamp_us) {
-            int64_t segment_end_us = segment->end_timestamp_us;
-            if (segment_end_us == 0 && segment->next) {
-                segment_end_us = segment->next->timestamp_us;
-            }
-
-            if (segment_end_us > 0 && position_us < segment_end_us) {
-                int64_t segment_duration = segment_end_us - segment->timestamp_us;
-                if (segment_duration > 0) {
-                    int64_t elapsed = position_us - segment->timestamp_us;
-                    fill_ratio = (double)elapsed / (double)segment_duration;
-                    if (fill_ratio > 1.0) fill_ratio = 1.0;
-                    if (fill_ratio < 0.0) fill_ratio = 0.0;
-
-                    if (segment->is_unfill) {
-                        fill_ratio = (1.0 - fill_ratio) * 0.5;
-                    }
-                } else {
-                    fill_ratio = segment->is_unfill ? 0.0 : 1.0;
-                }
-            } else if (segment_end_us == 0 || position_us >= segment_end_us) {
-                fill_ratio = segment->is_unfill ? 0.0 : 1.0;
-            }
-        }
-
-        if (fill_ratio > 0.0) {
-            cairo_save(cairo);
-
-            double fill_width = seg_w * fill_ratio;
-            int clip_height = seg_h;
-            if (!display_ruby) {
-                clip_height += max_ruby_height;
-            }
-            cairo_rectangle(cairo, x_offset, 0, fill_width, clip_height);
-            cairo_clip(cairo);
-
-            cairo_set_source_u32(cairo, foreground);
-            // Use pango_printf_ruby for both - ensures consistent baseline
-            cairo_move_to(cairo, x_offset, max_ruby_height);
-            pango_printf_ruby(cairo, font, scale, display_text, display_ruby);
-
-            cairo_restore(cairo);
-        }
-
-        if (display_text && display_text[0] != '\0') {
-            x_offset += seg_w;
-            if (segment->next) {
-                int space_w, space_h;
-                get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
-                x_offset += space_w;
-            }
-        }
-
-        segment = segment->next;
-    }
+    render_filled_pass(cairo, font, scale, segments, foreground, position_us, max_ruby_height);
 
     // Calculate total width and height
-    int total_w = 0;
-    int total_h = 0;
-
-    struct word_segment *size_iter = segments;
-    while (size_iter) {
-        int seg_w, seg_h;
-        if (size_iter->ruby) {
-            get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, size_iter->text, size_iter->ruby);
-        } else {
-            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, size_iter->text);
-            seg_h += max_ruby_height;
-        }
-
-        total_w += seg_w;
-        if (seg_h > total_h) {
-            total_h = seg_h;
-        }
-
-        if (size_iter->next) {
-            int space_w, space_h;
-            get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
-            total_w += space_w;
-        }
-
-        size_iter = size_iter->next;
-    }
+    int total_w, total_h;
+    calculate_total_dimensions(cairo, font, scale, segments, max_ruby_height, &total_w, &total_h);
 
     *params->base.width = total_w;
     *params->base.height = total_h;

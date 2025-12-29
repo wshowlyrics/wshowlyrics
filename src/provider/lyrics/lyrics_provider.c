@@ -553,6 +553,150 @@ void lyrics_providers_cleanup(void) {
     }
 }
 
+// Try to load lyrics from cache
+static bool try_load_from_cache(const char *metadata_hash, struct lyrics_data *data,
+                               int64_t track_length_us) {
+    char cache_path[512];
+    if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
+        return false;
+    }
+
+    if (!lrc_parse_file(cache_path, data)) {
+        return false;
+    }
+
+    log_info("Found cached lyrics: %s", cache_path);
+    log_success("Found lyrics via cache");
+
+    // Update access time to prevent automatic cleanup
+    touch_cache_file(cache_path);
+
+    // Store the file path and calculate checksum
+    data->source_file_path = strdup(cache_path);
+    if (!calculate_file_md5(cache_path, data->md5_checksum)) {
+        log_warn("Failed to calculate MD5 checksum for %s", cache_path);
+        data->md5_checksum[0] = '\0';
+    }
+
+    // Try to translate lyrics with configured provider
+    translate_lyrics_with_provider(data, track_length_us);
+
+    return true;
+}
+
+// Check if provider should be skipped
+static bool should_skip_provider(const struct lyrics_provider *provider) {
+    if (strcmp(provider->name, "local") == 0) {
+        if (!g_config.lyrics.extensions || g_config.lyrics.extensions[0] == '\0') {
+            log_info("Skipped provider: %s (no extensions configured)", provider->name);
+            return true;
+        }
+    }
+
+    if (strcmp(provider->name, "lrclib") == 0) {
+        if (!g_config.lyrics.enable_lrclib) {
+            log_info("Skipped provider: %s (disabled in config)", provider->name);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Cache lrclib lyrics to file
+static void cache_lrclib_lyrics(struct track_metadata *track, struct lyrics_data *data,
+                                const char *metadata_hash) {
+    char cache_path[512];
+    if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
+        return;
+    }
+
+    mode_t old_mask = umask(0077);
+    FILE *f = fopen(cache_path, "w");
+    umask(old_mask);
+
+    if (!f) {
+        log_warn("Failed to cache lyrics");
+        return;
+    }
+
+    // Write LRC metadata tags
+    fprintf(f, "[ar:%s]\n", track->artist ? track->artist : "Unknown");
+    fprintf(f, "[ti:%s]\n", track->title ? track->title : "Unknown");
+    fprintf(f, "[al:%s]\n", track->album ? track->album : "Unknown");
+
+    // Write lyrics lines with timestamps
+    struct lyrics_line *line = data->lines;
+    while (line) {
+        fprintf(f, "[%02ld:%02ld.%02ld]%s\n",
+               (line->timestamp_us / 1000000) / 60,
+               (line->timestamp_us / 1000000) % 60,
+               (line->timestamp_us / 10000) % 100,
+               line->text);
+        line = line->next;
+    }
+    fclose(f);
+    log_info("Cached lyrics: %s", cache_path);
+
+    // Calculate MD5 checksum of cached file
+    data->source_file_path = strdup(cache_path);
+    if (!calculate_file_md5(cache_path, data->md5_checksum)) {
+        log_warn("Failed to calculate MD5 checksum for %s", cache_path);
+        data->md5_checksum[0] = '\0';
+    }
+}
+
+// Try all providers to find lyrics
+static bool try_providers(struct track_metadata *track, struct lyrics_data *data,
+                         int64_t duration_ms, const char *metadata_hash,
+                         bool *tried_local, bool *tried_lrclib) {
+    for (int i = 0; providers[i]; i++) {
+        if (should_skip_provider(providers[i])) {
+            continue;
+        }
+
+        // Track which providers were actually tried
+        if (strcmp(providers[i]->name, "local") == 0) {
+            *tried_local = true;
+        } else if (strcmp(providers[i]->name, "lrclib") == 0) {
+            *tried_lrclib = true;
+        }
+
+        log_info("Trying provider: %s", providers[i]->name);
+        if (!providers[i]->search(track->title, track->artist, track->album,
+                                 track->url, duration_ms, data)) {
+            continue;
+        }
+
+        log_success("Found lyrics via %s provider", providers[i]->name);
+
+        // If lyrics came from lrclib, cache them first
+        if (strcmp(providers[i]->name, "lrclib") == 0 && metadata_hash) {
+            cache_lrclib_lyrics(track, data, metadata_hash);
+        }
+
+        // Try to translate lyrics with configured provider
+        translate_lyrics_with_provider(data, track->length_us);
+
+        return true;
+    }
+
+    return false;
+}
+
+// Log search feedback based on which providers were tried
+static void log_search_feedback(bool tried_local, bool tried_lrclib) {
+    if (!tried_local && !tried_lrclib) {
+        log_warn("No lyrics providers enabled. Check 'extensions' and 'enable_lrclib' settings in ~/.config/wshowlyrics/settings.ini");
+    } else if (tried_local && tried_lrclib) {
+        log_warn("Tried local files and online provider (lrclib), but no lyrics found");
+    } else if (tried_local) {
+        log_warn("Tried local files, but no lyrics found");
+    } else if (tried_lrclib) {
+        log_warn("Tried online provider (lrclib), but no lyrics found");
+    }
+}
+
 bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *data) {
     if (!track || !track->title) {
         return false;
@@ -575,120 +719,21 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
     // Ensure cache directories exist
     ensure_cache_directories();
 
-    // Check cache first (before trying providers)
-    if (has_hash) {
-        char cache_path[512];
-        if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
-            // Try to load from cache without stat() to avoid TOCTOU
-            // lrc_parse_file will fail gracefully if file doesn't exist
-            if (lrc_parse_file(cache_path, data)) {
-                log_info("Found cached lyrics: %s", cache_path);
-                log_success("Found lyrics via cache");
-
-                // Update access time to prevent automatic cleanup
-                touch_cache_file(cache_path);
-
-                // Store the file path and calculate checksum
-                data->source_file_path = strdup(cache_path);
-                if (!calculate_file_md5(cache_path, data->md5_checksum)) {
-                    log_warn("Failed to calculate MD5 checksum for %s", cache_path);
-                    data->md5_checksum[0] = '\0';
-                }
-
-                // Try to translate lyrics with configured provider
-                translate_lyrics_with_provider(data, track->length_us);
-
-                return true;
-            }
-            // Failed to parse - file might not exist or be corrupted
-            // Continue to providers
-        }
+    // Check cache first
+    if (has_hash && try_load_from_cache(metadata_hash, data, track->length_us)) {
+        return true;
     }
 
     // Try each provider in order
     bool tried_local = false;
     bool tried_lrclib = false;
 
-    for (int i = 0; providers[i]; i++) {
-        // Skip local provider if no extensions configured
-        if (strcmp(providers[i]->name, "local") == 0 &&
-            (!g_config.lyrics.extensions || g_config.lyrics.extensions[0] == '\0')) {
-            log_info("Skipped provider: %s (no extensions configured)", providers[i]->name);
-            continue;
-        }
-
-        // Skip lrclib if disabled in config
-        if (strcmp(providers[i]->name, "lrclib") == 0 && !g_config.lyrics.enable_lrclib) {
-            log_info("Skipped provider: %s (disabled in config)", providers[i]->name);
-            continue;
-        }
-
-        // Track which providers were actually tried
-        if (strcmp(providers[i]->name, "local") == 0) {
-            tried_local = true;
-        } else if (strcmp(providers[i]->name, "lrclib") == 0) {
-            tried_lrclib = true;
-        }
-
-        log_info("Trying provider: %s", providers[i]->name);
-        if (providers[i]->search(track->title, track->artist, track->album,
-                                 track->url, duration_ms, data)) {
-            log_success("Found lyrics via %s provider", providers[i]->name);
-
-            // If lyrics came from lrclib, cache them first (before translation)
-            if (strcmp(providers[i]->name, "lrclib") == 0 && has_hash) {
-                char cache_path[512];
-                if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) > 0) {
-                    mode_t old_mask = umask(0077);  // Ensure rw------- permissions (privacy)
-                    FILE *f = fopen(cache_path, "w");
-                    umask(old_mask);
-                    if (f) {
-                        // Write LRC metadata tags
-                        fprintf(f, "[ar:%s]\n", track->artist ? track->artist : "Unknown");
-                        fprintf(f, "[ti:%s]\n", track->title ? track->title : "Unknown");
-                        fprintf(f, "[al:%s]\n", track->album ? track->album : "Unknown");
-
-                        // Write lyrics lines with timestamps
-                        struct lyrics_line *line = data->lines;
-                        while (line) {
-                            fprintf(f, "[%02ld:%02ld.%02ld]%s\n",
-                                   (line->timestamp_us / 1000000) / 60,
-                                   (line->timestamp_us / 1000000) % 60,
-                                   (line->timestamp_us / 10000) % 100,
-                                   line->text);
-                            line = line->next;
-                        }
-                        fclose(f);
-                        log_info("Cached lyrics: %s", cache_path);
-
-                        // Calculate MD5 checksum of cached file for translation
-                        data->source_file_path = strdup(cache_path);
-                        if (!calculate_file_md5(cache_path, data->md5_checksum)) {
-                            log_warn("Failed to calculate MD5 checksum for %s", cache_path);
-                            data->md5_checksum[0] = '\0';
-                        }
-                    } else {
-                        log_warn("Failed to cache lyrics");
-                    }
-                }
-            }
-
-            // Try to translate lyrics with configured provider
-            translate_lyrics_with_provider(data, track->length_us);
-
-            return true;
-        }
+    if (try_providers(track, data, duration_ms, has_hash ? metadata_hash : NULL,
+                     &tried_local, &tried_lrclib)) {
+        return true;
     }
 
     // Provide helpful feedback based on what happened
-    if (!tried_local && !tried_lrclib) {
-        log_warn("No lyrics providers enabled. Check 'extensions' and 'enable_lrclib' settings in ~/.config/wshowlyrics/settings.ini");
-    } else if (tried_local && tried_lrclib) {
-        log_warn("Tried local files and online provider (lrclib), but no lyrics found");
-    } else if (tried_local) {
-        log_warn("Tried local files, but no lyrics found");
-    } else if (tried_lrclib) {
-        log_warn("Tried online provider (lrclib), but no lyrics found");
-    }
+    log_search_feedback(tried_local, tried_lrclib);
     return false;
 }
