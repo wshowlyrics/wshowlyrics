@@ -51,118 +51,118 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
     }
 }
 
-bool lyrics_manager_update_track_info(struct lyrics_state *state) {
+// Helper: Cancel ongoing translation and wait for it to finish
+// Prevents use-after-free errors when freeing lyrics data
+static void cancel_and_wait_translation(struct lyrics_data *lyrics) {
+    lyrics->translation_should_cancel = true;
 
+    int wait_count = 0;
+    struct timespec wait_delay = {0, 50000000L}; // 50ms
+    while (lyrics->translation_in_progress && wait_count < 100) {
+        nanosleep(&wait_delay, NULL);
+        wait_count++;
+    }
+
+    if (wait_count >= 100) {
+        log_warn("Translation thread did not stop in time (waited 5s), force cancelling");
+        pthread_cancel(lyrics->translation_thread);
+        pthread_join(lyrics->translation_thread, NULL);
+    } else if (lyrics->translation_in_progress == false && wait_count > 0) {
+        // Thread finished gracefully, join it to clean up resources
+        pthread_join(lyrics->translation_thread, NULL);
+    }
+}
+
+// Helper: Handle case when no player is found
+static void handle_no_player_found(struct lyrics_state *state) {
+    if (!state->current_track.title) {
+        return;  // Nothing to clear
+    }
+
+    log_info("=== No player found, clearing lyrics ===");
+
+    // Cancel ongoing translation
+    cancel_and_wait_translation(&state->lyrics);
+
+    // Free track metadata
+    mpris_free_metadata(&state->current_track);
+
+    // Free lyrics
+    lrc_free_data(&state->lyrics);
+    state->current_line = NULL;
+    state->prev_line = NULL;
+    state->next_line = NULL;
+
+    // Reset tray icon to default
+    system_tray_reset_icon();
+
+    // Clear the display
+    rendering_manager_set_dirty(state);
+}
+
+// Helper: Detect if track changed by comparing trackid or URL
+static bool detect_track_change(struct track_metadata *new_track, struct track_metadata *current_track) {
+    // Check trackid first (most reliable for streaming services)
+    if (new_track->trackid && current_track->trackid) {
+        return strcmp(new_track->trackid, current_track->trackid) != 0;
+    }
+
+    // Fallback to URL comparison
+    if (new_track->url || current_track->url) {
+        if (!current_track->url || !new_track->url) {
+            return true;
+        }
+        return strcmp(new_track->url, current_track->url) != 0;
+    }
+
+    // Neither trackid nor URL available - assume changed if we had a previous track
+    return current_track->title != NULL;
+}
+
+// Helper: Handle track changed - log metadata, cancel translation, update state
+static void handle_track_changed(struct lyrics_state *state, struct track_metadata *new_track) {
+    log_info("=== Track changed ===");
+    log_info("Title: %s", new_track->title ? new_track->title : "Unknown");
+    log_info("Artist: %s", new_track->artist ? new_track->artist : "Unknown");
+    log_info("Album: %s", new_track->album ? new_track->album : "Unknown");
+    log_info("URL: %s", new_track->url ? new_track->url : "None");
+    log_info("Track ID: %s", new_track->trackid ? new_track->trackid : "None");
+    log_info("Art URL: %s", new_track->art_url ? new_track->art_url : "None");
+
+    // Cancel ongoing translation
+    cancel_and_wait_translation(&state->lyrics);
+
+    // Update track metadata
+    mpris_free_metadata(&state->current_track);
+    state->current_track = *new_track;
+    state->track_changed = true;
+
+    // Record when the track started
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    state->track_start_time_us = (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
+    state->track_start_time_us -= state->current_track.position_us;
+
+    // Reset tray icon to default before updating
+    system_tray_reset_icon();
+}
+
+bool lyrics_manager_update_track_info(struct lyrics_state *state) {
     struct track_metadata new_track = {0};
+
     if (!mpris_get_metadata(&new_track)) {
         // No player found - clear everything if we had a track before
-        if (state->current_track.title) {
-            log_info("=== No player found, clearing lyrics ===");
-
-            // Cancel ongoing translation
-            state->lyrics.translation_should_cancel = true;
-
-            // Wait for translation to finish before freeing lyrics data
-            // This prevents use-after-free errors
-            int wait_count = 0;
-            struct timespec wait_delay = {0, 50000000L}; // 50ms
-            while (state->lyrics.translation_in_progress && wait_count < 100) {
-                nanosleep(&wait_delay, NULL);
-                wait_count++;
-            }
-            if (wait_count >= 100) {
-                log_warn("Translation thread did not stop in time (waited 5s), force cancelling");
-                pthread_cancel(state->lyrics.translation_thread);
-                pthread_join(state->lyrics.translation_thread, NULL);
-            } else if (state->lyrics.translation_in_progress == false && wait_count > 0) {
-                // Thread finished gracefully, join it to clean up resources
-                pthread_join(state->lyrics.translation_thread, NULL);
-            }
-
-            // Free track metadata
-            mpris_free_metadata(&state->current_track);
-
-            // Free lyrics
-            lrc_free_data(&state->lyrics);
-            state->current_line = NULL;
-            state->prev_line = NULL;
-            state->next_line = NULL;
-
-            // Reset tray icon to default
-            system_tray_reset_icon();
-
-            // Clear the display
-            rendering_manager_set_dirty(state);
-        }
+        handle_no_player_found(state);
         mpris_free_metadata(&new_track);
         return false;
     }
 
-    // Check if track changed by comparing trackid (preferred) or URL (fallback)
-    // trackid is more reliable for streaming services (Spotify, YouTube Music, etc.)
-    bool changed = false;
-    if (new_track.trackid && state->current_track.trackid) {
-        // Both have trackid - use it (most reliable)
-        if (strcmp(new_track.trackid, state->current_track.trackid) != 0) {
-            changed = true;
-        }
-    } else if (new_track.url || state->current_track.url) {
-        // Fallback to URL comparison (for players without trackid)
-        if (!state->current_track.url ||
-            !new_track.url ||
-            strcmp(new_track.url, state->current_track.url) != 0) {
-            changed = true;
-        }
-    } else {
-        // Neither trackid nor URL available - assume changed if we had a previous track
-        if (state->current_track.title) {
-            changed = true;
-        }
-    }
+    // Check if track changed
+    bool changed = detect_track_change(&new_track, &state->current_track);
 
     if (changed) {
-        log_info("=== Track changed ===");
-        log_info("Title: %s", new_track.title ? new_track.title : "Unknown");
-        log_info("Artist: %s", new_track.artist ? new_track.artist : "Unknown");
-        log_info("Album: %s", new_track.album ? new_track.album : "Unknown");
-        log_info("URL: %s", new_track.url ? new_track.url : "None");
-        log_info("Track ID: %s", new_track.trackid ? new_track.trackid : "None");
-        log_info("Art URL: %s", new_track.art_url ? new_track.art_url : "None");
-
-        // Cancel ongoing translation
-        state->lyrics.translation_should_cancel = true;
-
-        // Wait for translation to finish before freeing lyrics data
-        // This prevents use-after-free errors
-        int wait_count = 0;
-        struct timespec wait_delay = {0, 50000000L}; // 50ms
-        while (state->lyrics.translation_in_progress && wait_count < 100) {
-            nanosleep(&wait_delay, NULL);
-            wait_count++;
-        }
-        if (wait_count >= 100) {
-            log_warn("Translation thread did not stop in time (waited 5s), force cancelling");
-            pthread_cancel(state->lyrics.translation_thread);
-            pthread_join(state->lyrics.translation_thread, NULL);
-        } else if (state->lyrics.translation_in_progress == false && wait_count > 0) {
-            // Thread finished gracefully, join it to clean up resources
-            pthread_join(state->lyrics.translation_thread, NULL);
-        }
-
-        mpris_free_metadata(&state->current_track);
-        state->current_track = new_track;
-        state->track_changed = true;
-
-        // Record when the track started
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        state->track_start_time_us = (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
-        state->track_start_time_us -= state->current_track.position_us;
-
-        // Reset tray icon to default before updating
-        system_tray_reset_icon();
-
-        // Album art and notification will be sent after lyrics are loaded (to use lyrics metadata if available)
+        handle_track_changed(state, &new_track);
+        // Album art and notification will be sent after lyrics are loaded
     } else {
         mpris_free_metadata(&new_track);
     }
@@ -174,22 +174,7 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     // Cancel ongoing translation and wait for it to finish
     // This prevents race condition where old and new translation threads
     // write to the same cache file simultaneously
-    state->lyrics.translation_should_cancel = true;
-
-    int wait_count = 0;
-    struct timespec wait_delay = {0, 50000000L}; // 50ms
-    while (state->lyrics.translation_in_progress && wait_count < 100) {
-        nanosleep(&wait_delay, NULL);
-        wait_count++;
-    }
-    if (wait_count >= 100) {
-        log_warn("Translation thread did not stop in time (waited 5s), force cancelling");
-        pthread_cancel(state->lyrics.translation_thread);
-        pthread_join(state->lyrics.translation_thread, NULL);
-    } else if (state->lyrics.translation_in_progress == false && wait_count > 0) {
-        // Thread finished gracefully, join it to clean up resources
-        pthread_join(state->lyrics.translation_thread, NULL);
-    }
+    cancel_and_wait_translation(&state->lyrics);
 
     // Free previous lyrics
     lrc_free_data(&state->lyrics);

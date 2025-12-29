@@ -319,6 +319,82 @@ static void on_seeked(
     // Seeked signal subscription is kept for potential future optimizations
 }
 
+// Helper: Map unique D-Bus name (:1.xxxxx) to well-known name (org.mpris.MediaPlayer2.xxx)
+// Returns: well-known name or NULL if unknown player
+static const char* resolve_player_well_known_name(const gchar *sender_name) {
+    if (!sender_name) {
+        return NULL;
+    }
+
+    // Already a well-known name
+    if (sender_name[0] != ':') {
+        return sender_name;
+    }
+
+    // Lookup unique name in mapping
+    g_mutex_lock(&mpris_state.mutex);
+    const char *mapped = g_hash_table_lookup(mpris_state.unique_name_map, sender_name);
+    g_mutex_unlock(&mpris_state.mutex);
+
+    return mapped;  // NULL if unknown
+}
+
+// Helper: Extract and validate player name from well-known name
+// Returns: player name (e.g., "spotify") or NULL if invalid/browser
+static const char* extract_and_validate_player_name(const char *well_known_name) {
+    if (!well_known_name) {
+        return NULL;
+    }
+
+    // Validate prefix
+    if (strncmp(well_known_name, "org.mpris.MediaPlayer2.", 23) != 0) {
+        return NULL;
+    }
+
+    const char *player_name = well_known_name + 23;
+
+    // Skip browsers and playerctld
+    if (is_browser_or_proxy(player_name)) {
+        return NULL;
+    }
+
+    return player_name;
+}
+
+// Helper: Handle case when a different player started playing
+static void handle_player_started_playing(const char *player_name) {
+    // Check if current player is paused
+    g_mutex_lock(&mpris_state.mutex);
+    bool current_is_paused = mpris_state.playback_status &&
+                            (strcmp(mpris_state.playback_status, "Paused") == 0 ||
+                             strcmp(mpris_state.playback_status, "Stopped") == 0);
+    g_mutex_unlock(&mpris_state.mutex);
+
+    if (!current_is_paused) {
+        return;
+    }
+
+    log_info("Player %s started playing while current player is paused", player_name);
+
+    // Find best player (considers playing status and preferences)
+    char *new_player = find_best_player();
+    if (!new_player) {
+        return;
+    }
+
+    g_mutex_lock(&mpris_state.mutex);
+    bool should_switch = !mpris_state.current_player ||
+                        strcmp(new_player, mpris_state.current_player) != 0;
+    g_mutex_unlock(&mpris_state.mutex);
+
+    if (should_switch) {
+        log_info("Switching to playing player: %s", new_player);
+        setup_player_subscription(new_player);
+    } else {
+        free(new_player);
+    }
+}
+
 // Callback: Handle PropertiesChanged from ANY MPRIS player (for automatic switching)
 static void on_any_player_properties_changed(
     G_GNUC_UNUSED GDBusConnection *connection,
@@ -329,34 +405,15 @@ static void on_any_player_properties_changed(
     GVariant *parameters,
     G_GNUC_UNUSED gpointer user_data)
 {
-    if (!sender_name) {
+    // Resolve sender name to well-known name
+    const char *well_known_name = resolve_player_well_known_name(sender_name);
+    if (!well_known_name) {
         return;
     }
 
-    // Map unique name (:1.xxxxx) to well-known name (org.mpris.MediaPlayer2.xxx)
-    const char *well_known_name = sender_name;
-    if (sender_name[0] == ':') {
-        // This is a unique name - look it up in our mapping
-        g_mutex_lock(&mpris_state.mutex);
-        const char *mapped = g_hash_table_lookup(mpris_state.unique_name_map, sender_name);
-        if (mapped) {
-            well_known_name = mapped;
-        } else {
-            // Unknown player, ignore
-            g_mutex_unlock(&mpris_state.mutex);
-            return;
-        }
-        g_mutex_unlock(&mpris_state.mutex);
-    }
-
-    // Extract player name from well-known name (e.g., "org.mpris.MediaPlayer2.spotify" -> "spotify")
-    if (strncmp(well_known_name, "org.mpris.MediaPlayer2.", 23) != 0) {
-        return;
-    }
-    const char *player_name = well_known_name + 23;
-
-    // Skip browsers and playerctld
-    if (is_browser_or_proxy(player_name)) {
+    // Extract and validate player name
+    const char *player_name = extract_and_validate_player_name(well_known_name);
+    if (!player_name) {
         return;
     }
 
@@ -382,32 +439,7 @@ static void on_any_player_properties_changed(
         const char *status = g_variant_get_string(status_variant, NULL);
 
         if (strcmp(status, "Playing") == 0) {
-            // Other player started playing - check if we should switch
-            g_mutex_lock(&mpris_state.mutex);
-            bool current_is_paused = mpris_state.playback_status &&
-                                    (strcmp(mpris_state.playback_status, "Paused") == 0 ||
-                                     strcmp(mpris_state.playback_status, "Stopped") == 0);
-            g_mutex_unlock(&mpris_state.mutex);
-
-            if (current_is_paused) {
-                log_info("Player %s started playing while current player is paused", player_name);
-
-                // Find best player (considers playing status and preferences)
-                char *new_player = find_best_player();
-                if (new_player) {
-                    g_mutex_lock(&mpris_state.mutex);
-                    bool should_switch = !mpris_state.current_player ||
-                                        strcmp(new_player, mpris_state.current_player) != 0;
-                    g_mutex_unlock(&mpris_state.mutex);
-
-                    if (should_switch) {
-                        log_info("Switching to playing player: %s", new_player);
-                        setup_player_subscription(new_player);
-                    } else {
-                        free(new_player);
-                    }
-                }
-            }
+            handle_player_started_playing(player_name);
         }
 
         g_variant_unref(status_variant);
@@ -581,6 +613,110 @@ static void on_name_owner_changed(
     }
 }
 
+// Helper: Check if a player is currently playing
+// Returns: true if playing, false otherwise
+static bool is_player_playing(const char *player_name) {
+    if (!player_name) {
+        return false;
+    }
+
+    char bus_name[SMALL_BUFFER_SIZE];
+    build_mpris_bus_name(bus_name, sizeof(bus_name), player_name);
+
+    GError *error = NULL;
+    GVariant *status_variant = g_dbus_connection_call_sync(
+        dbus_connection,
+        bus_name,
+        MPRIS_OBJECT_PATH,
+        DBUS_PROPERTIES_INTERFACE,
+        "Get",
+        g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "PlaybackStatus"),
+        G_VARIANT_TYPE("(v)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
+
+    if (error) {
+        g_error_free(error);
+        return false;
+    }
+
+    if (!status_variant) {
+        return false;
+    }
+
+    GVariant *status_value = g_variant_get_child_value(status_variant, 0);
+    GVariant *status_str = g_variant_get_variant(status_value);
+    const char *status = g_variant_get_string(status_str, NULL);
+    bool is_playing = (strcmp(status, "Playing") == 0);
+
+    g_variant_unref(status_str);
+    g_variant_unref(status_value);
+    g_variant_unref(status_variant);
+
+    return is_playing;
+}
+
+// Helper: Find first playing player from all available players
+// Returns: strdup'd player name or NULL
+static char* find_first_playing_player(char **all_players, int player_count) {
+    for (int i = 0; i < player_count; i++) {
+        if (is_player_playing(all_players[i])) {
+            return strdup(all_players[i]);
+        }
+    }
+    return NULL;
+}
+
+// Helper: Find playing or available player from preferred list
+// Returns: strdup'd player name (playing preferred) or NULL
+// Sets fallback_out to first available (but not playing) preferred player
+static char* find_preferred_player(const char *preferred_players_str, char **all_players,
+                                   int player_count, char **fallback_out) {
+    *fallback_out = NULL;
+
+    char *players_copy = strdup(preferred_players_str);
+    char *saveptr;
+    char *preferred = strtok_r(players_copy, ",", &saveptr);
+
+    while (preferred) {
+        // Trim whitespace
+        while (*preferred == ' ') preferred++;
+        if (*preferred == '\0') {
+            preferred = strtok_r(NULL, ",", &saveptr);
+            continue;
+        }
+
+        char *end = preferred + strlen(preferred) - 1;
+        while (end > preferred && *end == ' ') *end-- = '\0';
+
+        // Check if this preferred player is available
+        for (int i = 0; i < player_count; i++) {
+            if (strcmp(all_players[i], preferred) == 0) {
+                if (is_player_playing(preferred)) {
+                    // Found playing preferred player
+                    char *result = strdup(preferred);
+                    free(players_copy);
+                    return result;
+                }
+
+                // Remember first available (but not playing) as fallback
+                if (!*fallback_out) {
+                    *fallback_out = strdup(preferred);
+                }
+                break;
+            }
+        }
+
+        preferred = strtok_r(NULL, ",", &saveptr);
+    }
+
+    free(players_copy);
+    return NULL;
+}
+
 // Helper: Find best player based on preferred_players config
 static char* find_best_player(void) {
     int player_count = 0;
@@ -593,144 +729,27 @@ static char* find_best_player(void) {
 
     struct config *cfg = config_get();
     char *best_player = NULL;
-    char *fallback_player = NULL;  // First available but not playing
 
     // If no preferred players, find first playing player or first available
     if (!cfg->lyrics.preferred_players || cfg->lyrics.preferred_players[0] == '\0') {
-        // Try to find a playing player first
-        for (int i = 0; i < player_count; i++) {
-            char bus_name[SMALL_BUFFER_SIZE];
-            build_mpris_bus_name(bus_name, sizeof(bus_name), all_players[i]);
-
-            GError *error = NULL;
-            GVariant *status_variant = g_dbus_connection_call_sync(
-                dbus_connection,
-                bus_name,
-                MPRIS_OBJECT_PATH,
-                DBUS_PROPERTIES_INTERFACE,
-                "Get",
-                g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "PlaybackStatus"),
-                G_VARIANT_TYPE("(v)"),
-                G_DBUS_CALL_FLAGS_NONE,
-                -1,
-                NULL,
-                &error
-            );
-
-            if (!error && status_variant) {
-                GVariant *status_value = g_variant_get_child_value(status_variant, 0);
-                GVariant *status_str = g_variant_get_variant(status_value);
-                const char *status = g_variant_get_string(status_str, NULL);
-
-                if (strcmp(status, "Playing") == 0) {
-                    best_player = strdup(all_players[i]);
-                    g_variant_unref(status_str);
-                    g_variant_unref(status_value);
-                    g_variant_unref(status_variant);
-                    goto cleanup;
-                }
-
-                g_variant_unref(status_str);
-                g_variant_unref(status_value);
-                g_variant_unref(status_variant);
-            }
-
-            if (error) {
-                g_error_free(error);
-            }
+        best_player = find_first_playing_player(all_players, player_count);
+        if (!best_player) {
+            best_player = strdup(all_players[0]);
         }
-
-        // No playing player, use first available
-        best_player = strdup(all_players[0]);
-        goto cleanup;
-    }
-
-    // Parse preferred_players (comma-separated)
-    char *players_copy = strdup(cfg->lyrics.preferred_players);
-    char *saveptr;
-    char *preferred = strtok_r(players_copy, ",", &saveptr);
-
-    while (preferred) {
-        // Trim whitespace
-        while (*preferred == ' ') preferred++;
-
-        // Skip empty strings after trimming leading spaces
-        if (*preferred == '\0') {
-            preferred = strtok_r(NULL, ",", &saveptr);
-            continue;
-        }
-
-        char *end = preferred + strlen(preferred) - 1;
-        while (end > preferred && *end == ' ') *end-- = '\0';
-
-        // Check if this preferred player is available
-        for (int i = 0; i < player_count; i++) {
-            if (strcmp(all_players[i], preferred) == 0) {
-                // Check if it's playing
-                char bus_name[SMALL_BUFFER_SIZE];
-                build_mpris_bus_name(bus_name, sizeof(bus_name), preferred);
-
-                GError *error = NULL;
-                GVariant *status_variant = g_dbus_connection_call_sync(
-                    dbus_connection,
-                    bus_name,
-                    MPRIS_OBJECT_PATH,
-                    DBUS_PROPERTIES_INTERFACE,
-                    "Get",
-                    g_variant_new("(ss)", MPRIS_PLAYER_INTERFACE, "PlaybackStatus"),
-                    G_VARIANT_TYPE("(v)"),
-                    G_DBUS_CALL_FLAGS_NONE,
-                    -1,
-                    NULL,
-                    &error
-                );
-
-                if (!error && status_variant) {
-                    GVariant *status_value = g_variant_get_child_value(status_variant, 0);
-                    GVariant *status_str = g_variant_get_variant(status_value);
-                    const char *status = g_variant_get_string(status_str, NULL);
-
-                    if (strcmp(status, "Playing") == 0) {
-                        // Found a playing player - use it immediately
-                        free(best_player);
-                        free(fallback_player);
-                        best_player = strdup(preferred);
-                        g_variant_unref(status_str);
-                        g_variant_unref(status_value);
-                        g_variant_unref(status_variant);
-                        free(players_copy);
-                        goto cleanup;
-                    }
-
-                    g_variant_unref(status_str);
-                    g_variant_unref(status_value);
-                    g_variant_unref(status_variant);
-                }
-
-                if (error) {
-                    g_error_free(error);
-                }
-
-                // If not playing but available, remember as fallback
-                if (!fallback_player) {
-                    fallback_player = strdup(preferred);
-                }
-            }
-        }
-
-        preferred = strtok_r(NULL, ",", &saveptr);
-    }
-
-    free(players_copy);
-
-    // Use fallback or first available (no playing player found in preferred list)
-    if (fallback_player) {
-        best_player = fallback_player;
     } else {
-        best_player = strdup(all_players[0]);
+        // Find playing preferred player or fallback
+        char *fallback = NULL;
+        best_player = find_preferred_player(cfg->lyrics.preferred_players, all_players,
+                                            player_count, &fallback);
+        if (!best_player) {
+            // Use fallback or first available
+            best_player = fallback ? fallback : strdup(all_players[0]);
+        } else {
+            free(fallback);
+        }
     }
 
-cleanup:
+    // Cleanup
     for (int i = 0; i < player_count; i++) {
         free(all_players[i]);
     }
