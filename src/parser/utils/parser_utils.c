@@ -135,6 +135,17 @@ bool parse_lrc_metadata_tag(const char *line, struct lyrics_metadata *metadata) 
         }
     }
 
+    // Ignore unknown metadata tags (e.g., [au:], [by:], [length:])
+    // Pattern: [xxx:...] where xxx is NOT a timestamp (which starts with digit)
+    if (line[0] == '[' && line[1] != '<' && !isdigit((unsigned char)line[1])) {
+        const char *colon = strchr(line, ':');
+        const char *bracket = strchr(line, ']');
+        if (colon && bracket && colon < bracket && colon < line + 10) {
+            // Tag name is short (< 10 chars) and has : before ]
+            return true;  // Ignore unknown metadata
+        }
+    }
+
     return false;
 }
 
