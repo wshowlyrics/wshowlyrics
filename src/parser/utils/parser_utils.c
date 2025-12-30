@@ -562,6 +562,21 @@ static const char* handle_ruby_annotation(const char *pos, const char *seg_start
     return close_brace + 1;
 }
 
+// Helper: Handle annotation parsing failure (allocation error or malformed syntax)
+// Returns: false if fatal error (allocation failure), true if should continue parsing
+// Output: continue_pos is set to next position to continue parsing
+static bool handle_annotation_failure(const char *pos, const char **continue_pos,
+                                      struct ruby_segment *head) {
+    if (strchr(pos, '}')) {
+        // Failed with valid closing brace - allocation error
+        free_ruby_segments_list(head);
+        return false;  // Fatal error
+    }
+    // Malformed - treat as regular text
+    *continue_pos = pos + 1;
+    return true;  // Continue parsing
+}
+
 // Parse text into ruby segments with ruby annotations, translations, and newlines
 // Precondition: text must be a valid NULL-terminated string
 // Returns: number of segments created, or 0 on failure
@@ -603,13 +618,12 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             // Translation at line start
             const char *new_pos = handle_translation(pos, &next_seg, &count, head);
             if (!new_pos) {
-                if (strchr(pos, '}')) {
-                    // Failed with valid closing brace - allocation error
-                    free_ruby_segments_list(head);
+                const char *continue_pos;
+                if (!handle_annotation_failure(pos, &continue_pos, head)) {
                     return 0;
                 }
-                // Malformed - treat as regular text
-                pos++;
+                pos = continue_pos;
+                seg_start = pos;
                 continue;
             }
             pos = new_pos;
@@ -627,13 +641,12 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             const char *new_pos = handle_ruby_annotation(pos, seg_start, text_end,
                                                          &next_seg, &count, head);
             if (!new_pos) {
-                if (strchr(pos, '}')) {
-                    // Failed with valid closing brace - allocation error
-                    free_ruby_segments_list(head);
+                const char *continue_pos;
+                if (!handle_annotation_failure(pos, &continue_pos, head)) {
                     return 0;
                 }
-                // Malformed - treat as regular text
-                pos++;
+                pos = continue_pos;
+                seg_start = pos;
                 continue;
             }
             pos = new_pos;

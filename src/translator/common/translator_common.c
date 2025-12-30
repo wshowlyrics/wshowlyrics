@@ -930,6 +930,21 @@ bool translator_translate_lyrics_generic(struct lyrics_data *data,
     return true;
 }
 
+// Helper: Access JSON object field with error handling
+// Returns: next object, or NULL on error (with cleanup)
+static json_object* access_json_field(json_object *current, const char *field,
+                                      const char *provider_name, json_object *root,
+                                      char *path_copy) {
+    json_object *next_obj = NULL;
+    if (!json_object_object_get_ex(current, field, &next_obj)) {
+        log_error("%s: No '%s' in JSON response", provider_name, field);
+        json_object_put(root);
+        free(path_copy);
+        return NULL;
+    }
+    return next_obj;
+}
+
 /**
  * Extract text from JSON response by following a path expression
  * Path format: "field.nested[index].text"
@@ -964,14 +979,10 @@ char* json_extract_text_by_path(const char *json_str, const char *path, const ch
 
             // If there's a field name before bracket, access it first
             if (token < bracket && *token) {
-                json_object *next_obj = NULL;
-                if (!json_object_object_get_ex(current, token, &next_obj)) {
-                    log_error("%s: No '%s' in JSON response", provider_name, token);
-                    json_object_put(root);
-                    free(path_copy);
+                current = access_json_field(current, token, provider_name, root, path_copy);
+                if (!current) {
                     return NULL;
                 }
-                current = next_obj;
             }
 
             // Parse array index
@@ -1010,25 +1021,17 @@ char* json_extract_text_by_path(const char *json_str, const char *path, const ch
             *dot = '\0';
             next_token = dot + 1;
 
-            json_object *next_obj = NULL;
-            if (!json_object_object_get_ex(current, token, &next_obj)) {
-                log_error("%s: No '%s' in JSON response", provider_name, token);
-                json_object_put(root);
-                free(path_copy);
+            current = access_json_field(current, token, provider_name, root, path_copy);
+            if (!current) {
                 return NULL;
             }
-            current = next_obj;
             token = next_token;
         } else {
             // Last field in path
-            json_object *text_obj = NULL;
-            if (!json_object_object_get_ex(current, token, &text_obj)) {
-                log_error("%s: No '%s' in JSON response", provider_name, token);
-                json_object_put(root);
-                free(path_copy);
+            current = access_json_field(current, token, provider_name, root, path_copy);
+            if (!current) {
                 return NULL;
             }
-            current = text_obj;
             break;
         }
     }

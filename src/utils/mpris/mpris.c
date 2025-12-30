@@ -449,6 +449,48 @@ static void on_any_player_properties_changed(
     g_variant_unref(invalidated_properties);
 }
 
+// Forward declarations
+static bool is_player_playing(const char *player_name);
+
+// Helper: Trim leading and trailing whitespace from string in-place
+// Returns: pointer to first non-space character (trailing spaces are removed)
+static char* trim_whitespace_inplace(char *str) {
+    // Trim leading whitespace
+    while (*str == ' ') str++;
+    if (*str == '\0') {
+        return str;
+    }
+
+    // Trim trailing whitespace
+    size_t len = strlen(str);
+    char *end = str + len - 1;
+    while (end > str && *end == ' ') {
+        *end-- = '\0';
+    }
+
+    return str;
+}
+
+// Helper: Check if preferred player matches and handle it
+// Returns: strdup'd player name if playing, NULL otherwise
+static char* check_preferred_player_match(const char *preferred, const char *player_name,
+                                          char **fallback_out) {
+    if (strcmp(player_name, preferred) != 0) {
+        return NULL;  // Not a match
+    }
+
+    if (is_player_playing(preferred)) {
+        return strdup(preferred);  // Found playing preferred player
+    }
+
+    // Remember first available (but not playing) as fallback
+    if (!*fallback_out) {
+        *fallback_out = strdup(preferred);
+    }
+
+    return NULL;
+}
+
 // Check if should switch to a new player based on preferred_players
 static bool should_switch_to_player(const char *player_name) {
     bool should_switch = false;
@@ -472,15 +514,10 @@ static bool should_switch_to_player(const char *player_name) {
 
         while (preferred) {
             // Trim whitespace
-            while (*preferred == ' ') preferred++;
+            preferred = trim_whitespace_inplace(preferred);
             if (*preferred == '\0') {
                 preferred = strtok_r(NULL, ",", &saveptr);
                 continue;
-            }
-            size_t len = strlen(preferred);
-            if (len > 0) {
-                char *end = preferred + len - 1;
-                while (end > preferred && *end == ' ') *end-- = '\0';
             }
 
             // If new player matches preferred, switch
@@ -683,29 +720,23 @@ static char* find_preferred_player(const char *preferred_players_str, char **all
 
     while (preferred) {
         // Trim whitespace
-        while (*preferred == ' ') preferred++;
+        preferred = trim_whitespace_inplace(preferred);
         if (*preferred == '\0') {
             preferred = strtok_r(NULL, ",", &saveptr);
             continue;
         }
 
-        char *end = preferred + strlen(preferred) - 1;
-        while (end > preferred && *end == ' ') *end-- = '\0';
-
         // Check if this preferred player is available
         for (int i = 0; i < player_count; i++) {
-            if (strcmp(all_players[i], preferred) == 0) {
-                if (is_player_playing(preferred)) {
-                    // Found playing preferred player
-                    char *result = strdup(preferred);
-                    free(players_copy);
-                    return result;
-                }
+            char *result = check_preferred_player_match(preferred, all_players[i], fallback_out);
+            if (result) {
+                // Found playing preferred player
+                free(players_copy);
+                return result;
+            }
 
-                // Remember first available (but not playing) as fallback
-                if (!*fallback_out) {
-                    *fallback_out = strdup(preferred);
-                }
+            // If matched (but not playing), break out of loop
+            if (strcmp(all_players[i], preferred) == 0) {
                 break;
             }
         }

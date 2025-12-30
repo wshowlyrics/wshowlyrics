@@ -360,6 +360,23 @@ int build_translation_cache_path(char *dest, size_t dest_size,
                                                    original_md5, target_lang);
 }
 
+// Helper: Handle unlinkat failure (ignore ENOENT, log other errors)
+// Returns: true if error should be ignored (ENOENT), false if real error
+static bool handle_unlinkat_failure(const char *path, const char *filename, bool is_warning) {
+    if (errno == ENOENT) {
+        // File was already deleted - not an error
+        return true;
+    }
+
+    if (is_warning) {
+        log_warn("Failed to remove file %s: %s", filename, strerror(errno));
+    } else {
+        log_error("Failed to remove file %s/%s: %s", path, filename, strerror(errno));
+    }
+
+    return false;
+}
+
 // Recursively remove directory and its contents
 // Uses fstatat() and unlinkat() to avoid TOCTOU race conditions
 static bool remove_directory_recursive(const char *path) {
@@ -409,11 +426,9 @@ static bool remove_directory_recursive(const char *path) {
             // Remove file using unlinkat() with dirfd (atomicity)
             if (unlinkat(dir_fd, entry->d_name, 0) == -1) {
                 // File might have been deleted by another process (race condition)
-                if (errno != ENOENT) {
-                    log_error("Failed to remove file %s/%s: %s", path, entry->d_name, strerror(errno));
+                if (!handle_unlinkat_failure(path, entry->d_name, false)) {
                     success = false;
                 }
-                // ENOENT is fine - file already deleted
             }
         }
     }
@@ -545,10 +560,7 @@ static int cleanup_directory(const char *dir_path, int max_days) {
                 removed_count++;
             } else {
                 // File might have been deleted by another process (race condition)
-                if (errno != ENOENT) {
-                    log_warn("Failed to remove old cache file %s: %s", entry->d_name, strerror(errno));
-                }
-                // ENOENT is fine - file already deleted
+                handle_unlinkat_failure(NULL, entry->d_name, true);
             }
         }
     }
