@@ -274,11 +274,11 @@ static void on_properties_changed(
     if (metadata_variant) {
         // Only treat as track change if currently playing or stopped
         // Ignore metadata signals during pause/resume (some players send spurious signals)
-        bool is_playing = mpris_state.playback_status &&
-                         (strcmp(mpris_state.playback_status, "Playing") == 0 ||
-                          strcmp(mpris_state.playback_status, "Stopped") == 0);
+        bool should_handle_metadata_change = mpris_state.playback_status &&
+                                            (strcmp(mpris_state.playback_status, "Playing") == 0 ||
+                                             strcmp(mpris_state.playback_status, "Stopped") == 0);
 
-        if (is_playing) {
+        if (should_handle_metadata_change) {
             log_info("Track metadata changed - new track detected");
             // Reset position when track changes
             mpris_state.position_us = 0;
@@ -320,23 +320,24 @@ static void on_seeked(
 }
 
 // Helper: Map unique D-Bus name (:1.xxxxx) to well-known name (org.mpris.MediaPlayer2.xxx)
-// Returns: well-known name or NULL if unknown player
-static const char* resolve_player_well_known_name(const gchar *sender_name) {
+// Returns: strdup'd well-known name or NULL if unknown player (caller must free)
+static char* resolve_player_well_known_name(const gchar *sender_name) {
     if (!sender_name) {
         return NULL;
     }
 
     // Already a well-known name
     if (sender_name[0] != ':') {
-        return sender_name;
+        return strdup(sender_name);  // Return copy for consistency
     }
 
     // Lookup unique name in mapping
     g_mutex_lock(&mpris_state.mutex);
     const char *mapped = g_hash_table_lookup(mpris_state.unique_name_map, sender_name);
+    char *result = mapped ? strdup(mapped) : NULL;  // Copy to avoid dangling pointer after unlock
     g_mutex_unlock(&mpris_state.mutex);
 
-    return mapped;  // NULL if unknown
+    return result;  // Caller must free
 }
 
 // Helper: Extract and validate player name from well-known name
@@ -406,7 +407,7 @@ static void on_any_player_properties_changed(
     G_GNUC_UNUSED gpointer user_data)
 {
     // Resolve sender name to well-known name
-    const char *well_known_name = resolve_player_well_known_name(sender_name);
+    char *well_known_name = resolve_player_well_known_name(sender_name);
     if (!well_known_name) {
         return;
     }
@@ -414,6 +415,7 @@ static void on_any_player_properties_changed(
     // Extract and validate player name
     const char *player_name = extract_and_validate_player_name(well_known_name);
     if (!player_name) {
+        free(well_known_name);
         return;
     }
 
@@ -447,6 +449,7 @@ static void on_any_player_properties_changed(
 
     g_variant_unref(changed_properties);
     g_variant_unref(invalidated_properties);
+    free(well_known_name);
 }
 
 // Forward declarations
