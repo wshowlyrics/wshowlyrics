@@ -241,8 +241,19 @@ static void on_properties_changed(
         char *status_copy = strdup(status);
         g_variant_unref(status_variant);  // Unref early since we copied the string
 
+        // Check status type for different actions
+        bool is_paused_or_stopped = (strcmp(status_copy, "Paused") == 0 || strcmp(status_copy, "Stopped") == 0);
+        bool is_playing = (strcmp(status_copy, "Playing") == 0);
+
+        // If playback started, force metadata check to catch track changes
+        // Some players (YouTube Music Desktop) don't emit Metadata PropertiesChanged
+        // when track changes, only PlaybackStatus changes (Paused -> Playing)
+        if (is_playing) {
+            mpris_state.metadata_changed = true;
+        }
+
         // If current player paused/stopped, check for other playing players
-        if (strcmp(status_copy, "Paused") == 0 || strcmp(status_copy, "Stopped") == 0) {
+        if (is_paused_or_stopped) {
             char *current = mpris_state.current_player ? strdup(mpris_state.current_player) : NULL;
             g_mutex_unlock(&mpris_state.mutex);  // Unlock before D-Bus call
 
@@ -257,13 +268,6 @@ static void on_properties_changed(
 
             free(current);
             g_mutex_lock(&mpris_state.mutex);  // Re-lock for rest of function
-        }
-        // If playback started, check for metadata changes
-        // Some players (YouTube Music Desktop) don't emit Metadata PropertiesChanged
-        // when track changes, only PlaybackStatus changes (Paused -> Playing)
-        else if (strcmp(status_copy, "Playing") == 0) {
-            // Force metadata check on next poll to catch track changes
-            mpris_state.metadata_changed = true;
         }
 
         free(status_copy);
