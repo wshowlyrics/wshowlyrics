@@ -424,11 +424,10 @@ static bool remove_directory_recursive(const char *path) {
             }
         } else {
             // Remove file using unlinkat() with dirfd (atomicity)
-            if (unlinkat(dir_fd, entry->d_name, 0) == -1) {
-                // File might have been deleted by another process (race condition)
-                if (!handle_unlinkat_failure(path, entry->d_name, false)) {
-                    success = false;
-                }
+            // File might have been deleted by another process (race condition)
+            if (unlinkat(dir_fd, entry->d_name, 0) == -1 &&
+                !handle_unlinkat_failure(path, entry->d_name, false)) {
+                success = false;
             }
         }
     }

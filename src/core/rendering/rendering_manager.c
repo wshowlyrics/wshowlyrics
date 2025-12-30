@@ -26,6 +26,13 @@ static inline struct render_base_params make_render_base(
     };
 }
 
+// Forward declaration for helper functions used in rendering
+static void render_segments_with_optional_translation(cairo_t *cairo,
+                                                     struct lyrics_state *state,
+                                                     int scale, int *w, int *h,
+                                                     bool has_seg_trans,
+                                                     int current_line_index);
+
 // Helper function to render timing offset progress bar
 // Shows a horizontal bar below lyrics indicating the current timing offset:
 // - Positive offset (advance lyrics): bar extends right from center
@@ -95,6 +102,74 @@ static void render_opposite_sign_bar(cairo_t *cairo, int center_x, int bar_y, in
 
     render_single_bar(cairo, color, center_x, bar_y, bar_height,
                      result_width, is_positive, 0);
+}
+
+// Helper: Render karaoke-style content (multiline or single-line)
+static void render_karaoke_content(cairo_t *cairo, struct lyrics_state *state,
+                                   int scale, int *width, int *height) {
+    int64_t position_us = mpris_get_position();
+    int w, h;
+
+    // Use multi-line rendering if enabled and context lines are available
+    if (g_config.display.enable_multiline_lrcx &&
+        (state->prev_line || state->next_line)) {
+        struct multiline_params params = {
+            .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
+            .prev_line = state->prev_line,
+            .current_line = state->current_line,
+            .next_line = state->next_line,
+            .position_us = position_us
+        };
+        render_karaoke_multiline(&params);
+    } else {
+        // Fallback to single-line karaoke
+        struct karaoke_params params = {
+            .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
+            .segments = state->current_line->segments,
+            .position_us = position_us
+        };
+        render_karaoke_segments(&params);
+    }
+
+    *width = w;
+    *height = h;
+}
+
+// Helper: Render normal (non-karaoke) content with segments or plain text
+static void render_normal_content(cairo_t *cairo, struct lyrics_state *state,
+                                  int scale, const char *text_to_display,
+                                  bool has_lyrics, int *width, int *height) {
+    cairo_set_source_u32(cairo, state->foreground);
+
+    // Check if this line has segments (for ruby text support)
+    bool has_word_segments = (has_lyrics && state->current_line->segments &&
+                             state->current_line->segment_count > 0);
+    bool has_ruby_segments = (has_lyrics && state->current_line->ruby_segments &&
+                             state->current_line->segment_count > 0);
+
+    int w, h;
+
+    if (has_ruby_segments && !has_word_segments) {
+        // Render LRC/SRT with ruby_segment (furigana only, no karaoke)
+        bool has_seg_trans = has_segment_translation(state->current_line->ruby_segments);
+        render_segments_with_optional_translation(cairo, state, scale, &w, &h,
+                                                 has_seg_trans, state->current_line_index);
+    } else if (has_lyrics && has_word_segments) {
+        // Render LRCX with word_segment but without karaoke fill effect
+        struct word_static_params params = {
+            .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
+            .segments = state->current_line->segments
+        };
+        render_word_segments_static(&params);
+    } else {
+        // No segments - simple text rendering
+        struct render_base_params params = make_render_base(cairo, state->font, scale,
+                                                           state->foreground, &w, &h);
+        render_plain_text(&params, text_to_display);
+    }
+
+    *width = w;
+    *height = h;
 }
 
 static void render_offset_bar(cairo_t *cairo, int global_offset_ms, int session_offset_ms,
@@ -316,72 +391,15 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
     cairo_set_source_u32(cairo, background_color);
     cairo_paint(cairo);
 
+    // Render lyrics content using appropriate mode
+    int w, h;
     if (is_karaoke) {
-        // Karaoke-style rendering with progressive word fill (wipe effect)
-        int64_t position_us = mpris_get_position();
-        int w, h;
-
-        // Use multi-line rendering if enabled and context lines are available
-        if (g_config.display.enable_multiline_lrcx &&
-            (state->prev_line || state->next_line)) {
-            struct multiline_params params = {
-                .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-                .prev_line = state->prev_line,
-                .current_line = state->current_line,
-                .next_line = state->next_line,
-                .position_us = position_us
-            };
-            render_karaoke_multiline(&params);
-        } else {
-            // Fallback to single-line karaoke
-            struct karaoke_params params = {
-                .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-                .segments = state->current_line->segments,
-                .position_us = position_us
-            };
-            render_karaoke_segments(&params);
-        }
-
-        *width = w;
-        *height = h;
+        render_karaoke_content(cairo, state, scale, &w, &h);
     } else {
-        // Normal rendering (non-karaoke)
-        cairo_set_source_u32(cairo, state->foreground);
-
-        // Check if this line has segments (for ruby text support)
-        // Note: LRCX uses word_segment (with karaoke), LRC/SRT use ruby_segment (furigana only)
-        bool has_word_segments = (has_lyrics && state->current_line->segments && state->current_line->segment_count > 0);
-        bool has_ruby_segments = (has_lyrics && state->current_line->ruby_segments && state->current_line->segment_count > 0);
-
-        if (has_ruby_segments && !has_word_segments) {
-            // Render LRC/SRT with ruby_segment (furigana only, no karaoke)
-            int w, h;
-            bool has_seg_trans = has_segment_translation(state->current_line->ruby_segments);
-            render_segments_with_optional_translation(cairo, state, scale, &w, &h,
-                                                     has_seg_trans, state->current_line_index);
-            *width = w;
-            *height = h;
-        } else if (has_lyrics && has_word_segments) {
-            // Render LRCX with word_segment but without karaoke fill effect
-            // This shouldn't happen normally (LRCX uses karaoke mode above)
-            // But we handle it for completeness
-            int w, h;
-            struct word_static_params params = {
-                .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-                .segments = state->current_line->segments
-            };
-            render_word_segments_static(&params);
-            *width = w;
-            *height = h;
-        } else {
-            // No segments - simple text rendering
-            int w, h;
-            struct render_base_params params = make_render_base(cairo, state->font, scale, state->foreground, &w, &h);
-            render_plain_text(&params, text_to_display);
-            *width = w;
-            *height = h;
-        }
+        render_normal_content(cairo, state, scale, text_to_display, has_lyrics, &w, &h);
     }
+    *width = w;
+    *height = h;
 
     // Render timing offset progress bar (if offset is non-zero and lyrics are shown)
     // Hide progress bar during instrumental breaks (is_empty_line = true)

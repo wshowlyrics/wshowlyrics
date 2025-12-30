@@ -164,6 +164,8 @@ bool parse_file_generic(const char *filename, const char *format_name,
         return false;
     }
 
+    // NOSONAR: size > 0 guaranteed by check above (line 162)
+    // SonarCloud c:S5488 false positive - zero allocation prevented
     char *content = malloc(size + 1);
     if (!content) {
         fclose(fp);
@@ -630,10 +632,10 @@ static int parse_ruby_segments_loop(const char *text, const char *text_end,
         if (*pos == '{' && pos == seg_start) {
             // Translation at line start
             const char *new_pos = handle_translation(pos, next_seg, count, head);
+            if (!new_pos && !handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
+                return -1;
+            }
             if (!new_pos) {
-                if (!handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
-                    return -1;
-                }
                 continue;
             }
             pos = new_pos;
@@ -650,10 +652,10 @@ static int parse_ruby_segments_loop(const char *text, const char *text_end,
             // Ruby annotation
             const char *new_pos = handle_ruby_annotation(pos, seg_start, text_end,
                                                          next_seg, count, head);
+            if (!new_pos && !handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
+                return -1;
+            }
             if (!new_pos) {
-                if (!handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
-                    return -1;
-                }
                 continue;
             }
             pos = new_pos;

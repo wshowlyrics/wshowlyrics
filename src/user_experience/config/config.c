@@ -1009,12 +1009,13 @@ static struct config_key* find_missing_config_entries(
                 snprintf(missing->key, sizeof(missing->key), "%s", node->key);
                 missing->next = NULL;
 
-                if (!missing_head) {
-                    missing_head = missing_tail = missing;
-                } else {
+                // Append to list
+                if (missing_tail) {
                     missing_tail->next = missing;
-                    missing_tail = missing;
+                } else {
+                    missing_head = missing;
                 }
+                missing_tail = missing;
             }
         }
     }
