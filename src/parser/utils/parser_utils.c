@@ -705,6 +705,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
         struct ruby_segment **next_seg = segments;
         // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
         if (!create_and_append_segment(text, strlen(text), NULL, NULL, &next_seg, &count)) {
+            *segments = NULL;  // Ensure clean state on failure
             return 0;
         }
         return count;
@@ -722,6 +723,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
     if (result < 0) {
         // Ensure cleanup even if loop helper missed some paths
         free_ruby_segments_list(head);
+        *segments = NULL;  // Prevent use-after-free
         return 0;
     }
 
