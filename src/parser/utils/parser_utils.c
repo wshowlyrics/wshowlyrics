@@ -577,6 +577,47 @@ static bool handle_annotation_failure(const char *pos, const char **continue_pos
     return true;  // Continue parsing
 }
 
+// Helper: Handle parsing failure and update positions for retry
+// Returns: true to continue parsing, false to abort (fatal error)
+static bool handle_parsing_failure_and_continue(const char *pos,
+                                                const char **pos_out,
+                                                const char **seg_start_out,
+                                                struct ruby_segment *head) {
+    const char *continue_pos;
+    if (!handle_annotation_failure(pos, &continue_pos, head)) {
+        return false;  // Fatal error
+    }
+    *pos_out = continue_pos;
+    *seg_start_out = continue_pos;
+    return true;  // Continue parsing
+}
+
+// Helper: Add remaining text and ensure at least one segment exists
+// Returns: true on success, false on failure (with cleanup)
+static bool finalize_ruby_segments(const char *seg_start, const char *text_end,
+                                   const char *text, struct ruby_segment ***next_seg,
+                                   int *count, struct ruby_segment *head) {
+    // Add remaining text as final segment
+    if (seg_start < text_end) {
+        if (!create_and_append_segment(seg_start, text_end - seg_start, NULL, NULL,
+                                       next_seg, count)) {
+            free_ruby_segments_list(head);
+            return false;
+        }
+    }
+
+    // If no segments created, create one with entire text
+    if (*count == 0) {
+        // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
+        if (!create_and_append_segment(text, strlen(text), NULL, NULL, next_seg, count)) {
+            free_ruby_segments_list(head);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 // Parse text into ruby segments with ruby annotations, translations, and newlines
 // Precondition: text must be a valid NULL-terminated string
 // Returns: number of segments created, or 0 on failure
@@ -618,12 +659,9 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             // Translation at line start
             const char *new_pos = handle_translation(pos, &next_seg, &count, head);
             if (!new_pos) {
-                const char *continue_pos;
-                if (!handle_annotation_failure(pos, &continue_pos, head)) {
+                if (!handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
                     return 0;
                 }
-                pos = continue_pos;
-                seg_start = pos;
                 continue;
             }
             pos = new_pos;
@@ -641,12 +679,9 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
             const char *new_pos = handle_ruby_annotation(pos, seg_start, text_end,
                                                          &next_seg, &count, head);
             if (!new_pos) {
-                const char *continue_pos;
-                if (!handle_annotation_failure(pos, &continue_pos, head)) {
+                if (!handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
                     return 0;
                 }
-                pos = continue_pos;
-                seg_start = pos;
                 continue;
             }
             pos = new_pos;
@@ -656,23 +691,9 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
         }
     }
 
-    // Add remaining text as final segment
-    if (seg_start < text_end) {
-        if (!create_and_append_segment(seg_start, text_end - seg_start, NULL, NULL,
-                                       &next_seg, &count)) {
-            free_ruby_segments_list(head);
-            return 0;
-        }
-    }
-
-    // If no segments created, create one with entire text
-    if (count == 0) {
-        // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
-        if (!create_and_append_segment(text, strlen(text), NULL, NULL, &next_seg, &count)) {
-            free_ruby_segments_list(head);
-            return 0;
-        }
-        // No need to assign head = *segments; next_seg already updated head via &head
+    // Finalize: add remaining text and ensure at least one segment
+    if (!finalize_ruby_segments(seg_start, text_end, text, &next_seg, &count, head)) {
+        return 0;
     }
 
     *segments = head;

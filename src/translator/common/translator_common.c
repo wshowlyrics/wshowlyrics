@@ -736,6 +736,79 @@ int translator_parse_retry_delay(const char *response_json) {
     return 0;
 }
 
+// Helper: Setup CURL request with headers and options
+// Returns: headers list (caller must free), or NULL on error
+static struct curl_slist* setup_translator_curl_request(CURL *curl,
+                                                         struct translator_http_params *params,
+                                                         struct translator_curl_response *response) {
+    // Setup CURL request
+    if (curl_easy_setopt(curl, CURLOPT_URL, params->endpoint) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, params->request_body) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, translator_curl_write_callback) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, response) != CURLE_OK) {
+        log_error("%s: Failed to set CURL options", params->provider_name);
+        return NULL;
+    }
+
+    // Build provider-specific headers
+    struct curl_slist *headers = params->build_headers(params->api_key, params->extra_data);
+    if (!headers) {
+        return NULL;
+    }
+
+    if (curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers) != CURLE_OK) {
+        log_error("%s: Failed to set HTTP headers", params->provider_name);
+        curl_slist_free_all(headers);
+        return NULL;
+    }
+
+    return headers;
+}
+
+// Helper: Handle HTTP response and determine retry behavior
+// Returns: response data (ownership transferred), or NULL to retry/fail
+// Sets should_retry: true to retry, false to abort
+static char* handle_translator_http_response(long http_code,
+                                             struct translator_curl_response *response,
+                                             struct translator_http_params *params,
+                                             int attempt, bool *should_retry) {
+    *should_retry = false;
+
+    if (http_code == 200) {
+        // Success - transfer ownership of response data
+        char *data = response->data;
+        response->data = NULL;
+        return data;
+    }
+
+    if (http_code == 401 || http_code == 403) {
+        // Authentication/permission error - don't retry
+        log_error("%s: Authentication error (HTTP %ld)", params->provider_name, http_code);
+        return NULL;
+    }
+
+    // Temporary error - determine retry delay
+    int retry_delay_ms = translator_parse_retry_delay(response->data);
+    if (retry_delay_ms == 0) {
+        retry_delay_ms = 5000 * attempt; // Exponential backoff
+    }
+
+    log_warn("%s: HTTP error %ld, retrying in %dms (attempt %d/%d)",
+            params->provider_name, http_code, retry_delay_ms, attempt, params->max_retries);
+
+    // Sleep before retry (if not last attempt)
+    if (attempt < params->max_retries) {
+        struct timespec delay = {
+            .tv_sec = retry_delay_ms / 1000,
+            .tv_nsec = (retry_delay_ms % 1000) * 1000000L
+        };
+        nanosleep(&delay, NULL);
+        *should_retry = true;
+    }
+
+    return NULL;
+}
+
 /**
  * Perform HTTP request with retry logic (common for all translators)
  */
@@ -771,27 +844,8 @@ char* translator_perform_http_request(struct translator_http_params *params) {
         struct translator_curl_response response;
         translator_curl_response_init(&response);
 
-        if (curl_easy_setopt(local_curl, CURLOPT_URL, params->endpoint) != CURLE_OK ||
-            curl_easy_setopt(local_curl, CURLOPT_POSTFIELDS, params->request_body) != CURLE_OK ||
-            curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, translator_curl_write_callback) != CURLE_OK ||
-            curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, &response) != CURLE_OK) {
-            log_error("%s: Failed to set CURL options", params->provider_name);
-            translator_curl_response_free(&response);
-            curl_easy_cleanup(local_curl);
-            return NULL;
-        }
-
-        // Build provider-specific headers
-        struct curl_slist *headers = params->build_headers(params->api_key, params->extra_data);
+        struct curl_slist *headers = setup_translator_curl_request(local_curl, params, &response);
         if (!headers) {
-            translator_curl_response_free(&response);
-            curl_easy_cleanup(local_curl);
-            return NULL;
-        }
-
-        if (curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers) != CURLE_OK) {
-            log_error("%s: Failed to set HTTP headers", params->provider_name);
-            curl_slist_free_all(headers);
             translator_curl_response_free(&response);
             curl_easy_cleanup(local_curl);
             return NULL;
@@ -808,41 +862,22 @@ char* translator_perform_http_request(struct translator_http_params *params) {
             return NULL;
         }
 
-        // Check HTTP response code
+        // Check HTTP response code and handle accordingly
         long http_code = 0;
         curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
 
-        if (http_code == 200) {
-            // Success - return response data
-            response_data = response.data;
-            response.data = NULL;  // Transfer ownership
-            translator_curl_response_free(&response);
-            break;
-        } else if (http_code == 401 || http_code == 403) {
-            // Authentication/permission error - don't retry
-            log_error("%s: Authentication error (HTTP %ld)", params->provider_name, http_code);
-            translator_curl_response_free(&response);
+        bool should_retry = false;
+        response_data = handle_translator_http_response(http_code, &response, params,
+                                                       attempt, &should_retry);
+        translator_curl_response_free(&response);
+
+        if (response_data) {
+            break;  // Success
+        }
+
+        if (!should_retry) {
             curl_easy_cleanup(local_curl);
-            return NULL;
-        } else {
-            // Temporary error - retry with delay
-            int retry_delay_ms = translator_parse_retry_delay(response.data);
-            if (retry_delay_ms == 0) {
-                retry_delay_ms = 5000 * attempt; // Exponential backoff
-            }
-
-            log_warn("%s: HTTP error %ld, retrying in %dms (attempt %d/%d)",
-                    params->provider_name, http_code, retry_delay_ms, attempt, params->max_retries);
-
-            translator_curl_response_free(&response);
-
-            if (attempt < params->max_retries) {
-                struct timespec delay = {
-                    .tv_sec = retry_delay_ms / 1000,
-                    .tv_nsec = (retry_delay_ms % 1000) * 1000000L
-                };
-                nanosleep(&delay, NULL);
-            }
+            return NULL;  // Auth error or max retries reached
         }
     }
 
@@ -945,6 +980,69 @@ static json_object* access_json_field(json_object *current, const char *field,
     return next_obj;
 }
 
+// Helper: Handle array access in JSON path (e.g., "field[N]" or "[N]")
+// Returns: array element object, or NULL on error (with cleanup)
+// Updates token_out to position after closing bracket
+static json_object* handle_array_access(json_object *current, char *token, char *bracket,
+                                        const char *provider_name, json_object *root,
+                                        char *path_copy, char **token_out) {
+    *bracket = '\0';
+
+    // If there's a field name before bracket, access it first
+    if (token < bracket && *token) {
+        current = access_json_field(current, token, provider_name, root, path_copy);
+        if (!current) {
+            return NULL;
+        }
+    }
+
+    // Parse array index
+    int index = 0;
+    if (sscanf(bracket + 1, "%d", &index) != 1) {
+        log_error("%s: Invalid array index in path: %s", provider_name, bracket + 1);
+        json_object_put(root);
+        free(path_copy);
+        return NULL;
+    }
+
+    // Access array element
+    current = json_object_array_get_idx(current, index);
+    if (!current) {
+        log_error("%s: Empty or invalid array at index %d", provider_name, index);
+        json_object_put(root);
+        free(path_copy);
+        return NULL;
+    }
+
+    // Find closing bracket and move to next token
+    char *close_bracket = strchr(bracket + 1, ']');
+    if (!close_bracket) {
+        log_error("%s: Malformed array index in path", provider_name);
+        json_object_put(root);
+        free(path_copy);
+        return NULL;
+    }
+
+    *token_out = close_bracket + 1;
+    if (**token_out == '.') {
+        (*token_out)++; // Skip the dot
+    }
+
+    return current;
+}
+
+// Helper: Handle object field access in JSON path (e.g., "field.next")
+// Returns: field object, or NULL on error (with cleanup)
+// Updates token_out to next field position
+static json_object* handle_object_field(json_object *current, char *token, char *dot,
+                                        const char *provider_name, json_object *root,
+                                        char *path_copy, char **token_out) {
+    *dot = '\0';
+    *token_out = dot + 1;
+
+    return access_json_field(current, token, provider_name, root, path_copy);
+}
+
 /**
  * Extract text from JSON response by following a path expression
  * Path format: "field.nested[index].text"
@@ -965,67 +1063,27 @@ char* json_extract_text_by_path(const char *json_str, const char *path, const ch
     json_object *current = root;
     char *path_copy = strdup(path);
     char *token = path_copy;
-    char *next_token = NULL;
 
     while (token && *token) {
         // Find next delimiter ('.' or '[')
         char *dot = strchr(token, '.');
         char *bracket = strchr(token, '[');
 
-        // Determine which comes first
+        // Determine which comes first and handle accordingly
         if (bracket && (!dot || bracket < dot)) {
             // Array access: "field[N]" or just "[N]"
-            *bracket = '\0';
-
-            // If there's a field name before bracket, access it first
-            if (token < bracket && *token) {
-                current = access_json_field(current, token, provider_name, root, path_copy);
-                if (!current) {
-                    return NULL;
-                }
-            }
-
-            // Parse array index
-            int index = 0;
-            if (sscanf(bracket + 1, "%d", &index) != 1) {
-                log_error("%s: Invalid array index in path: %s", provider_name, bracket + 1);
-                json_object_put(root);
-                free(path_copy);
-                return NULL;
-            }
-
-            // Access array element
-            current = json_object_array_get_idx(current, index);
+            current = handle_array_access(current, token, bracket, provider_name,
+                                         root, path_copy, &token);
             if (!current) {
-                log_error("%s: Empty or invalid array at index %d", provider_name, index);
-                json_object_put(root);
-                free(path_copy);
                 return NULL;
-            }
-
-            // Find closing bracket and move to next token
-            char *close_bracket = strchr(bracket + 1, ']');
-            if (!close_bracket) {
-                log_error("%s: Malformed array index in path", provider_name);
-                json_object_put(root);
-                free(path_copy);
-                return NULL;
-            }
-
-            token = close_bracket + 1;
-            if (*token == '.') {
-                token++; // Skip the dot
             }
         } else if (dot) {
             // Object field access: "field.next"
-            *dot = '\0';
-            next_token = dot + 1;
-
-            current = access_json_field(current, token, provider_name, root, path_copy);
+            current = handle_object_field(current, token, dot, provider_name,
+                                         root, path_copy, &token);
             if (!current) {
                 return NULL;
             }
-            token = next_token;
         } else {
             // Last field in path
             current = access_json_field(current, token, provider_name, root, path_copy);
