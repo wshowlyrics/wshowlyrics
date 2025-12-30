@@ -427,6 +427,7 @@ static void on_any_player_properties_changed(
 
     if (is_current) {
         // Current player - already handled by on_properties_changed
+        free(well_known_name);
         return;
     }
 
