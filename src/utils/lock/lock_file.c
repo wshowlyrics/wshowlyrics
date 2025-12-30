@@ -18,6 +18,79 @@ static bool is_process_running(pid_t pid) {
     return kill(pid, 0) == 0;
 }
 
+// Helper: Read PID from lock file
+static pid_t read_lock_pid(int fd) {
+    char pid_str[32];
+    ssize_t n = read(fd, pid_str, sizeof(pid_str) - 1);
+    if (n <= 0) {
+        return -1;
+    }
+    pid_str[n] = '\0';
+    return atoi(pid_str);
+}
+
+// Helper: Write PID to lock file
+static bool write_pid_to_lock(int fd) {
+    if (ftruncate(fd, 0) == -1) {
+        log_warn("Failed to truncate lock file: %s", strerror(errno));
+    }
+
+    char pid_str[32];
+    int len = snprintf(pid_str, sizeof(pid_str), "%d\n", getpid());
+    if (write(fd, pid_str, len) != len) {
+        log_warn("Failed to write PID to lock file: %s", strerror(errno));
+        return false;
+    }
+
+    log_info("Lock acquired (PID %d)", getpid());
+    return true;
+}
+
+// Helper: Try to clear stale lock and re-acquire
+static bool try_clear_stale_lock(int fd, pid_t old_pid, struct flock *fl) {
+    if (old_pid <= 0 || is_process_running(old_pid)) {
+        return false;
+    }
+
+    // Stale lock file - reuse the file descriptor to avoid TOCTOU
+    log_warn("Clearing stale lock (PID %d not running)", old_pid);
+
+    // Truncate the file and reset position (keep fd open to avoid race)
+    if (ftruncate(fd, 0) == -1) {
+        log_warn("Failed to truncate lock file: %s", strerror(errno));
+    }
+    if (lseek(fd, 0, SEEK_SET) == -1) {
+        log_warn("Failed to reset lock file position: %s", strerror(errno));
+    }
+
+    // Try to acquire lock again (file is still open)
+    if (fcntl(fd, F_SETLK, fl) == -1) {
+        log_error("Failed to acquire lock after clearing stale lock: %s", strerror(errno));
+        return false;
+    }
+
+    return true;
+}
+
+// Helper: Handle lock contention (another process holds the lock)
+static bool handle_lock_contention(int fd, struct flock *fl) {
+    pid_t old_pid = read_lock_pid(fd);
+
+    if (old_pid < 0) {
+        log_info("Another instance is already running");
+        return false;
+    }
+
+    // Try to clear stale lock
+    if (try_clear_stale_lock(fd, old_pid, fl)) {
+        return write_pid_to_lock(fd);
+    }
+
+    // Process is still running
+    log_info("Another instance is already running (PID %d)", old_pid);
+    return false;
+}
+
 bool lock_file_acquire(void) {
     // Try to open/create lock file (owner-only access for security)
     lock_fd = open(LOCK_FILE_PATH, O_RDWR | O_CREAT, 0600);
@@ -35,71 +108,25 @@ bool lock_file_acquire(void) {
     };
 
     if (fcntl(lock_fd, F_SETLK, &fl) == -1) {
+        // Lock acquisition failed
+        bool success = false;
         if (errno == EACCES || errno == EAGAIN) {
-            // Lock is held by another process
-            // Read PID from lock file to verify it's still running
-            char pid_str[32];
-            ssize_t n = read(lock_fd, pid_str, sizeof(pid_str) - 1);
-            if (n > 0) {
-                pid_str[n] = '\0';
-                pid_t old_pid = atoi(pid_str);
-
-                if (old_pid > 0 && !is_process_running(old_pid)) {
-                    // Stale lock file - reuse the file descriptor to avoid TOCTOU
-                    log_warn("Clearing stale lock (PID %d not running)", old_pid);
-
-                    // Truncate the file and reset position (keep fd open to avoid race)
-                    if (ftruncate(lock_fd, 0) == -1) {
-                        log_warn("Failed to truncate lock file: %s", strerror(errno));
-                    }
-                    if (lseek(lock_fd, 0, SEEK_SET) == -1) {
-                        log_warn("Failed to reset lock file position: %s", strerror(errno));
-                    }
-
-                    // Try to acquire lock again (file is still open)
-                    if (fcntl(lock_fd, F_SETLK, &fl) == -1) {
-                        log_error("Failed to acquire lock after clearing stale lock: %s", strerror(errno));
-                        close(lock_fd);
-                        lock_fd = -1;
-                        return false;
-                    }
-
-                    // Successfully acquired lock
-                    goto write_pid;
-                } else {
-                    log_info("Another instance is already running (PID %d)", old_pid);
-                    close(lock_fd);
-                    lock_fd = -1;
-                    return false;
-                }
-            } else {
-                log_info("Another instance is already running");
-                close(lock_fd);
-                lock_fd = -1;
-                return false;
-            }
+            // Lock is held by another process - try to handle contention
+            success = handle_lock_contention(lock_fd, &fl);
         } else {
             log_error("Failed to acquire lock: %s", strerror(errno));
+        }
+
+        if (!success) {
             close(lock_fd);
             lock_fd = -1;
             return false;
         }
+        return true;  // handle_lock_contention already wrote PID
     }
 
-write_pid:
-    // Write our PID to lock file
-    if (ftruncate(lock_fd, 0) == -1) {
-        log_warn("Failed to truncate lock file: %s", strerror(errno));
-    }
-
-    char pid_str[32];
-    int len = snprintf(pid_str, sizeof(pid_str), "%d\n", getpid());
-    if (write(lock_fd, pid_str, len) != len) {
-        log_warn("Failed to write PID to lock file: %s", strerror(errno));
-    }
-
-    log_info("Lock acquired (PID %d)", getpid());
-    return true;
+    // Lock acquired on first try - write PID
+    return write_pid_to_lock(lock_fd);
 }
 
 void lock_file_release(void) {

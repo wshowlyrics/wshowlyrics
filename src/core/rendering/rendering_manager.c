@@ -164,6 +164,120 @@ cairo_subpixel_order_t rendering_manager_to_cairo_subpixel(enum wl_output_subpix
     return CAIRO_SUBPIXEL_ORDER_DEFAULT;
 }
 
+// Helper: Build translation progress text with icons
+static void build_translation_progress_text(char *buffer, size_t buffer_size,
+                                            struct lyrics_state *state,
+                                            int current_line_index) {
+    int T = state->lyrics.translation_current;
+    int C = current_line_index + 1; // 1-based current line
+    int A = state->lyrics.translation_total;
+    int R = (A > 0) ? (T * 100 / A) : 0; // Percentage
+
+    float cache_threshold = config_get_cache_threshold(g_config.translation.cache_policy);
+    bool show_disk = (A > 0) && ((float)T / A >= cache_threshold);
+
+    if (state->lyrics.translation_will_discard) {
+        snprintf(buffer, buffer_size, "⏳ Translating... %d%% (%d/%d) 🗑️", R, T, C);
+    } else if (show_disk) {
+        snprintf(buffer, buffer_size, "⏳ Translating... %d%% (%d/%d) 💾", R, T, C);
+    } else {
+        snprintf(buffer, buffer_size, "⏳ Translating... %d%% (%d/%d)", R, T, C);
+    }
+}
+
+// Helper: Build translation display text with icons
+static void build_translation_display_text(char *buffer, size_t buffer_size,
+                                          struct lyrics_state *state,
+                                          const char *translation) {
+    if (!state->lyrics.translation_in_progress) {
+        snprintf(buffer, buffer_size, "%s", translation);
+        return;
+    }
+
+    float cache_threshold = config_get_cache_threshold(g_config.translation.cache_policy);
+    int T = state->lyrics.translation_current;
+    int A = state->lyrics.translation_total;
+    bool cached = (A > 0) && ((float)T / A >= cache_threshold);
+
+    if (state->lyrics.translation_will_discard) {
+        snprintf(buffer, buffer_size, "🗑️ %s", translation);
+    } else if (cached) {
+        snprintf(buffer, buffer_size, "💾 %s", translation);
+    } else {
+        snprintf(buffer, buffer_size, "⏳ %s", translation);
+    }
+}
+
+// Helper: Render ruby segments with optional translation
+static void render_segments_with_optional_translation(cairo_t *cairo,
+                                                     struct lyrics_state *state,
+                                                     int scale, int *w, int *h,
+                                                     bool has_seg_trans,
+                                                     int current_line_index) {
+    struct render_base_params base = make_render_base(cairo, state->font, scale,
+                                                       state->foreground, w, h);
+
+    // SRT with <sub> tags - use segment-level translation
+    if (has_seg_trans) {
+        struct ruby_params params = {
+            .base = base,
+            .segments = state->current_line->ruby_segments
+        };
+        render_ruby_segments(&params);
+        return;
+    }
+
+    // Check if translation is enabled
+    bool translation_enabled = (g_config.translation.provider &&
+                               strcmp(g_config.translation.provider, "false") != 0);
+
+    if (!translation_enabled) {
+        // No translation - render plain ruby segments
+        struct ruby_params params = {
+            .base = base,
+            .segments = state->current_line->ruby_segments
+        };
+        render_ruby_segments(&params);
+        return;
+    }
+
+    // Translation is enabled
+    if (state->current_line->translation) {
+        // Line has translation - show it with icon
+        char translation_text[512];
+        build_translation_display_text(translation_text, sizeof(translation_text),
+                                      state, state->current_line->translation);
+
+        struct translation_params params = {
+            .base = base,
+            .segments = state->current_line->ruby_segments,
+            .translation_mode = g_config.translation.translation_display,
+            .translation = translation_text
+        };
+        render_ruby_segments_with_translation(&params);
+    } else if (state->lyrics.translation_in_progress) {
+        // Translation in progress - show progress
+        char progress_text[128];
+        build_translation_progress_text(progress_text, sizeof(progress_text),
+                                       state, current_line_index);
+
+        struct translation_params params = {
+            .base = base,
+            .segments = state->current_line->ruby_segments,
+            .translation_mode = g_config.translation.translation_display,
+            .translation = progress_text
+        };
+        render_ruby_segments_with_translation(&params);
+    } else {
+        // No translation available - render plain ruby segments
+        struct ruby_params params = {
+            .base = base,
+            .segments = state->current_line->ruby_segments
+        };
+        render_ruby_segments(&params);
+    }
+}
+
 void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
                                        int scale, uint32_t *width, uint32_t *height) {
     const char *text_to_display = " "; // Default to single space
@@ -242,99 +356,9 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
         if (has_ruby_segments && !has_word_segments) {
             // Render LRC/SRT with ruby_segment (furigana only, no karaoke)
             int w, h;
-
-            // Check if segments have inline translation tags (<sub>)
             bool has_seg_trans = has_segment_translation(state->current_line->ruby_segments);
-
-            if (has_seg_trans) {
-                // SRT with <sub> tags - use segment-level translation
-                struct ruby_params params = {
-                    .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-                    .segments = state->current_line->ruby_segments
-                };
-                render_ruby_segments(&params);
-            } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->current_line->translation) {
-                // LRC or SRT without <sub> - use line-level translation
-                // If translation is still in progress, show icon based on cache status
-                char translation_text[512];
-                if (state->lyrics.translation_in_progress) {
-                    // Translation ahead of current line - show icon based on threshold
-                    float cache_threshold = config_get_cache_threshold(g_config.translation.cache_policy);
-                    int T = state->lyrics.translation_current;
-                    int A = state->lyrics.translation_total;
-                    bool cached = (A > 0) && ((float)T / A >= cache_threshold);
-
-                    if (state->lyrics.translation_will_discard) {
-                        // Will be discarded - show trash icon
-                        snprintf(translation_text, sizeof(translation_text),
-                                "🗑️ %s", state->current_line->translation);
-                    } else if (cached) {
-                        // Cached - show disk icon (safe to interrupt)
-                        snprintf(translation_text, sizeof(translation_text),
-                                "💾 %s", state->current_line->translation);
-                    } else {
-                        // Still in progress - show hourglass (not yet saved)
-                        snprintf(translation_text, sizeof(translation_text),
-                                "⏳ %s", state->current_line->translation);
-                    }
-                } else {
-                    // Translation complete - just show translation
-                    snprintf(translation_text, sizeof(translation_text),
-                            "%s", state->current_line->translation);
-                }
-
-                struct translation_params params = {
-                    .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-                    .segments = state->current_line->ruby_segments,
-                    .translation_mode = g_config.translation.translation_display,
-                    .translation = translation_text
-                };
-                render_ruby_segments_with_translation(&params);
-            } else if (g_config.translation.provider && strcmp(g_config.translation.provider, "false") != 0 && state->lyrics.translation_in_progress) {
-                // Translation in progress - show enhanced progress
-                // T: translation_current, C: current line, A: translation_total
-                // Format: "⏳ Translating... R% (T/C) [💾]"
-                char progress_text[128];
-                int T = state->lyrics.translation_current;
-                int C = state->current_line_index + 1; // 1-based current line
-                int A = state->lyrics.translation_total;
-                int R = (A > 0) ? (T * 100 / A) : 0; // Percentage
-
-                // Get threshold from config (comfort: 50%, balanced: 75%, aggressive: 90%)
-                float cache_threshold = config_get_cache_threshold(g_config.translation.cache_policy);
-                bool show_disk = (A > 0) && ((float)T / A >= cache_threshold);
-
-                // Build progress message
-                if (state->lyrics.translation_will_discard) {
-                    // Will be discarded - show trash icon instead of disk
-                    snprintf(progress_text, sizeof(progress_text),
-                            "⏳ Translating... %d%% (%d/%d) 🗑️",
-                            R, T, C);
-                } else if (show_disk) {
-                    snprintf(progress_text, sizeof(progress_text),
-                            "⏳ Translating... %d%% (%d/%d) 💾",
-                            R, T, C);
-                } else {
-                    snprintf(progress_text, sizeof(progress_text),
-                            "⏳ Translating... %d%% (%d/%d)",
-                            R, T, C);
-                }
-
-                struct translation_params params = {
-                    .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-                    .segments = state->current_line->ruby_segments,
-                    .translation_mode = g_config.translation.translation_display,
-                    .translation = progress_text
-                };
-                render_ruby_segments_with_translation(&params);
-            } else {
-                // No translation
-                struct ruby_params params = {
-                    .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-                    .segments = state->current_line->ruby_segments
-                };
-                render_ruby_segments(&params);
-            }
+            render_segments_with_optional_translation(cairo, state, scale, &w, &h,
+                                                     has_seg_trans, state->current_line_index);
             *width = w;
             *height = h;
         } else if (has_lyrics && has_word_segments) {

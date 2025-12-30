@@ -248,6 +248,21 @@ static bool lrclib_search_fallback(const char *title, const char *artist,
     return success;
 }
 
+// Helper: Setup CURL options for lrclib request
+static bool setup_lrclib_request(CURL *curl, const char *url,
+                                  struct curl_memory_buffer *response) {
+    if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
+        log_error("lrclib: Failed to set CURL options");
+        return false;
+    }
+    return true;
+}
+
 static bool lrclib_search(const char *title, const char *artist, const char *album,
                           const char *url, int64_t duration_ms, struct lyrics_data *data) {
     (void)url; // Unused for online search
@@ -318,13 +333,7 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     struct curl_memory_buffer response;
     curl_memory_buffer_init(&response);
 
-    if (curl_easy_setopt(curl, CURLOPT_URL, request_url) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
-        log_error("lrclib: Failed to set CURL options");
+    if (!setup_lrclib_request(curl, request_url, &response)) {
         curl_memory_buffer_free(&response);
         curl_easy_cleanup(curl);
         return false;

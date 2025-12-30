@@ -776,6 +776,50 @@ static bool validate_config_path(const char *path) {
     return is_path_in_safe_location(resolved_path);
 }
 
+// Helper: Check if section exists in list
+static bool section_exists_in_list(struct section_list *head, const char *section_name) {
+    for (struct section_list *node = head; node != NULL; node = node->next) {
+        if (strcmp(node->section, section_name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Helper: Add section node to list
+static void add_section_node(struct section_list **head, struct section_list **tail,
+                             const char *section_name) {
+    struct section_list *node = malloc(sizeof(struct section_list));
+    if (!node) {
+        return;
+    }
+
+    snprintf(node->section, sizeof(node->section), "%s", section_name);
+    node->next = NULL;
+
+    if (!*head) {
+        *head = *tail = node;
+    } else {
+        (*tail)->next = node;
+        *tail = node;
+    }
+}
+
+// Helper: Try to parse section header from line
+static char* try_parse_section_header(char *trimmed_line) {
+    if (trimmed_line[0] != '[') {
+        return NULL;
+    }
+
+    char *end = strchr(trimmed_line, ']');
+    if (!end) {
+        return NULL;
+    }
+
+    *end = '\0';
+    return config_trim_whitespace(trimmed_line + 1);
+}
+
 // Parse user config to extract all sections (including empty ones)
 static struct section_list* parse_user_config_sections(const char *user_path) {
     // Validate path for security
@@ -800,38 +844,10 @@ static struct section_list* parse_user_config_sections(const char *user_path) {
             continue;
         }
 
-        // Section header
-        if (trimmed[0] == '[') {
-            char *end = strchr(trimmed, ']');
-            if (end) {
-                *end = '\0';
-                char *section_name = config_trim_whitespace(trimmed + 1);
-
-                // Check if section already in list
-                bool exists = false;
-                for (struct section_list *node = head; node != NULL; node = node->next) {
-                    if (strcmp(node->section, section_name) == 0) {
-                        exists = true;
-                        break;
-                    }
-                }
-
-                // Add to list if not already present
-                if (!exists) {
-                    struct section_list *node = malloc(sizeof(struct section_list));
-                    if (node) {
-                        snprintf(node->section, sizeof(node->section), "%s", section_name);
-                        node->next = NULL;
-
-                        if (!head) {
-                            head = tail = node;
-                        } else {
-                            tail->next = node;
-                            tail = node;
-                        }
-                    }
-                }
-            }
+        // Try to parse section header and add if not duplicate
+        char *section_name = try_parse_section_header(trimmed);
+        if (section_name && !section_exists_in_list(head, section_name)) {
+            add_section_node(&head, &tail, section_name);
         }
     }
 
@@ -906,6 +922,60 @@ static const char* find_example_config_path(struct config_key **example_keys) {
     return NULL;
 }
 
+// Helper: Add config_key node to list
+static void add_config_key_node(struct config_key **head, struct config_key **tail,
+                                const char *section, const char *key) {
+    struct config_key *node = malloc(sizeof(struct config_key));
+    if (!node) {
+        return;
+    }
+
+    snprintf(node->section, sizeof(node->section), "%s", section);
+    snprintf(node->key, sizeof(node->key), "%s", key);
+    node->next = NULL;
+
+    if (!*head) {
+        *head = *tail = node;
+    } else {
+        (*tail)->next = node;
+        *tail = node;
+    }
+}
+
+// Helper: Collect unknown sections
+static void collect_unknown_sections(struct config_key *example_keys,
+                                     struct section_list *user_sections,
+                                     struct config_key **head,
+                                     struct config_key **tail) {
+    if (!user_sections) {
+        return;
+    }
+
+    for (struct section_list *sec = user_sections; sec != NULL; sec = sec->next) {
+        if (!section_exists_in_example(example_keys, sec->section)) {
+            add_config_key_node(head, tail, sec->section, "(entire section)");
+        }
+    }
+}
+
+// Helper: Collect unknown keys in known sections
+static void collect_unknown_keys(struct config_key *example_keys,
+                                 struct config_key *user_keys,
+                                 struct config_key **head,
+                                 struct config_key **tail) {
+    if (!user_keys) {
+        return;
+    }
+
+    for (struct config_key *node = user_keys; node != NULL; node = node->next) {
+        // Only check keys in sections that exist in example
+        if (section_exists_in_example(example_keys, node->section) &&
+            !key_exists_in_example(example_keys, node->section, node->key)) {
+            add_config_key_node(head, tail, node->section, node->key);
+        }
+    }
+}
+
 // Find unknown config entries (sections and keys not in example)
 static struct config_key* find_unknown_config_entries(
     struct config_key *example_keys,
@@ -915,51 +985,9 @@ static struct config_key* find_unknown_config_entries(
     struct config_key *unknown_head = NULL;
     struct config_key *unknown_tail = NULL;
 
-    // First check for unknown sections (including empty ones)
-    if (user_sections) {
-        for (struct section_list *sec = user_sections; sec != NULL; sec = sec->next) {
-            if (!section_exists_in_example(example_keys, sec->section)) {
-                // Unknown section - add it to unknown list
-                struct config_key *unknown = malloc(sizeof(struct config_key));
-                if (unknown) {
-                    snprintf(unknown->section, sizeof(unknown->section), "%s", sec->section);
-                    snprintf(unknown->key, sizeof(unknown->key), "(entire section)");
-                    unknown->next = NULL;
-
-                    if (!unknown_head) {
-                        unknown_head = unknown_tail = unknown;
-                    } else {
-                        unknown_tail->next = unknown;
-                        unknown_tail = unknown;
-                    }
-                }
-            }
-        }
-    }
-
-    // Then check for unknown keys in known sections
-    if (user_keys) {
-        for (struct config_key *node = user_keys; node != NULL; node = node->next) {
-            // Only check keys in sections that exist in example
-            if (section_exists_in_example(example_keys, node->section) &&
-                !key_exists_in_example(example_keys, node->section, node->key)) {
-                // Known section but unknown key
-                struct config_key *unknown = malloc(sizeof(struct config_key));
-                if (unknown) {
-                    snprintf(unknown->section, sizeof(unknown->section), "%s", node->section);
-                    snprintf(unknown->key, sizeof(unknown->key), "%s", node->key);
-                    unknown->next = NULL;
-
-                    if (!unknown_head) {
-                        unknown_head = unknown_tail = unknown;
-                    } else {
-                        unknown_tail->next = unknown;
-                        unknown_tail = unknown;
-                    }
-                }
-            }
-        }
-    }
+    // Collect unknown sections and keys using helper functions
+    collect_unknown_sections(example_keys, user_sections, &unknown_head, &unknown_tail);
+    collect_unknown_keys(example_keys, user_keys, &unknown_head, &unknown_tail);
 
     return unknown_head;
 }
