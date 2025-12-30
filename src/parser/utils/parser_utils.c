@@ -707,7 +707,9 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
 
     int result = parse_ruby_segments_loop(text, text_end, &next_seg, head, &count);
     if (result < 0) {
-        return 0;  // Cleanup already done in loop
+        // Ensure cleanup even if loop helper missed some paths
+        free_ruby_segments_list(head);
+        return 0;
     }
 
     *segments = head;
