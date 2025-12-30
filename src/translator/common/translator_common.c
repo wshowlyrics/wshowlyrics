@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "translator_common.h"
 #include "../../constants.h"
 #include "../../utils/lang_detect/lang_detect.h"
@@ -6,6 +7,7 @@
 #include "../../user_experience/config/config.h"
 #include <curl/curl.h>
 #include <json-c/json.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -614,6 +616,9 @@ void translator_save_to_cache_ex(const char *cache_path,
 }
 
 void* translator_async_worker(void *arg) {
+    // Set thread name for easier identification in system monitors
+    pthread_setname_np(pthread_self(), "translator");
+
     struct translator_thread_args *args = (struct translator_thread_args *)arg;
     struct lyrics_data *data = args->data;
 
