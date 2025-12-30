@@ -580,9 +580,10 @@ static const char* handle_ruby_annotation(const char *pos, const char *seg_start
 // Output: continue_pos is set to next position to continue parsing
 static bool handle_annotation_failure(const char *pos, const char **continue_pos,
                                       struct ruby_segment *head) {
+    (void)head;  // Unused - caller handles cleanup
     if (strchr(pos, '}')) {
         // Failed with valid closing brace - allocation error
-        free_ruby_segments_list(head);
+        // Memory cleanup handled by caller
         return false;  // Fatal error
     }
     // Malformed - treat as regular text
@@ -606,15 +607,16 @@ static bool handle_parsing_failure_and_continue(const char *pos,
 }
 
 // Helper: Add remaining text and ensure at least one segment exists
-// Returns: true on success, false on failure (with cleanup)
+// Returns: true on success, false on failure (caller handles cleanup)
 static bool finalize_ruby_segments(const char *seg_start, const char *text_end,
                                    const char *text, struct ruby_segment ***next_seg,
                                    int *count, struct ruby_segment *head) {
+    (void)head;  // Unused - caller handles cleanup
     // Add remaining text as final segment
     if (seg_start < text_end) {
         if (!create_and_append_segment(seg_start, text_end - seg_start, NULL, NULL,
                                        next_seg, count)) {
-            free_ruby_segments_list(head);
+            // Memory cleanup handled by caller
             return false;
         }
     }
@@ -623,7 +625,7 @@ static bool finalize_ruby_segments(const char *seg_start, const char *text_end,
     if (*count == 0) {
         // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
         if (!create_and_append_segment(text, strlen(text), NULL, NULL, next_seg, count)) {
-            free_ruby_segments_list(head);
+            // Memory cleanup handled by caller
             return false;
         }
     }
@@ -632,7 +634,7 @@ static bool finalize_ruby_segments(const char *seg_start, const char *text_end,
 }
 
 // Helper: Main parsing loop for ruby annotations and translation tags
-// Returns: number of segments created, or -1 on failure
+// Returns: number of segments created, or -1 on failure (caller handles cleanup)
 static int parse_ruby_segments_loop(const char *text, const char *text_end,
                                     struct ruby_segment ***next_seg,
                                     struct ruby_segment *head, int *count) {
@@ -654,7 +656,7 @@ static int parse_ruby_segments_loop(const char *text, const char *text_end,
         } else if (*pos == '\n') {
             // Newline
             if (!handle_newline(seg_start, pos, next_seg, count, head)) {
-                free_ruby_segments_list(head);
+                // Memory cleanup handled by caller
                 return -1;
             }
             pos++;
@@ -721,7 +723,7 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
 
     int result = parse_ruby_segments_loop(text, text_end, &next_seg, head, &count);
     if (result < 0) {
-        // Ensure cleanup even if loop helper missed some paths
+        // Cleanup on failure - loop helper delegates memory management to caller
         free_ruby_segments_list(head);
         *segments = NULL;  // Prevent use-after-free
         return 0;
