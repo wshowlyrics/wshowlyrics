@@ -6,21 +6,23 @@
 - **Security Hotspots**: 100% Reviewed (107개 전체 처리)
 - **Phase 1-7 완료**: 보안, 복잡도, 파라미터, 중복 제거
 - **Phase 8-1 완료**: 복잡도 45-69 (5개 함수)
-- **Phase 8-3 완료**: 복잡도 26-44 (11개 함수) ✅ **NEW**
-- **Phase 8-5 완료**: 복잡도 26 (1개 함수 - mpris.c:323)
+- **Phase 8-2 완료**: 복잡도 40-57 (7개 함수)
+- **Phase 8-3 완료**: 복잡도 26-44 (11개 함수)
+- **Phase 8-3.5 완료**: 추가 복잡도 개선 (3개 함수) ✅ **NEW**
+- **Phase 8-5 완료**: 보안/품질 이슈 (3개)
 - **전체 등급**: ⭐ A등급 달성 (Maintainability, Reliability, Security)
 - **Bugs**: 0개
 - **Vulnerabilities**: 0개
 
 ### 📊 남은 작업 (2025-12-30 기준)
-- **총 미해결 이슈**: 211개 (Phase 8-3 완료로 11개 감소)
+- **총 미해결 이슈**: 208개 (Phase 8-3.5 완료로 3개 추가 감소)
   - **BLOCKER**: 0개
-  - **CRITICAL**: 62개 (C 코드만, Python 제외) - 이전 73개에서 11개 감소
+  - **CRITICAL**: 59개 (C 코드만, Python 제외) - 이전 62개에서 3개 추가 감소
   - **MAJOR**: 28개 (C 코드만, Python 제외)
   - **MINOR**: 110개
   - **INFO**: 0개
-- **C 코드 우선 이슈**: 90개 (CRITICAL 62 + MAJOR 28)
-- **총 예상 시간**: ~23시간 (버퍼 포함 25-27시간)
+- **C 코드 우선 이슈**: 87개 (CRITICAL 59 + MAJOR 28)
+- **총 예상 시간**: ~22시간 (버퍼 포함 24-26시간)
 
 ---
 
@@ -229,6 +231,38 @@
 
 ---
 
+### Priority 3.5: 추가 복잡도 개선 (3개) ✅ **완료**
+**예상 시간**: 1h 30min | **실제 시간**: ~1h 30min
+
+이전 리팩토링 이후 발견된 추가 복잡도 이슈 처리:
+
+#### 24. ~~translator_common.c:1014 - 복잡도 38 → 25~~ ✅ **완료 (커밋: 05f93a9)**
+**함수**: `json_extract_text_by_path()`
+- 100줄 → 30줄 (while 루프 단순화, 70% 감소)
+- 헬퍼 추출: `handle_array_access()`, `handle_object_field()`
+- JSON 경로 파싱 로직을 array/object 처리로 분리
+
+#### 25. ~~translator_common.c:815 - 복잡도 26 → 25~~ ✅ **완료 (커밋: 05f93a9)**
+**함수**: `translator_perform_http_request()`
+- 110줄 → 40줄 (retry 루프 단순화, 64% 감소)
+- 헬퍼 추출: `setup_translator_curl_request()`, `handle_translator_http_response()`
+- CURL 설정 및 HTTP 응답 처리 분리
+
+#### 26. ~~parser_utils.c:624 - 복잡도 36 → 25~~ ✅ **완료 (커밋: 05f93a9)**
+**함수**: `parse_ruby_segments()`
+- 97줄 → 30줄 (파싱 루프 단순화, 69% 감소)
+- 헬퍼 추출: `handle_parsing_failure_and_continue()`, `finalize_ruby_segments()`
+- 에러 처리 패턴 통합 및 마무리 로직 분리
+
+**Phase 8-3.5 총계**:
+- 3개 함수 리팩토링 (복잡도 26-38)
+- 6개 헬퍼 함수 추가
+- 307줄 → 100줄 (207줄 절감, 67% 감소)
+- 커밋: 05f93a9
+- 중복 에러 처리 패턴 제거
+
+---
+
 ### Priority 4: 중첩 깊이 해소 (46개) 🔧
 **예상 시간**: 7h 40min
 
@@ -236,72 +270,72 @@
 **공통 해결 방법**: Early return, Guard clauses
 
 #### MPRIS (8개) - 1h 20min
-24. Line 397 - AZthAcXSCKz1u_SNSw_k (10min)
-25. Line 604 - AZthAcXSCKz1u_SNSw_l (10min)
-26. Line 694 - AZthAcXSCKz1u_SNSw_m (10min)
-27. Line 478 - AZtJVZMwABppZyGqgPwz (10min)
-28. Line 540 - AZtJVZMwABppZyGqgPw0 (10min)
-29. Line 544 - AZtJVZMwABppZyGqgPw1 (10min)
-30. Line 667 - AZtFyzUj-JPgH9NPV58u (10min)
-31. Line 689 - AZtFyzUj-JPgH9NPV58v (10min)
+27. Line 397 - AZthAcXSCKz1u_SNSw_k (10min)
+28. Line 604 - AZthAcXSCKz1u_SNSw_l (10min)
+29. Line 694 - AZthAcXSCKz1u_SNSw_m (10min)
+30. Line 478 - AZtJVZMwABppZyGqgPwz (10min)
+31. Line 540 - AZtJVZMwABppZyGqgPw0 (10min)
+32. Line 544 - AZtJVZMwABppZyGqgPw1 (10min)
+33. Line 667 - AZtFyzUj-JPgH9NPV58u (10min)
+34. Line 689 - AZtFyzUj-JPgH9NPV58v (10min)
 
 #### Config.c (8개) - 1h 20min
-32. Line 432 - AZsw3M9THpp0TbwUWQaU (10min)
-33. Line 714 - AZsw3M9THpp0TbwUWQan (10min)
-34. Line 794 - AZsw3M9THpp0TbwUWQat (10min)
-35. Line 802 - AZsw3M9THpp0TbwUWQau (10min)
-36. Line 906 - AZsw3M9THpp0TbwUWQaw (10min)
-37. Line 930 - AZs1J-IlHL_6RtSCbLsZ (10min)
-38. Line 966 - AZsw3M9THpp0TbwUWQay (10min)
-39. Line 1166 - AZsxJYtZqE2ErzW5x-d4 (10min)
+35. Line 432 - AZsw3M9THpp0TbwUWQaU (10min)
+36. Line 714 - AZsw3M9THpp0TbwUWQan (10min)
+37. Line 794 - AZsw3M9THpp0TbwUWQat (10min)
+38. Line 802 - AZsw3M9THpp0TbwUWQau (10min)
+39. Line 906 - AZsw3M9THpp0TbwUWQaw (10min)
+40. Line 930 - AZs1J-IlHL_6RtSCbLsZ (10min)
+41. Line 966 - AZsw3M9THpp0TbwUWQay (10min)
+42. Line 1166 - AZsxJYtZqE2ErzW5x-d4 (10min)
 
 #### LRC Parser (5개) - 50min
-40. Line 43 - AZsw3M7UHpp0TbwUWQYE (10min)
-41. Line 52 - AZsw3M7UHpp0TbwUWQYF (10min)
-42. Line 59 - AZsw3M7UHpp0TbwUWQYG (10min)
-43. Line 73 - AZsw3M7UHpp0TbwUWQYH (10min)
-44. Line 130 - AZsw3M7UHpp0TbwUWQYI (10min)
+43. Line 43 - AZsw3M7UHpp0TbwUWQYE (10min)
+44. Line 52 - AZsw3M7UHpp0TbwUWQYF (10min)
+45. Line 59 - AZsw3M7UHpp0TbwUWQYG (10min)
+46. Line 73 - AZsw3M7UHpp0TbwUWQYH (10min)
+47. Line 130 - AZsw3M7UHpp0TbwUWQYI (10min)
 
 #### LRCX Parser (4개) - 40min
-45. Line 49 - AZsw3M7KHpp0TbwUWQXy (10min)
-46. Line 59 - AZsw3M7KHpp0TbwUWQXz (10min)
-47. Line 68 - AZsw3M7KHpp0TbwUWQX0 (10min)
-48. Line 73 - AZsw3M7KHpp0TbwUWQX1 (10min)
+48. Line 49 - AZsw3M7KHpp0TbwUWQXy (10min)
+49. Line 59 - AZsw3M7KHpp0TbwUWQXz (10min)
+50. Line 68 - AZsw3M7KHpp0TbwUWQX0 (10min)
+51. Line 73 - AZsw3M7KHpp0TbwUWQX1 (10min)
 
 #### Parser Utils (4개) - 40min
-49. Line 31 - AZsw3M7sHpp0TbwUWQYZ (10min)
-50. Line 62 - AZsw3M7sHpp0TbwUWQYa (10min)
-51. Line 489 - AZsw3M7sHpp0TbwUWQYf (10min)
-52. Line 536 - AZsw3M7sHpp0TbwUWQYg (10min)
+52. Line 31 - AZsw3M7sHpp0TbwUWQYZ (10min)
+53. Line 62 - AZsw3M7sHpp0TbwUWQYa (10min)
+54. Line 489 - AZsw3M7sHpp0TbwUWQYf (10min)
+55. Line 536 - AZsw3M7sHpp0TbwUWQYg (10min)
 
 #### Main.c (3개) - 30min
-53. Line 76 - AZs-_pShEZ4CGuQgOkex (10min)
-54. Line 88 - AZs-_pShEZ4CGuQgOkey (10min)
-55. Line 437 - AZsw3M-lHpp0TbwUWQbp (10min)
+56. Line 76 - AZs-_pShEZ4CGuQgOkex (10min)
+57. Line 88 - AZs-_pShEZ4CGuQgOkey (10min)
+58. Line 437 - AZsw3M-lHpp0TbwUWQbp (10min)
 
 #### Rendering Manager (2개) - 20min
-56. Line 242 - AZsw3M-THpp0TbwUWQbd (10min)
-57. Line 290 - AZtgsuFs5tzUgqrsL2T2 (10min)
+59. Line 242 - AZsw3M-THpp0TbwUWQbd (10min)
+60. Line 290 - AZtgsuFs5tzUgqrsL2T2 (10min)
 
 #### Lyrics Provider (2개) - 20min
-58. Line 593 - AZtgYEJEzbfTxQQNCPWG (10min)
-59. Line 641 - AZsw3M9EHpp0TbwUWQaN (10min)
+61. Line 593 - AZtgYEJEzbfTxQQNCPWG (10min)
+62. Line 641 - AZsw3M9EHpp0TbwUWQaN (10min)
 
 #### SRT Parser (2개) - 20min
-60. Line 156 - AZsw3M7fHpp0TbwUWQYT (10min)
-61. Line 181 - AZsw3M7fHpp0TbwUWQYV (10min)
+63. Line 156 - AZsw3M7fHpp0TbwUWQYT (10min)
+64. Line 181 - AZsw3M7fHpp0TbwUWQYV (10min)
 
 #### File Utils (2개) - 20min
-62. Line 344 - AZtLpiaozZ4cBjTLQUYE (10min)
-63. Line 480 - AZtLpiaozZ4cBjTLQUYG (10min)
+65. Line 344 - AZtLpiaozZ4cBjTLQUYE (10min)
+66. Line 480 - AZtLpiaozZ4cBjTLQUYG (10min)
 
 #### 기타 (6개) - 1h
-64. word_render.c:183 - AZsw3M6BHpp0TbwUWQW8 (10min)
-65. ruby_render.c:243 - AZsw3M5rHpp0TbwUWQWs (10min)
-66. system_tray.c:460 - AZtaZrqUhSZXhd8aT10- (10min)
-67. translator_common.c:968 - AZs1aCa59_pDiePoGiei (10min)
-68. lock_file.c:47 - AZs6Yry3l5_7WeqXAcGN (10min)
-69. lrclib_provider.c:125 - AZs08litjzW8D2rZBAU7 (10min)
+67. word_render.c:183 - AZsw3M6BHpp0TbwUWQW8 (10min)
+68. ruby_render.c:243 - AZsw3M5rHpp0TbwUWQWs (10min)
+69. system_tray.c:460 - AZtaZrqUhSZXhd8aT10- (10min)
+70. translator_common.c:968 - AZs1aCa59_pDiePoGiei (10min)
+71. lock_file.c:47 - AZs6Yry3l5_7WeqXAcGN (10min)
+72. lrclib_provider.c:125 - AZs08litjzW8D2rZBAU7 (10min)
 
 **리팩토링 패턴**:
 ```c
@@ -326,49 +360,43 @@ if (!d) return;
 
 ---
 
-### Priority 5: 보안/품질 이슈 (3개) 🔒
+### Priority 5: 보안/품질 이슈 (3개) 🔒 ✅ **완료**
 **예상 시간**: 45min
 
-#### 70. parser_utils.c:152 - 0바이트 malloc
+#### 73. ~~parser_utils.c:152 - 0바이트 malloc~~ ✅ **완료**
 **이슈 키**: AZs1J-GZHL_6RtSCbLsX
 **Rule**: c:S5488
 **Severity**: CRITICAL
 **예상 시간**: 5min
 
-**수정**:
+**수정**: 이미 파일 크기 검증 존재 확인
 ```c
-// 파일 크기 검증 추가
 if (size <= 0) {
     log_error("Invalid file size: %ld", size);
     fclose(fp);
     return NULL;
 }
-char *content = malloc(size + 1);
 ```
 
 ---
 
-#### 71. file_utils.c:88 - Remove ellipsis notation
+#### 74. ~~file_utils.c:88 - Remove ellipsis notation~~ ✅ **완료**
 **이슈 키**: AZsw3M62Hpp0TbwUWQXn
 **Rule**: c:S923
 **Severity**: CRITICAL
 **예상 시간**: 30min
 
-**수정**:
-- 가변 인자 제거
-- 고정 파라미터 또는 구조체 사용
+**수정**: 6개 타입 안전 함수로 대체 (커밋: 73adfae)
 
 ---
 
-#### 72. file_utils.c:95 - format string not literal
+#### 75. ~~file_utils.c:95 - format string not literal~~ ✅ **완료**
 **이슈 키**: AZsw3M62Hpp0TbwUWQXk
 **Rule**: c:S5281
 **Severity**: CRITICAL
 **예상 시간**: 10min
 
-**수정**:
-- 포맷 스트링을 리터럴로 변경
-- 또는 적절한 검증 추가
+**수정**: 리터럴 포맷 스트링 사용 (커밋: 73adfae)
 
 ---
 
@@ -377,11 +405,11 @@ char *content = malloc(size + 1);
 ### Priority 1: 중첩 if 병합 (5개) - 25min
 **Rule**: c:S1066 (Merge nested if statements)
 
-73. shm.c:138 - AZsw3M6KHpp0TbwUWQXN (5min)
-74. file_utils.c:344 - AZtLpiaozZ4cBjTLQUYF (5min)
-75. main.c:356 - AZtGYIOteewIkXJctHjF (5min)
-76. system_tray.c:171 - AZs-_pRTEZ4CGuQgOkew (5min)
-77. lyrics_provider.c:584 - AZtgYEJEzbfTxQQNCPWH (5min)
+76. shm.c:138 - AZsw3M6KHpp0TbwUWQXN (5min)
+77. file_utils.c:344 - AZtLpiaozZ4cBjTLQUYF (5min)
+78. main.c:356 - AZtGYIOteewIkXJctHjF (5min)
+79. system_tray.c:171 - AZs-_pRTEZ4CGuQgOkew (5min)
+80. lyrics_provider.c:584 - AZtgYEJEzbfTxQQNCPWH (5min)
 
 **리팩토링**:
 ```c
@@ -403,10 +431,10 @@ if (a && b) {
 ### Priority 2: 파라미터 제한 초과 (4개) - 1h 20min
 **Rule**: c:S107 (Function has too many parameters)
 
-79. lrcx_parser.c:13 - AZsw3M7KHpp0TbwUWQX2 (20min)
-80. lrcx_parser.c:176 - AZsw3M7KHpp0TbwUWQX8 (20min)
-81. wayland_events.c:115 - AZsw3M-EHpp0TbwUWQbW (20min)
-82. dbus_control.c:66 - AZtHSiUNBYCiXr9PEey3 (20min)
+81. lrcx_parser.c:13 - AZsw3M7KHpp0TbwUWQX2 (20min)
+82. lrcx_parser.c:176 - AZsw3M7KHpp0TbwUWQX8 (20min)
+83. wayland_events.c:115 - AZsw3M-EHpp0TbwUWQbW (20min)
+84. dbus_control.c:66 - AZtHSiUNBYCiXr9PEey3 (20min)
 
 **리팩토링**:
 ```c
@@ -423,41 +451,41 @@ struct parser_config {
 ### Priority 3: 미사용 파라미터 제거 (7개) - 35min
 **Rule**: c:S1172 (Remove unused function parameters)
 
-83. parser_utils.c:137 - AZs-_pL4EZ4CGuQgOkel (5min)
-84. dbus_control.c:67 - AZtHSiUNBYCiXr9PEey4 (5min)
-85. dbus_control.c:68 - AZtHSiUNBYCiXr9PEey5 (5min)
-86. dbus_control.c:69 - AZtHSiUNBYCiXr9PEey6 (5min)
-87. dbus_control.c:70 - AZtHSiUNBYCiXr9PEey7 (5min)
-88. dbus_control.c:157 - AZtHSiUNBYCiXr9PEey8 (5min)
-89. dbus_control.c:193 - AZtHSiUNBYCiXr9PEey- (5min)
+85. parser_utils.c:137 - AZs-_pL4EZ4CGuQgOkel (5min)
+86. dbus_control.c:67 - AZtHSiUNBYCiXr9PEey4 (5min)
+87. dbus_control.c:68 - AZtHSiUNBYCiXr9PEey5 (5min)
+88. dbus_control.c:69 - AZtHSiUNBYCiXr9PEey6 (5min)
+89. dbus_control.c:70 - AZtHSiUNBYCiXr9PEey7 (5min)
+90. dbus_control.c:157 - AZtHSiUNBYCiXr9PEey8 (5min)
+91. dbus_control.c:193 - AZtHSiUNBYCiXr9PEey- (5min)
 
 ---
 
 ### Priority 4: 중첩 break 감소 (3개) - 1h
 **Rule**: c:S924 (Reduce the number of nested 'break' statements)
 
-90. translator_common.c:261 - AZsw3M8OHpp0TbwUWQZF (20min)
-91. lrclib_provider.c:108 - AZsw3M8vHpp0TbwUWQZn (20min)
-92. mpris.c:478 - AZtJVZMwABppZyGqgPw4 (20min)
+92. translator_common.c:261 - AZsw3M8OHpp0TbwUWQZF (20min)
+93. lrclib_provider.c:108 - AZsw3M8vHpp0TbwUWQZn (20min)
+94. mpris.c:478 - AZtJVZMwABppZyGqgPw4 (20min)
 
 ---
 
 ### Priority 5: 주석 처리된 코드 제거 (3개) - 15min
 **Rule**: c:S125 (Remove this commented out code)
 
-93. lyrics_provider.c:423 - AZsw3M9EHpp0TbwUWQaR (5min)
-94. lyrics_provider.c:438 - AZsw3M9EHpp0TbwUWQaS (5min)
-95. mpris.c:627 - AZtFyzUj-JPgH9NPV580 (5min)
+95. lyrics_provider.c:423 - AZsw3M9EHpp0TbwUWQaR (5min)
+96. lyrics_provider.c:438 - AZsw3M9EHpp0TbwUWQaS (5min)
+97. mpris.c:627 - AZtFyzUj-JPgH9NPV580 (5min)
 
 ---
 
 ### Priority 6: 기타 MAJOR 이슈 (6개) - 2h
 
-96. lang_detect.c:12 - Include directive placement (10min) | c:S954
-97. state_helpers.c:24 - Duplicate code blocks (10min) | c:S1871
-98. main.h:51 - Structure field limit (1h) | c:S1820
-99. file_utils.c:526 - Obsolete function usage (30min) | c:S1911
-100. (기타 MAJOR 이슈 2개 추가 가능)
+98. lang_detect.c:12 - Include directive placement (10min) | c:S954
+99. state_helpers.c:24 - Duplicate code blocks (10min) | c:S1871
+100. main.h:51 - Structure field limit (1h) | c:S1820
+101. file_utils.c:526 - Obsolete function usage (30min) | c:S1911
+102. (기타 MAJOR 이슈 2개 추가 가능)
 
 ---
 
@@ -493,15 +521,26 @@ struct parser_config {
 
 ---
 
-### Phase 8-3: 소규모 복잡도 (12-23번) 📝
-**예상 시간**: 3h 7min
+### Phase 8-3: 소규모 복잡도 (12-23번) ✅ **완료**
+**예상 시간**: 3h 7min | **실제 시간**: ~3h
+**커밋**: 8da3a3b, 439604f
 
-- [ ] 12개 파일 복잡도 개선
-- [ ] 빌드 검증
+- [x] 11개 함수 복잡도 개선
+- [x] 빌드 검증
 
 ---
 
-### Phase 8-4: 중첩 깊이 일괄 해소 (24-69번) 🔧
+### Phase 8-3.5: 추가 복잡도 개선 (24-26번) ✅ **완료**
+**예상 시간**: 1h 30min | **실제 시간**: ~1h 30min
+**커밋**: 05f93a9
+
+- [x] translator_common.c 2개 함수 (38→25, 26→25)
+- [x] parser_utils.c 1개 함수 (36→25)
+- [x] 빌드 검증
+
+---
+
+### Phase 8-4: 중첩 깊이 일괄 해소 (27-72번) 🔧
 **예상 시간**: 7h 40min
 
 - [ ] MPRIS 8개 (1h 20min)
@@ -519,7 +558,7 @@ struct parser_config {
 
 ---
 
-### Phase 8-5: 보안/품질 이슈 (70-72번) 🔒 ✅ **완료**
+### Phase 8-5: 보안/품질 이슈 (73-75번) 🔒 ✅ **완료**
 **예상 시간**: 45min
 **실제 시간**: ~1h (컴파일 에러 수정 포함)
 **커밋**: 73adfae
@@ -531,7 +570,7 @@ struct parser_config {
 
 ---
 
-### Phase 9-1: MAJOR 이슈 해결 (73-100번)
+### Phase 9-1: MAJOR 이슈 해결 (76-102번)
 **예상 시간**: 5h 15min
 
 - [ ] 중첩 if 병합 5개 (25min)
@@ -645,20 +684,21 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 ## 상태
 
 - **생성일**: 2025-12-19
-- **최종 업데이트**: 2025-12-30 (Phase 8-2 완료)
+- **최종 업데이트**: 2025-12-30 (Phase 8-3.5 완료)
 - **현재 Phase**: Phase 8 진행 중
 - **완료 Phases**:
   - 1-7 (보안, 일부 복잡도, 파라미터, 중복 제거)
   - 8-1 (최우선 복잡도 5개, 커밋: 8d665ab)
+  - 8-2 (중간 복잡도 7개, 커밋: 43ab00f, c8b40dc)
+  - 8-3 (소규모 복잡도 11개, 커밋: 8da3a3b, 439604f)
+  - 8-3.5 (추가 복잡도 3개, 커밋: 05f93a9) ✅ **NEW**
   - 8-5 (보안/품질 3개, 커밋: 73adfae)
-  - 8-2 (중간 복잡도 7개, 커밋: 43ab00f, c8b40dc) ✅ **완료**
 - **남은 Phase 8 작업**:
-  - 8-3: 소규모 복잡도 11개 (1개 완료, ~3h)
   - 8-4: 중첩 깊이 (46개, ~8h)
 - **남은 이슈 (C 코드만)**:
-  - CRITICAL: ~58개 (15개 해결됨: Phase 8-1 5개 + 8-2 7개 + 8-5 3개)
+  - CRITICAL: ~55개 (18개 해결됨: Phase 8-1 5개 + 8-2 7개 + 8-3 3개 + 8-3.5 3개)
   - MAJOR: 28개 (Python 내부 테스트 스크립트 제외)
-  - 총: ~86개
+  - 총: ~83개
 - **우선순위**: High (코드 품질, 유지보수성)
 - **목표**: 모든 C 코드 CRITICAL/MAJOR 이슈 해결, A등급 유지
-- **남은 예상 시간**: ~15h (Phase 8-3,4 + Phase 9)
+- **남은 예상 시간**: ~13h (Phase 8-4 + Phase 9)
