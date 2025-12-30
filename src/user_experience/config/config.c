@@ -992,6 +992,27 @@ static struct config_key* find_unknown_config_entries(
     return unknown_head;
 }
 
+// Helper: Append missing config key to linked list
+static void append_missing_key(const char *section, const char *key,
+                               struct config_key **head, struct config_key **tail) {
+    struct config_key *missing = malloc(sizeof(struct config_key));
+    if (!missing) {
+        return;
+    }
+
+    snprintf(missing->section, sizeof(missing->section), "%s", section);
+    snprintf(missing->key, sizeof(missing->key), "%s", key);
+    missing->next = NULL;
+
+    // Append to list
+    if (*tail) {
+        (*tail)->next = missing;
+    } else {
+        *head = missing;
+    }
+    *tail = missing;
+}
+
 // Find missing config entries (keys in example but not in user config)
 static struct config_key* find_missing_config_entries(
     struct config_key *example_keys,
@@ -1002,21 +1023,7 @@ static struct config_key* find_missing_config_entries(
 
     for (struct config_key *node = example_keys; node != NULL; node = node->next) {
         if (!key_exists_in_file(user_path, node->section, node->key)) {
-            // Add to missing list
-            struct config_key *missing = malloc(sizeof(struct config_key));
-            if (missing) {
-                snprintf(missing->section, sizeof(missing->section), "%s", node->section);
-                snprintf(missing->key, sizeof(missing->key), "%s", node->key);
-                missing->next = NULL;
-
-                // Append to list
-                if (missing_tail) {
-                    missing_tail->next = missing;
-                } else {
-                    missing_head = missing;
-                }
-                missing_tail = missing;
-            }
+            append_missing_key(node->section, node->key, &missing_head, &missing_tail);
         }
     }
 
