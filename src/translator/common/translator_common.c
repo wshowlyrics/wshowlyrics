@@ -809,6 +809,49 @@ static char* handle_translator_http_response(long http_code,
     return NULL;
 }
 
+// Helper: Perform a single HTTP request attempt
+// Returns: response data on success, NULL to retry/abort
+// Sets should_retry and cleanup_and_return flags for caller
+static char* perform_single_http_attempt(CURL *local_curl,
+                                         struct translator_http_params *params,
+                                         int attempt, bool *should_retry,
+                                         bool *cleanup_and_return) {
+    *should_retry = false;
+    *cleanup_and_return = false;
+
+    // Setup CURL request
+    struct translator_curl_response response;
+    translator_curl_response_init(&response);
+
+    struct curl_slist *headers = setup_translator_curl_request(local_curl, params, &response);
+    if (!headers) {
+        translator_curl_response_free(&response);
+        *cleanup_and_return = true;
+        return NULL;
+    }
+
+    // Perform request
+    CURLcode res = curl_easy_perform(local_curl);
+    curl_slist_free_all(headers);
+
+    if (res != CURLE_OK) {
+        log_error("%s: CURL error: %s", params->provider_name, curl_easy_strerror(res));
+        translator_curl_response_free(&response);
+        *cleanup_and_return = true;
+        return NULL;
+    }
+
+    // Check HTTP response code and handle accordingly
+    long http_code = 0;
+    curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+    char *response_data = handle_translator_http_response(http_code, &response, params,
+                                                          attempt, should_retry);
+    translator_curl_response_free(&response);
+
+    return response_data;
+}
+
 /**
  * Perform HTTP request with retry logic (common for all translators)
  */
@@ -834,50 +877,22 @@ char* translator_perform_http_request(struct translator_http_params *params) {
         return NULL;
     }
 
+    // Retry loop with exponential backoff
     char *response_data = NULL;
-    int attempt = 0;
-
-    while (attempt < params->max_retries && !response_data) {
-        attempt++;
-
-        // Setup CURL request
-        struct translator_curl_response response;
-        translator_curl_response_init(&response);
-
-        struct curl_slist *headers = setup_translator_curl_request(local_curl, params, &response);
-        if (!headers) {
-            translator_curl_response_free(&response);
-            curl_easy_cleanup(local_curl);
-            return NULL;
-        }
-
-        // Perform request
-        CURLcode res = curl_easy_perform(local_curl);
-        curl_slist_free_all(headers);
-
-        if (res != CURLE_OK) {
-            log_error("%s: CURL error: %s", params->provider_name, curl_easy_strerror(res));
-            translator_curl_response_free(&response);
-            curl_easy_cleanup(local_curl);
-            return NULL;
-        }
-
-        // Check HTTP response code and handle accordingly
-        long http_code = 0;
-        curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
-
+    for (int attempt = 1; attempt <= params->max_retries && !response_data; attempt++) {
         bool should_retry = false;
-        response_data = handle_translator_http_response(http_code, &response, params,
-                                                       attempt, &should_retry);
-        translator_curl_response_free(&response);
+        bool cleanup_and_return = false;
 
-        if (response_data) {
-            break;  // Success
+        response_data = perform_single_http_attempt(local_curl, params, attempt,
+                                                    &should_retry, &cleanup_and_return);
+
+        if (cleanup_and_return) {
+            curl_easy_cleanup(local_curl);
+            return NULL;
         }
 
-        if (!should_retry) {
-            curl_easy_cleanup(local_curl);
-            return NULL;  // Auth error or max retries reached
+        if (response_data || !should_retry) {
+            break;
         }
     }
 
@@ -1043,27 +1058,11 @@ static json_object* handle_object_field(json_object *current, char *token, char 
     return access_json_field(current, token, provider_name, root, path_copy);
 }
 
-/**
- * Extract text from JSON response by following a path expression
- * Path format: "field.nested[index].text"
- */
-char* json_extract_text_by_path(const char *json_str, const char *path, const char *provider_name) {
-    if (!json_str || !path || !provider_name) {
-        return NULL;
-    }
-
-    // Parse JSON
-    json_object *root = json_tokener_parse(json_str);
-    if (!root) {
-        log_error("%s: Failed to parse JSON response", provider_name);
-        return NULL;
-    }
-
-    // Traverse path
-    json_object *current = root;
-    char *path_copy = strdup(path);
-    char *token = path_copy;
-
+// Helper: Traverse JSON path tokens and return target object
+// Returns: JSON object at path, or NULL on error (with cleanup)
+static json_object* traverse_json_path_tokens(char *token, json_object *current,
+                                               const char *provider_name,
+                                               json_object *root, char *path_copy) {
     while (token && *token) {
         // Find next delimiter ('.' or '[')
         char *dot = strchr(token, '.');
@@ -1092,6 +1091,32 @@ char* json_extract_text_by_path(const char *json_str, const char *path, const ch
             }
             break;
         }
+    }
+
+    return current;
+}
+
+/**
+ * Extract text from JSON response by following a path expression
+ * Path format: "field.nested[index].text"
+ */
+char* json_extract_text_by_path(const char *json_str, const char *path, const char *provider_name) {
+    if (!json_str || !path || !provider_name) {
+        return NULL;
+    }
+
+    // Parse JSON
+    json_object *root = json_tokener_parse(json_str);
+    if (!root) {
+        log_error("%s: Failed to parse JSON response", provider_name);
+        return NULL;
+    }
+
+    // Traverse path to target object
+    char *path_copy = strdup(path);
+    json_object *current = traverse_json_path_tokens(path_copy, root, provider_name, root, path_copy);
+    if (!current) {
+        return NULL;  // Cleanup already done in helper
     }
 
     // Extract final text value

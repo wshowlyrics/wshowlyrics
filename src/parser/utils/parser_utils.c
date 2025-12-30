@@ -618,6 +618,59 @@ static bool finalize_ruby_segments(const char *seg_start, const char *text_end,
     return true;
 }
 
+// Helper: Main parsing loop for ruby annotations and translation tags
+// Returns: number of segments created, or -1 on failure
+static int parse_ruby_segments_loop(const char *text, const char *text_end,
+                                    struct ruby_segment ***next_seg,
+                                    struct ruby_segment *head, int *count) {
+    const char *pos = text;
+    const char *seg_start = pos;
+
+    while (*pos) {
+        if (*pos == '{' && pos == seg_start) {
+            // Translation at line start
+            const char *new_pos = handle_translation(pos, next_seg, count, head);
+            if (!new_pos) {
+                if (!handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
+                    return -1;
+                }
+                continue;
+            }
+            pos = new_pos;
+            seg_start = pos;
+        } else if (*pos == '\n') {
+            // Newline
+            if (!handle_newline(seg_start, pos, next_seg, count, head)) {
+                free_ruby_segments_list(head);
+                return -1;
+            }
+            pos++;
+            seg_start = pos;
+        } else if (*pos == '{') {
+            // Ruby annotation
+            const char *new_pos = handle_ruby_annotation(pos, seg_start, text_end,
+                                                         next_seg, count, head);
+            if (!new_pos) {
+                if (!handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
+                    return -1;
+                }
+                continue;
+            }
+            pos = new_pos;
+            seg_start = pos;
+        } else {
+            pos++;
+        }
+    }
+
+    // Finalize: add remaining text and ensure at least one segment
+    if (!finalize_ruby_segments(seg_start, text_end, text, next_seg, count, head)) {
+        return -1;
+    }
+
+    return *count;
+}
+
 // Parse text into ruby segments with ruby annotations, translations, and newlines
 // Precondition: text must be a valid NULL-terminated string
 // Returns: number of segments created, or 0 on failure
@@ -649,51 +702,12 @@ int parse_ruby_segments(const char *text, struct ruby_segment **segments) {
     struct ruby_segment **next_seg = &head;
     int count = 0;
 
-    const char *pos = text;
-    const char *seg_start = pos;
     // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
     const char *text_end = text + strlen(text);
 
-    while (*pos) {
-        if (*pos == '{' && pos == seg_start) {
-            // Translation at line start
-            const char *new_pos = handle_translation(pos, &next_seg, &count, head);
-            if (!new_pos) {
-                if (!handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
-                    return 0;
-                }
-                continue;
-            }
-            pos = new_pos;
-            seg_start = pos;
-        } else if (*pos == '\n') {
-            // Newline
-            if (!handle_newline(seg_start, pos, &next_seg, &count, head)) {
-                free_ruby_segments_list(head);
-                return 0;
-            }
-            pos++;
-            seg_start = pos;
-        } else if (*pos == '{') {
-            // Ruby annotation
-            const char *new_pos = handle_ruby_annotation(pos, seg_start, text_end,
-                                                         &next_seg, &count, head);
-            if (!new_pos) {
-                if (!handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
-                    return 0;
-                }
-                continue;
-            }
-            pos = new_pos;
-            seg_start = pos;
-        } else {
-            pos++;
-        }
-    }
-
-    // Finalize: add remaining text and ensure at least one segment
-    if (!finalize_ruby_segments(seg_start, text_end, text, &next_seg, &count, head)) {
-        return 0;
+    int result = parse_ruby_segments_loop(text, text_end, &next_seg, head, &count);
+    if (result < 0) {
+        return 0;  // Cleanup already done in loop
     }
 
     *segments = head;
