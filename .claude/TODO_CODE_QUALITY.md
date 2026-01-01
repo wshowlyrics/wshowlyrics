@@ -1,25 +1,26 @@
 # TODO: SonarCloud Code Quality Improvements
 
-## 현재 상태 (2025-12-30)
+## 현재 상태 (2026-01-01)
 
-### ✅ 완료된 작업
-- **Security Hotspots**: 100% Reviewed (107개)
-- **Phase 1-8 완료**: BLOCKER 0개, CRITICAL 0개 달성 ✅
-- **전체 등급**: ⭐ A등급 (Maintainability, Reliability, Security)
-- **Quality Gate**: 🟢 GREEN
+### ✅ 완료된 Phase (1-8)
 - **Bugs**: 0개
 - **Vulnerabilities**: 0개
+- **BLOCKER**: 0개
+- **CRITICAL**: 0개
+- **전체 등급**: ⭐ A등급 (Maintainability, Reliability, Security)
+- **Quality Gate**: 🟢 GREEN
+- **Security Hotspots**: 100% Reviewed
 
 ### 📊 남은 작업
-- **총 미해결 이슈**: 167개 (C 코드만, Python 제외)
+- **총 미해결 이슈**: 169개 (C 코드만, Python 제외)
   - **MAJOR**: 43개
-  - **MINOR**: 124개
+  - **MINOR**: 126개
 
 ---
 
 ## Phase 9: MAJOR Severity 이슈 해결 (43개)
 
-### Priority 1: 중첩 if 병합 (10개) - 50min
+### Priority 1: 중첩 if 병합 (7개) - 35min
 **Rule**: c:S1066 (Merge nested if statements)
 **예상 시간**: 5min/개
 
@@ -37,18 +38,6 @@ if (a && b) {
     action();
 }
 ```
-
-**이슈 목록**:
-1. parser_utils.c:625 - AZts0PZ5S0NST-dYy2ON
-2. parser_utils.c:525 - AZtq6019IKCkJKKT-vVX
-3. parser_utils.c:560 - AZtq6019IKCkJKKT-vVY
-4. parser_utils.c:615 - AZtq6019IKCkJKKT-vVb
-5. main.c:257 - AZtp81xHhknWVGFnRajT
-6. lrc_parser.c:154 - AZtp81swhknWVGFnRajM
-7. lyrics_provider.c:595 - AZtp81vYhknWVGFnRajN
-8. lyrics_provider.c:602 - AZtp81vYhknWVGFnRajO
-9. system_tray.c:171 - AZs-_pRTEZ4CGuQgOkew
-10. shm.c:138 - AZsw3M6KHpp0TbwUWQXN
 
 ---
 
@@ -68,17 +57,12 @@ struct func_params {
 void func(struct func_params *params);
 ```
 
-**이슈 목록**:
-1. rendering_manager.c:48 (8 params) - AZtq606DIKCkJKKT-vVp
-2. rendering_manager.c:65 (11 params) - AZtq606DIKCkJKKT-vVq
-3. rendering_manager.c:95 (10 params) - AZtq606DIKCkJKKT-vVr
-4. ruby_render.c:200 (8 params) - AZtq60x0IKCkJKKT-vVS
-5. ruby_render.c:252 (8 params) - AZtq60x0IKCkJKKT-vVS
-6. word_render.c:331 (9 params) - AZtq60yfIKCkJKKT-vVT
-7. word_render.c:365 (8 params) - AZtq60yfIKCkJKKT-vVV
-8. word_render.c:168 (8 params) - AZtp81qdhknWVGFnRajJ
-9. dbus_control.c:66 (8 params) - AZtHSiUNBYCiXr9PEey3
-10. wayland_events.c:115 (10 params) - AZsw3M-EHpp0TbwUWQbW
+**주요 대상 파일**:
+- rendering_manager.c (3개 함수)
+- ruby_render.c (2개 함수)
+- word_render.c (3개 함수)
+- dbus_control.c (1개 함수)
+- wayland_events.c (1개 함수)
 
 ---
 
@@ -86,17 +70,9 @@ void func(struct func_params *params);
 **Rule**: c:S1172 (Remove unused function parameters)
 **예상 시간**: 5min/개
 
-**이슈 목록**:
-1. parser_utils.c:152 - AZs-_pL4EZ4CGuQgOkel
-2. parser_utils.c:492 - AZtscvfMKmH8o-EbaN0b
-3. parser_utils.c:522 - AZtscvfMKmH8o-EbaN0c
-4. parser_utils.c:544 - AZtscvfMKmH8o-EbaN0d
-5. dbus_control.c:67 - AZtHSiUNBYCiXr9PEey4
-6. dbus_control.c:68 - AZtHSiUNBYCiXr9PEey5
-7. dbus_control.c:69 - AZtHSiUNBYCiXr9PEey6
-8. dbus_control.c:70 - AZtHSiUNBYCiXr9PEey7
-9. dbus_control.c:157 - AZtHSiUNBYCiXr9PEey8
-10. dbus_control.c:193 - AZtHSiUNBYCiXr9PEey9
+**주요 대상 파일**:
+- parser_utils.c (4개)
+- dbus_control.c (6개)
 
 ---
 
@@ -109,52 +85,38 @@ void func(struct func_params *params);
 // Before
 while (outer) {
     while (inner) {
-        if (condition) {
-            break;  // Nested break
-        }
+        if (condition) break;
     }
     if (condition) break;
 }
 
-// After - 함수 추출 또는 flag 변수 사용
+// After - flag 변수 사용
 bool should_exit = false;
 while (outer && !should_exit) {
     while (inner && !should_exit) {
-        if (condition) {
-            should_exit = true;
-        }
+        if (condition) should_exit = true;
     }
 }
 ```
 
-**이슈 목록**:
-1. mpris.c:515 - AZtJVZMwABppZyGqgPw4
-2. translator_common.c:261 - AZsw3M8OHpp0TbwUWQZF
-3. lrclib_provider.c:108 - AZsw3M8vHpp0TbwUWQZn
+**대상 파일**:
+- mpris.c:515
+- translator_common.c:261
+- lrclib_provider.c:108
 
 ---
 
-### Priority 5: 기타 MAJOR 이슈 (10개) - 2h 30min
+### Priority 5: 기타 MAJOR 이슈 (13개) - 2h 30min
 
-**Note**: API에서 누락된 8개 이슈 추가 확인 필요
-
-#### 확인된 이슈 (2개) - 1h 10min
-
-#### 1. main.h:51 - Structure field limit (1h)
-**이슈 키**: AZsw3M-vHpp0TbwUWQbx
-**Rule**: c:S1820
-**메시지**: "Refactor structure to have max 20 fields (currently 40)"
-
-**리팩토링**:
-- `struct lyrics_state`를 논리적 그룹으로 분리
-- 렌더링, 상태, 설정 등을 별도 구조체로
+#### 1. 주석 처리된 코드 제거 (2개) - 10min
+**Rule**: c:S125
+**예상 시간**: 5min/개
 
 ---
 
-#### 2. file_utils.c:605 - Obsolete function (10min)
-**이슈 키**: AZtLbsuZPLnv084pGrSv
+#### 2. Obsolete function 교체 (1개) - 10min
 **Rule**: c:S1911
-**메시지**: "Remove use of obsolete 'utime' function"
+**파일**: file_utils.c:605
 
 **수정**:
 ```c
@@ -169,46 +131,32 @@ utimes(path, NULL);  // POSIX standard
 
 ---
 
-## Phase 10: MINOR Severity 이슈 해결 (124개)
+#### 3. 구조체 필드 제한 (1개) - 1h
+**Rule**: c:S1820
+**파일**: main.h:51
+**메시지**: "Refactor structure to have max 20 fields (currently 40)"
 
-### 개요
-- **총 124개 이슈** (C 코드만)
-- **3가지 주요 Rule**:
-  - c:S5350: Pointer-to-const 변수 (50개)
-  - c:S995: Pointer-to-const 파라미터 (62개)
-  - c:S1659: 다중 선언 분리 (12개)
-
----
-
-### Priority 1: Pointer-to-const 변수 (50개) - 2h 30min
-**Rule**: c:S5350
-**메시지**: "Make the type of this variable a pointer-to-const"
-**예상 시간**: 3min/개
-
-**리팩토링 패턴**:
-```c
-// Before
-char *text = line->text;
-
-// After
-const char *text = line->text;
-```
-
-**주요 파일**:
-- translator_common.c (다수)
-- lyrics_manager.c (다수)
-- parser_utils.c (다수)
-- rendering_manager.c
-- config.c
-
-**효과**:
-- 불변성 보장
-- 의도치 않은 수정 방지
-- 컴파일러 최적화 향상
+**리팩토링**:
+- `struct lyrics_state`를 논리적 그룹으로 분리
+- 렌더링, 상태, 설정 등을 별도 구조체로 분리
 
 ---
 
-### Priority 2: Pointer-to-const 파라미터 (62개) - 3h
+#### 4. 중복 브랜치 통합 (1개) - 15min
+**Rule**: c:S1871
+**예상 시간**: 15min
+
+---
+
+#### 5. 기타 (1개) - 15min
+**Rule**: c:S954
+**예상 시간**: 15min
+
+---
+
+## Phase 10: MINOR Severity 이슈 해결 (126개)
+
+### Priority 1: Pointer-to-const 파라미터 (54개) - 2h 42min
 **Rule**: c:S995
 **메시지**: "Make the type of this parameter a pointer-to-const"
 **예상 시간**: 3min/개
@@ -222,13 +170,6 @@ void process(struct lyrics_data *data);
 void process(const struct lyrics_data *data);
 ```
 
-**주요 파일**:
-- lyrics_manager.c (다수)
-- rendering_manager.c (다수)
-- translator_common.c (다수)
-- ruby_render.c
-- word_render.c
-
 **효과**:
 - API 계약 명확화 (읽기 전용)
 - 함수 순수성 표현
@@ -236,7 +177,28 @@ void process(const struct lyrics_data *data);
 
 ---
 
-### Priority 3: 다중 선언 분리 (12개) - 36min
+### Priority 2: Pointer-to-const 변수 (44개) - 2h 12min
+**Rule**: c:S5350
+**메시지**: "Make the type of this variable a pointer-to-const"
+**예상 시간**: 3min/개
+
+**리팩토링 패턴**:
+```c
+// Before
+char *text = line->text;
+
+// After
+const char *text = line->text;
+```
+
+**효과**:
+- 불변성 보장
+- 의도치 않은 수정 방지
+- 컴파일러 최적화 향상
+
+---
+
+### Priority 3: 다중 선언 분리 (23개) - 1h 9min
 **Rule**: c:S1659
 **메시지**: "Define each identifier in a dedicated statement"
 **예상 시간**: 3min/개
@@ -256,10 +218,6 @@ char *b;
 char *c;
 ```
 
-**주요 파일**:
-- parser_utils.c (다수)
-- 기타 파서/렌더러 파일
-
 **효과**:
 - 가독성 향상
 - 디버깅 용이성
@@ -267,54 +225,20 @@ char *c;
 
 ---
 
-## 구현 계획
+### Priority 4: 불필요한 cast 제거 (4개) - 12min
+**Rule**: c:S1905
+**메시지**: "Remove redundant casts"
+**예상 시간**: 3min/개
 
-### Phase 9: MAJOR 이슈 (43개)
-**예상 시간**: 8h 30min (8개 추가 이슈 확인 필요)
-
-**단계별 실행**:
-1. **중첩 if 병합 (10개)** - 50min
-   - 간단한 조건 결합
-   - 빌드 검증
-
-2. **파라미터 수 제한 (10개)** - 3h 20min
-   - 파라미터 구조체 설계
-   - 함수 시그니처 변경
-   - 호출 코드 업데이트
-   - 빌드 검증
-
-3. **미사용 파라미터 (10개)** - 50min
-   - 파라미터 제거 또는 `__attribute__((unused))` 추가
-   - 빌드 검증
-
-4. **중첩 break (3개)** - 1h
-   - flag 변수 또는 함수 추출
-   - 빌드 검증
-
-5. **기타 MAJOR (10개)** - 2h 30min
-   - 구조체 리팩토링 (1h)
-   - obsolete 함수 교체 (10min)
-   - 추가 8개 이슈 확인 및 수정 (1h 20min)
-   - 빌드 검증
+**효과**:
+- 코드 간결성 향상
+- 컴파일러 타입 추론 활용
 
 ---
 
-### Phase 10: MINOR 이슈 (124개, 선택적)
-**예상 시간**: 6h 6min
-
-**단계별 실행**:
-1. **Pointer-to-const 변수 (50개)** - 2h 30min
-   - 변수 선언에 const 추가
-   - 빌드 검증
-
-2. **Pointer-to-const 파라미터 (62개)** - 3h
-   - 함수 파라미터에 const 추가
-   - 호출 코드 영향 확인
-   - 빌드 검증
-
-3. **다중 선언 분리 (12개)** - 36min
-   - 한 줄에 하나의 선언으로 분리
-   - 빌드 검증
+### Priority 5: 에러 발생 루프 리팩토링 (1개) - 15min
+**Rule**: c:S886
+**예상 시간**: 15min
 
 ---
 
@@ -322,9 +246,9 @@ char *c;
 
 | Phase | 작업 | 이슈 수 | 예상 시간 |
 |-------|------|---------|-----------|
-| 9 | MAJOR 이슈 | 43 | 8h 30min |
-| 10 | MINOR 이슈 | 124 | 6h 6min |
-| **총합계** | | **167** | **14h 36min** |
+| 9 | MAJOR 이슈 | 43 | 8h 20min |
+| 10 | MINOR 이슈 | 126 | 6h 30min |
+| **총합계** | | **169** | **14h 50min** |
 
 **버퍼 포함**: ~16-17시간 (테스트 및 디버깅)
 
@@ -382,11 +306,10 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 
 ## 상태
 
-- **생성일**: 2025-12-19
-- **최종 업데이트**: 2025-12-30 (Phase 8 완료, Phase 9-10 계획 수립)
+- **최종 업데이트**: 2026-01-01 (최신 API 데이터 반영)
 - **현재 Phase**: Phase 9 시작 준비
-- **완료 Phases**: 1-8 (BLOCKER 0개, CRITICAL 0개)
-- **남은 이슈**: MAJOR 43개, MINOR 124개
+- **완료 Phases**: 1-8 (Bugs 0개, Vulnerabilities 0개, BLOCKER 0개, CRITICAL 0개)
+- **남은 이슈**: MAJOR 43개, MINOR 126개
 - **우선순위**: Medium (코드 품질, 유지보수성)
 - **목표**: A등급 유지, Quality Gate GREEN 유지
-- **남은 예상 시간**: ~15-17h
+- **남은 예상 시간**: ~16-17h
