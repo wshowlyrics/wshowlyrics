@@ -177,10 +177,12 @@ Multi-provider translation with **async background processing** (`src/translator
 
 ## Configuration
 
-Settings are loaded from (in priority order):
-1. `~/.config/wshowlyrics/settings.ini` (user config)
-2. `/etc/wshowlyrics/settings.ini` (system-wide)
-3. Command-line arguments (highest priority)
+Settings are loaded with the following fallback mechanism:
+
+1. **User config**: `~/.config/wshowlyrics/settings.ini`
+   - If file doesn't exist, copies from `/etc/wshowlyrics/settings.ini` (if available)
+   - If copy fails (system config not found), uses built-in defaults
+2. **Command-line arguments**: Override config file settings
 
 **Hot Reload**: Configuration files are monitored via MD5 checksums and automatically reloaded when changed.
 
