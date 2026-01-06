@@ -346,12 +346,19 @@ img {
   border: 1px solid var(--color-border);
   border-radius: 12px;
   overflow: hidden;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.screenshot-card:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
 }
 
 .screenshot-card img {
   width: 100%;
-  aspect-ratio: 16/9;
-  object-fit: cover;
+  height: 200px;
+  object-fit: contain;
+  background: var(--color-bg);
 }
 
 .screenshot-card figcaption {
@@ -394,18 +401,26 @@ img {
   color: white;
 }
 
+.tab-container {
+  max-width: 700px;
+  margin: 0 auto;
+  overflow: hidden;
+  transition: height 0.3s ease;
+}
+
 .tab-content {
   display: none;
   background: var(--color-bg-tertiary);
   border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 2rem;
-  max-width: 700px;
-  margin: 0 auto;
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .tab-content.active {
   display: block;
+  opacity: 1;
 }
 
 .tab-content h3 {
@@ -458,6 +473,13 @@ img {
   background: var(--color-bg);
   padding: 1rem;
   border-radius: 8px;
+  border: 1px solid var(--color-border);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.config-option:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
 }
 
 .config-option strong {

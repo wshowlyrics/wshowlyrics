@@ -22,26 +22,58 @@
     });
   }
 
-  // Installation Tabs
+  // Installation Tabs with smooth height transition
   const tabButtons = document.querySelectorAll('.tab-btn');
   const tabContents = document.querySelectorAll('.tab-content');
+  const tabContainer = document.querySelector('.tab-container');
+
+  // Set initial height
+  if (tabContainer) {
+    var activeTab = tabContainer.querySelector('.tab-content.active');
+    if (activeTab) {
+      tabContainer.style.height = activeTab.offsetHeight + 'px';
+    }
+  }
 
   tabButtons.forEach(function(button) {
     button.addEventListener('click', function() {
       const tabId = this.getAttribute('data-tab');
+      const newContent = document.getElementById(tabId);
 
-      // Remove active class from all buttons and contents
+      // Remove active class from all buttons
       tabButtons.forEach(function(btn) {
         btn.classList.remove('active');
       });
+
+      // Get current height
+      const currentHeight = tabContainer.offsetHeight;
+      tabContainer.style.height = currentHeight + 'px';
+
+      // Hide all contents
       tabContents.forEach(function(content) {
         content.classList.remove('active');
       });
 
-      // Add active class to clicked button and corresponding content
+      // Show new content and animate height
       this.classList.add('active');
-      document.getElementById(tabId).classList.add('active');
+      newContent.classList.add('active');
+
+      // Calculate new height and animate
+      requestAnimationFrame(function() {
+        const newHeight = newContent.offsetHeight;
+        tabContainer.style.height = newHeight + 'px';
+      });
     });
+  });
+
+  // Handle window resize
+  window.addEventListener('resize', function() {
+    if (tabContainer) {
+      var activeTab = tabContainer.querySelector('.tab-content.active');
+      if (activeTab) {
+        tabContainer.style.height = activeTab.offsetHeight + 'px';
+      }
+    }
   });
 
   // Header scroll effect
@@ -59,6 +91,29 @@
 
     lastScroll = currentScroll;
   });
+
+  // Platform-specific warning message
+  var platformMessage = document.getElementById('platform-message');
+  var platformLabel = document.getElementById('platform-label');
+  var platformNotice = document.getElementById('platform-notice');
+  if (platformMessage && platformLabel) {
+    var ua = navigator.userAgent.toLowerCase();
+    if (ua.indexOf('win') !== -1) {
+      platformLabel.textContent = 'Warning:';
+      platformLabel.style.color = '#f85149';
+      platformNotice.style.borderLeftColor = '#f85149';
+      platformNotice.style.background = 'rgba(248, 81, 73, 0.1)';
+      platformMessage.textContent = 'This application is not supported on Windows. It requires Linux with Wayland.';
+    } else if (ua.indexOf('mac') !== -1) {
+      platformLabel.textContent = 'Warning:';
+      platformLabel.style.color = '#f85149';
+      platformNotice.style.borderLeftColor = '#f85149';
+      platformNotice.style.background = 'rgba(248, 81, 73, 0.1)';
+      platformMessage.textContent = 'This application is not supported on macOS. It requires Linux with Wayland.';
+    } else {
+      platformMessage.textContent = 'This application requires a Wayland compositor (e.g., Sway, Hyprland).';
+    }
+  }
 
   // Smooth scroll for anchor links (fallback for browsers without CSS scroll-behavior)
   document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {

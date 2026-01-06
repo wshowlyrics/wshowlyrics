@@ -23,10 +23,6 @@ layout: default
     </span>
   </div>
 
-  <div class="quick-install">
-    <code>yay -S wshowlyrics</code>
-  </div>
-
   <div class="cta-buttons">
     <a href="#installation" class="btn btn-primary">Get Started</a>
     <a href="https://github.com/{{ site.repository }}" class="btn btn-secondary" target="_blank" rel="noopener">
@@ -119,39 +115,44 @@ layout: default
     <button class="tab-btn" data-tab="source">From Source</button>
   </div>
 
-  <div id="arch" class="tab-content active">
-    <h3>Arch Linux (AUR)</h3>
-    <p>Install stable release or development version from AUR:</p>
-    <div class="code-block">
-      <code><span class="comment"># Stable release</span><br>yay -S wshowlyrics<br><br><span class="comment"># Development (git)</span><br>yay -S wshowlyrics-git</code>
+  <div class="tab-container">
+    <div id="arch" class="tab-content active">
+      <h3>Arch Linux (AUR)</h3>
+      <p>Install stable release or development version from AUR:</p>
+      <div class="code-block">
+        <code><span class="comment"># Stable release</span><br>yay -S wshowlyrics<br><br><span class="comment"># Development (git)</span><br>yay -S wshowlyrics-git</code>
+      </div>
     </div>
-  </div>
 
-  <div id="ubuntu" class="tab-content">
-    <h3>Ubuntu / Debian (PPA)</h3>
-    <p>Add the PPA and install:</p>
-    <div class="code-block">
-      <code>sudo add-apt-repository ppa:unstable-code/wshowlyrics<br>sudo apt update<br>sudo apt install wshowlyrics</code>
+    <div id="ubuntu" class="tab-content">
+      <h3>Ubuntu / Debian (PPA)</h3>
+      <p>Add the PPA and install:</p>
+      <div class="code-block">
+        <code>sudo add-apt-repository ppa:unstable-code/wshowlyrics<br>sudo apt update<br>sudo apt install wshowlyrics</code>
+      </div>
     </div>
-  </div>
 
-  <div id="fedora" class="tab-content">
-    <h3>Fedora (COPR)</h3>
-    <p>Enable the COPR repository and install:</p>
-    <div class="code-block">
-      <code>sudo dnf copr enable unstable-code/wshowlyrics<br>sudo dnf install wshowlyrics</code>
+    <div id="fedora" class="tab-content">
+      <h3>Fedora (COPR)</h3>
+      <p>Enable the COPR repository and install:</p>
+      <div class="code-block">
+        <code><span class="comment"># Stable releases</span><br>sudo dnf copr enable unstable-code/wshowlyrics<br>sudo dnf install wshowlyrics<br><br><span class="comment"># Nightly builds (latest development)</span><br>sudo dnf copr enable unstable-code/wshowlyrics-nightly<br>sudo dnf install wshowlyrics</code>
+      </div>
     </div>
-  </div>
 
-  <div id="source" class="tab-content">
-    <h3>Build from Source</h3>
-    <p>Clone and build with Meson:</p>
-    <div class="code-block">
-      <code>git clone https://github.com/{{ site.repository }}.git<br>cd lyrics<br>meson setup build<br>meson compile -C build<br><br><span class="comment"># Install (optional)</span><br>sudo meson install -C build</code>
+    <div id="source" class="tab-content">
+      <h3>Build from Source</h3>
+      <p id="platform-notice" style="margin-bottom: 1rem; padding: 0.75rem; background: rgba(255, 200, 50, 0.1); border-left: 3px solid var(--color-accent); font-size: 0.85rem; color: var(--color-text-muted);">
+        <strong id="platform-label" style="color: var(--color-accent);">Note:</strong> <span id="platform-message">This application requires Linux with Wayland.</span>
+      </p>
+      <p>Clone and build with Meson:</p>
+      <div class="code-block">
+        <code>git clone https://github.com/{{ site.repository }}.git<br>cd lyrics<br>meson setup build<br>meson compile -C build<br><br><span class="comment"># Install (optional)</span><br>sudo meson install -C build</code>
+      </div>
+      <p style="margin-top: 1rem; color: var(--color-text-muted); font-size: 0.9rem;">
+        See <a href="https://github.com/{{ site.repository }}#dependencies" target="_blank">README</a> for required dependencies.
+      </p>
     </div>
-    <p style="margin-top: 1rem; color: var(--color-text-muted); font-size: 0.9rem;">
-      See <a href="https://github.com/{{ site.repository }}#dependencies" target="_blank">README</a> for required dependencies.
-    </p>
   </div>
 </section>
 

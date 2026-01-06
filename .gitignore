@@ -21,3 +21,4 @@ Thumbs.db
 # Ruby (Jekyll)
 Gemfile.lock
 vendor/
+Gemfile
