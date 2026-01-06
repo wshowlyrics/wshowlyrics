@@ -1,0 +1,23 @@
+# Build artifacts
+build/
+_site/
+
+# Jekyll cache
+.jekyll-cache/
+.sass-cache/
+
+# Claude Code
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+
+# Ruby (Jekyll)
+Gemfile.lock
+vendor/

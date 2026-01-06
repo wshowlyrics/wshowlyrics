@@ -1,0 +1,197 @@
+---
+layout: default
+---
+
+<!-- Hero Section -->
+<section class="hero">
+  <img src="{{ '/assets/images/logo.svg' | relative_url }}" alt="wshowlyrics logo" class="hero-logo">
+  <h1>wshowlyrics</h1>
+  <p class="tagline">A Wayland-native lyrics overlay with MPRIS integration</p>
+
+  <div class="badges">
+    <span class="badge">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Linux
+    </span>
+    <span class="badge">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg>
+      Wayland
+    </span>
+    <span class="badge">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+      GPL-3.0
+    </span>
+  </div>
+
+  <div class="quick-install">
+    <code>yay -S wshowlyrics</code>
+  </div>
+
+  <div class="cta-buttons">
+    <a href="#installation" class="btn btn-primary">Get Started</a>
+    <a href="https://github.com/{{ site.repository }}" class="btn btn-secondary" target="_blank" rel="noopener">
+      <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+      View on GitHub
+    </a>
+  </div>
+</section>
+
+<!-- Features Section -->
+<section id="features" class="section">
+  <h2>Features</h2>
+  <p class="subtitle">Everything you need for a seamless lyrics experience on Wayland</p>
+
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">&#127925;</div>
+      <h3>Multi-Format Support</h3>
+      <p>Supports LRCX (karaoke with word-level timing), LRC (line-level), SRT, and VTT subtitle formats. All formats support ruby text (furigana/pinyin) annotations.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">&#128269;</div>
+      <h3>Smart Lyrics Search</h3>
+      <p>Automatically searches local directories first, then falls back to online sources (lrclib.net). Full Unicode path support for Korean, Japanese, and Chinese filenames.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">&#127760;</div>
+      <h3>Real-time Translation</h3>
+      <p>Translate lyrics on-the-fly using OpenAI, DeepL, Google Gemini, or Anthropic Claude. Smart caching and language detection optimize API usage.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">&#127908;</div>
+      <h3>Karaoke Mode</h3>
+      <p>LRCX format enables word-by-word highlighting with progressive fill animation. Visual states for past, current (filling), and future words.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">&#128247;</div>
+      <h3>System Tray Integration</h3>
+      <p>Displays album art in your system tray (Waybar/Swaybar compatible). Automatic fallback chain: MPRIS metadata, iTunes API, or default icon.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">&#127926;</div>
+      <h3>MPRIS Integration</h3>
+      <p>Works with all major music players: mpv, Spotify, VLC, Rhythmbox, Audacious, and any MPRIS-compatible player via playerctl.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Screenshots Section -->
+<div class="section-alt">
+  <section id="screenshots" class="section">
+    <h2>Screenshots</h2>
+    <p class="subtitle">See wshowlyrics in action</p>
+
+    <div class="screenshots-grid">
+      <figure class="screenshot-card">
+        <img src="https://github.com/user-attachments/assets/1909f0c1-445b-4526-b30f-6a5df93e624d" alt="LRCX karaoke mode" loading="lazy">
+        <figcaption>LRCX Karaoke Mode - Word-level timing with progressive fill</figcaption>
+      </figure>
+
+      <figure class="screenshot-card">
+        <img src="https://github.com/user-attachments/assets/43dae72e-e38d-4b26-bb62-f76b96d8b65a" alt="LRC lyrics display" loading="lazy">
+        <figcaption>LRC Format - Standard synchronized lyrics</figcaption>
+      </figure>
+
+      <figure class="screenshot-card">
+        <img src="https://github.com/user-attachments/assets/664a2f52-c186-42dc-8f1b-c5e98c186b38" alt="Translation overlay" loading="lazy">
+        <figcaption>Translation - Real-time lyrics translation</figcaption>
+      </figure>
+    </div>
+  </section>
+</div>
+
+<!-- Installation Section -->
+<section id="installation" class="section">
+  <h2>Installation</h2>
+  <p class="subtitle">Choose your preferred installation method</p>
+
+  <div class="install-tabs">
+    <button class="tab-btn active" data-tab="arch">Arch Linux</button>
+    <button class="tab-btn" data-tab="ubuntu">Ubuntu/Debian</button>
+    <button class="tab-btn" data-tab="fedora">Fedora</button>
+    <button class="tab-btn" data-tab="source">From Source</button>
+  </div>
+
+  <div id="arch" class="tab-content active">
+    <h3>Arch Linux (AUR)</h3>
+    <p>Install stable release or development version from AUR:</p>
+    <div class="code-block">
+      <code><span class="comment"># Stable release</span><br>yay -S wshowlyrics<br><br><span class="comment"># Development (git)</span><br>yay -S wshowlyrics-git</code>
+    </div>
+  </div>
+
+  <div id="ubuntu" class="tab-content">
+    <h3>Ubuntu / Debian (PPA)</h3>
+    <p>Add the PPA and install:</p>
+    <div class="code-block">
+      <code>sudo add-apt-repository ppa:unstable-code/wshowlyrics<br>sudo apt update<br>sudo apt install wshowlyrics</code>
+    </div>
+  </div>
+
+  <div id="fedora" class="tab-content">
+    <h3>Fedora (COPR)</h3>
+    <p>Enable the COPR repository and install:</p>
+    <div class="code-block">
+      <code>sudo dnf copr enable unstable-code/wshowlyrics<br>sudo dnf install wshowlyrics</code>
+    </div>
+  </div>
+
+  <div id="source" class="tab-content">
+    <h3>Build from Source</h3>
+    <p>Clone and build with Meson:</p>
+    <div class="code-block">
+      <code>git clone https://github.com/{{ site.repository }}.git<br>cd lyrics<br>meson setup build<br>meson compile -C build<br><br><span class="comment"># Install (optional)</span><br>sudo meson install -C build</code>
+    </div>
+    <p style="margin-top: 1rem; color: var(--color-text-muted); font-size: 0.9rem;">
+      See <a href="https://github.com/{{ site.repository }}#dependencies" target="_blank">README</a> for required dependencies.
+    </p>
+  </div>
+</section>
+
+<!-- Configuration Section -->
+<div class="section-alt">
+  <section id="configuration" class="section">
+    <h2>Configuration</h2>
+    <p class="subtitle">Customize wshowlyrics to your preferences</p>
+
+    <div class="config-example">
+      <h3>Example Configuration</h3>
+      <p>Configuration file: <code>~/.config/wshowlyrics/settings.ini</code></p>
+      <div class="code-block">
+        <code>[display]<br>font = Noto Sans CJK KR 24<br>active_color = FFD700FF<br>background_color = 00000099<br>anchor = bottom<br>margin = 50<br><br>[translation]<br>provider = gemini-2.5-flash<br>target_language = en<br>display_mode = both</code>
+      </div>
+
+      <div class="config-options">
+        <div class="config-option">
+          <strong>Fonts</strong>
+          <span>Custom font family and size</span>
+        </div>
+        <div class="config-option">
+          <strong>Colors</strong>
+          <span>Active text, background, translation</span>
+        </div>
+        <div class="config-option">
+          <strong>Position</strong>
+          <span>Top, bottom, left, right anchoring</span>
+        </div>
+        <div class="config-option">
+          <strong>Translation</strong>
+          <span>Provider, language, display mode</span>
+        </div>
+      </div>
+
+      <p style="margin-top: 1.5rem; text-align: center;">
+        <a href="https://github.com/{{ site.repository }}/blob/master/settings.ini.example" target="_blank" class="btn btn-secondary">
+          View Full Configuration Reference
+        </a>
+      </p>
+    </div>
+  </section>
+</div>
