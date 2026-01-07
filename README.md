@@ -236,43 +236,20 @@ mpv --force-window=yes song.mp3
 
 ### Environment Variables
 
-The following environment variables are used by wshowlyrics:
+The "Edit Settings" feature in the system tray context menu requires:
 
-- **$EDITOR**: Text editor for editing settings files (e.g., `nvim`, `vim`, `nano`)
-  - Used when clicking "Edit Settings" in the system tray context menu
-  - Required for the Edit Settings feature to work
-  - Examples:
-    ```bash
-    export EDITOR=nvim
-    export EDITOR=vim
-    export EDITOR=nano
-    ```
+- **$EDITOR**: Text editor (e.g., `nvim`, `vim`, `nano`)
+- **$TERMINAL**: Terminal emulator (e.g., `foot`, `konsole`, `gnome-terminal`)
 
-- **$TERMINAL**: Terminal emulator to launch the editor (e.g., `konsole`, `foot`, `gnome-terminal`)
-  - Used to open the settings editor from the system tray menu
-  - Required for the Edit Settings feature to work
-  - Examples by desktop environment:
-    ```bash
-    # Sway
-    export TERMINAL=foot
+Configure in `~/.config/environment.d/`:
 
-    # KDE Plasma
-    export TERMINAL=konsole
+```bash
+# ~/.config/environment.d/50-wshowlyrics.conf
+EDITOR=nvim
+TERMINAL=foot
+```
 
-    # GNOME
-    export TERMINAL=gnome-terminal
-
-    # Wayland-agnostic approach using XDG_CURRENT_DESKTOP
-    if [[ "$XDG_CURRENT_DESKTOP" == 'Sway' ]]; then
-        export TERMINAL=foot
-    elif [[ "$XDG_CURRENT_DESKTOP" == 'KDE' ]]; then
-        export TERMINAL=konsole
-    elif [[ "$XDG_CURRENT_DESKTOP" == 'GNOME' ]]; then
-        export TERMINAL=gnome-terminal
-    fi
-    ```
-
-Add these to your shell configuration file (`~/.bashrc`, `~/.zshrc`, etc.) or systemd user environment.
+After creating this file, log out and log back in (or run `systemctl --user daemon-reload`).
 
 ### Options
 

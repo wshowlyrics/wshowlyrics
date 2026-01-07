@@ -232,43 +232,20 @@ mpv --force-window=yes song.mp3
 
 ### 환경변수
 
-wshowlyrics에서 사용하는 환경변수는 다음과 같습니다:
+시스템 트레이 컨텍스트 메뉴의 "설정 편집" 기능에 필요합니다:
 
-- **$EDITOR**: 설정 파일을 편집할 텍스트 에디터 (예: `nvim`, `vim`, `nano`)
-  - 시스템 트레이 컨텍스트 메뉴에서 "설정 편집"을 클릭할 때 사용됩니다
-  - 설정 편집 기능이 정상 작동하려면 필수입니다
-  - 예시:
-    ```bash
-    export EDITOR=nvim
-    export EDITOR=vim
-    export EDITOR=nano
-    ```
+- **$EDITOR**: 텍스트 에디터 (예: `nvim`, `vim`, `nano`)
+- **$TERMINAL**: 터미널 에뮬레이터 (예: `foot`, `konsole`, `gnome-terminal`)
 
-- **$TERMINAL**: 에디터를 실행할 터미널 에뮬레이터 (예: `konsole`, `foot`, `gnome-terminal`)
-  - 시스템 트레이 메뉴에서 설정 에디터를 열 때 사용됩니다
-  - 설정 편집 기능이 정상 작동하려면 필수입니다
-  - 데스크톱 환경별 예시:
-    ```bash
-    # Sway
-    export TERMINAL=foot
+`~/.config/environment.d/`에 설정:
 
-    # KDE Plasma
-    export TERMINAL=konsole
+```bash
+# ~/.config/environment.d/50-wshowlyrics.conf
+EDITOR=nvim
+TERMINAL=foot
+```
 
-    # GNOME
-    export TERMINAL=gnome-terminal
-
-    # Wayland 공통 방식 (XDG_CURRENT_DESKTOP 활용)
-    if [[ "$XDG_CURRENT_DESKTOP" == 'Sway' ]]; then
-        export TERMINAL=foot
-    elif [[ "$XDG_CURRENT_DESKTOP" == 'KDE' ]]; then
-        export TERMINAL=konsole
-    elif [[ "$XDG_CURRENT_DESKTOP" == 'GNOME' ]]; then
-        export TERMINAL=gnome-terminal
-    fi
-    ```
-
-셸 설정 파일(`~/.bashrc`, `~/.zshrc` 등)이나 systemd 유저 환경에 추가하세요.
+파일 생성 후 로그아웃/로그인하거나 `systemctl --user daemon-reload`를 실행하세요.
 
 ### 옵션
 
