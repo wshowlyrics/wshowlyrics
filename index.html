@@ -120,7 +120,7 @@ layout: default
       <h3>Arch Linux (AUR)</h3>
       <p>Install stable release or development version from AUR:</p>
       <div class="code-block">
-        <code><span class="comment"># Stable release</span><br>yay -S wshowlyrics<br><br><span class="comment"># Development (git)</span><br>yay -S wshowlyrics-git</code>
+        <code translate="no"><span class="comment"># Stable release</span><br>yay -S wshowlyrics<br><br><span class="comment"># Development (git)</span><br>yay -S wshowlyrics-git</code>
       </div>
     </div>
 
@@ -128,7 +128,7 @@ layout: default
       <h3>Ubuntu / Debian (PPA)</h3>
       <p>Add the PPA and install:</p>
       <div class="code-block">
-        <code>sudo add-apt-repository ppa:unstable-code/wshowlyrics<br>sudo apt update<br>sudo apt install wshowlyrics</code>
+        <code translate="no">sudo add-apt-repository ppa:unstable-code/wshowlyrics<br>sudo apt update<br>sudo apt install wshowlyrics</code>
       </div>
     </div>
 
@@ -136,7 +136,7 @@ layout: default
       <h3>Fedora (COPR)</h3>
       <p>Enable the COPR repository and install:</p>
       <div class="code-block">
-        <code><span class="comment"># Stable releases</span><br>sudo dnf copr enable unstable-code/wshowlyrics<br>sudo dnf install wshowlyrics<br><br><span class="comment"># Nightly builds (latest development)</span><br>sudo dnf copr enable unstable-code/wshowlyrics-nightly<br>sudo dnf install wshowlyrics</code>
+        <code translate="no"><span class="comment"># Stable releases</span><br>sudo dnf copr enable unstable-code/wshowlyrics<br>sudo dnf install wshowlyrics<br><br><span class="comment"># Nightly builds (latest development)</span><br>sudo dnf copr enable unstable-code/wshowlyrics-nightly<br>sudo dnf install wshowlyrics</code>
       </div>
     </div>
 
@@ -147,7 +147,7 @@ layout: default
       </p>
       <p>Clone and build with Meson:</p>
       <div class="code-block">
-        <code>git clone https://github.com/{{ site.repository }}.git<br>cd lyrics<br>meson setup build<br>meson compile -C build<br><br><span class="comment"># Install (optional)</span><br>sudo meson install -C build</code>
+        <code translate="no">git clone https://github.com/{{ site.repository }}.git<br>cd lyrics<br>meson setup build<br>meson compile -C build<br><br><span class="comment"># Install (optional)</span><br>sudo meson install -C build</code>
       </div>
       <p style="margin-top: 1rem; color: var(--color-text-muted); font-size: 0.9rem;">
         See <a href="https://github.com/{{ site.repository }}#dependencies" target="_blank">README</a> for required dependencies.
@@ -159,7 +159,7 @@ layout: default
 <!-- Compatibility Section -->
 <section id="compatibility" class="section">
   <h2>Compositor Compatibility</h2>
-  <p class="subtitle">Uses <a href="https://wayland.app/protocols/wlr-layer-shell-unstable-v1" target="_blank" rel="noopener"><code>wlr-layer-shell-unstable-v1</code></a> Wayland protocol</p>
+  <p class="subtitle">Uses <a href="https://wayland.app/protocols/wlr-layer-shell-unstable-v1" target="_blank" rel="noopener"><code translate="no">wlr-layer-shell-unstable-v1</code></a> Wayland protocol</p>
 
   <div class="features-grid" style="max-width: 800px; margin: 0 auto;">
     <div class="feature-card">
@@ -184,9 +184,9 @@ layout: default
 
     <div class="config-example">
       <h3>Example Configuration</h3>
-      <p>Configuration file: <code>~/.config/wshowlyrics/settings.ini</code></p>
+      <p>Configuration file: <code translate="no">~/.config/wshowlyrics/settings.ini</code></p>
       <div class="code-block">
-        <code>[display]<br>font = Noto Sans CJK KR 24<br>active_color = FFD700FF<br>background_color = 00000099<br>anchor = bottom<br>margin = 50<br><br>[translation]<br>provider = gemini-2.5-flash<br>target_language = en<br>display_mode = both</code>
+        <code translate="no">[display]<br>font = Noto Sans CJK KR 24<br>active_color = FFD700FF<br>background_color = 00000099<br>anchor = bottom<br>margin = 50<br><br>[translation]<br>provider = gemini-2.5-flash<br>target_language = en<br>display_mode = both</code>
       </div>
 
       <div class="config-options">
