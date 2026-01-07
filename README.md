@@ -845,6 +845,19 @@ Translation: Echoing in my heart
 
 The translation appears below the original lyrics in a smaller, slightly dimmed font.
 
+## Compositor Compatibility
+
+This project uses the `wlr-layer-shell-unstable-v1` Wayland protocol for displaying the lyrics overlay.
+
+### Officially Tested
+
+- **Sway** - Fully supported and tested
+- **KDE Plasma (5.27+)** - Fully supported and tested
+
+### Other Compositors
+
+Other wlr-layer-shell compatible compositors (Hyprland, river, wayfire, etc.) may also work, but are not officially tested and may have stability issues.
+
 ## Dependencies
 
 ### Build Requirements
