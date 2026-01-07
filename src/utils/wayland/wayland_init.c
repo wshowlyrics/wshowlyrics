@@ -35,6 +35,7 @@ bool wayland_init_surface(struct lyrics_state *state, unsigned int anchor, int m
 
     // Initialize system tray
     if (system_tray_init()) {
+        system_tray_set_state(state);
         log_info("System tray initialized (album art display)");
     } else {
         log_warn("Failed to initialize system tray");

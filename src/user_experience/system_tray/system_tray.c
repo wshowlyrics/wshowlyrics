@@ -1,9 +1,11 @@
 #include "system_tray.h"
+#include "../../main.h"
 #include "../../utils/curl/curl_utils.h"
 #include "../../provider/itunes/itunes_artwork.h"
 #include "../../utils/file/file_utils.h"
 #include "../../utils/icon/icon_utils.h"
 #include "../../utils/string/string_utils.h"
+#include "../../core/rendering/rendering_manager.h"
 #include "../config/config.h"
 #include <stdio.h>
 #include "../../constants.h"
@@ -23,6 +25,15 @@ static AppIndicator *indicator = NULL;
 static GtkWidget *menu = NULL;
 static char *last_art_url = NULL;
 static char last_metadata_hash[MD5_DIGEST_STRING_LENGTH] = {0};
+
+// Menu items that need dynamic updates
+static GtkWidget *track_info_item = NULL;
+static GtkWidget *overlay_item = NULL;
+static GtkWidget *edit_settings_item = NULL;
+static struct lyrics_state *g_tray_state = NULL;
+
+// Maximum display length for track info (UTF-8 characters, not bytes)
+#define TRACK_INFO_MAX_CHARS 10
 
 // Fixed paths
 static const char *ICON_DIR = "/tmp/wshowlyrics";
@@ -232,18 +243,173 @@ static GdkPixbuf* apply_circular_mask(GdkPixbuf *pixbuf) {
     return rounded;
 }
 
-// Create a minimal dummy menu (required by AppIndicator)
+// Truncate UTF-8 string to max_chars characters, adding "..." if truncated
+// Returns newly allocated string (caller must free)
+static char* truncate_utf8(const char *str, int max_chars) {
+    if (!str) {
+        return strdup("Unknown");
+    }
+
+    glong len = g_utf8_strlen(str, -1);
+    if (len <= max_chars) {
+        return strdup(str);
+    }
+
+    // Find position of max_chars-th character
+    const char *end = g_utf8_offset_to_pointer(str, max_chars);
+    size_t byte_len = end - str;
+
+    // Allocate space for truncated string + "..." + null
+    char *result = malloc(byte_len + 4);
+    if (!result) {
+        return strdup(str);
+    }
+
+    memcpy(result, str, byte_len);
+    memcpy(result + byte_len, "...", 4);  // includes null terminator
+
+    return result;
+}
+
+// Menu callbacks
+static void on_overlay_toggled(GtkCheckMenuItem *item, gpointer user_data) {
+    (void)item;
+    (void)user_data;
+
+    if (!g_tray_state) {
+        return;
+    }
+
+    g_tray_state->overlay_enabled = !g_tray_state->overlay_enabled;
+    system_tray_set_overlay_state(g_tray_state->overlay_enabled);
+    rendering_manager_set_dirty(g_tray_state);
+
+    log_info("Menu: Overlay %s", g_tray_state->overlay_enabled ? "enabled" : "disabled");
+}
+
+static void on_timing_adjust(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    int delta = GPOINTER_TO_INT(user_data);
+
+    if (!g_tray_state) {
+        return;
+    }
+
+    if (delta == 0) {
+        // Reset to global offset
+        g_tray_state->timing_offset_ms = g_config.lyrics.global_offset_ms;
+        log_info("Menu: Timing offset reset to %dms", g_tray_state->timing_offset_ms);
+    } else {
+        g_tray_state->timing_offset_ms += delta;
+        // Clamp to reasonable range
+        if (g_tray_state->timing_offset_ms < -5000) g_tray_state->timing_offset_ms = -5000;
+        if (g_tray_state->timing_offset_ms > 5000) g_tray_state->timing_offset_ms = 5000;
+        log_info("Menu: Timing offset adjusted by %+dms, now: %dms", delta, g_tray_state->timing_offset_ms);
+    }
+
+    rendering_manager_set_dirty(g_tray_state);
+}
+
+static void on_edit_settings(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    (void)user_data;
+
+    const char *editor = getenv("EDITOR");
+    const char *terminal = getenv("TERMINAL");
+
+    if (!editor || !terminal) {
+        return;
+    }
+
+    // Build config path
+    char config_path[512];
+    const char *home = getenv("HOME");
+    if (!home) {
+        return;
+    }
+    snprintf(config_path, sizeof(config_path), "%s/.config/wshowlyrics/settings.ini", home);
+
+    // Build command: terminal -e editor config_path
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "%s -e %s \"%s\" &", terminal, editor, config_path);
+
+    log_info("Menu: Opening settings with: %s", cmd);
+    int ret = system(cmd);
+    if (ret != 0) {
+        log_warn("Menu: Failed to open editor (exit code: %d)", ret);
+    }
+}
+
+static void on_quit(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    (void)user_data;
+
+    if (g_tray_state) {
+        g_tray_state->run = false;
+        log_info("Menu: Quit requested");
+    }
+}
+
+// Create context menu
 static GtkWidget* create_menu(void) {
     GtkWidget *tray_menu = gtk_menu_new();
 
-    // Add a simple info item
-    GtkWidget *info_item = gtk_menu_item_new_with_label("Lyrics - Album Art Display");
-    gtk_widget_set_sensitive(info_item, FALSE);
-    gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), info_item);
+    // Track info (disabled, info display only)
+    track_info_item = gtk_menu_item_new_with_label("♪ No track");
+    gtk_widget_set_sensitive(track_info_item, FALSE);
+    gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), track_info_item);
+
+    // Separator
+    gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), gtk_separator_menu_item_new());
+
+    // Show Overlay (checkbox)
+    overlay_item = gtk_check_menu_item_new_with_label("Show Overlay");
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(overlay_item), TRUE);
+    g_signal_connect(overlay_item, "toggled", G_CALLBACK(on_overlay_toggled), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), overlay_item);
+
+    // Timing Offset submenu
+    GtkWidget *timing_item = gtk_menu_item_new_with_label("Timing Offset");
+    GtkWidget *timing_submenu = gtk_menu_new();
+
+    GtkWidget *timing_plus = gtk_menu_item_new_with_label("+100ms");
+    g_signal_connect(timing_plus, "activate", G_CALLBACK(on_timing_adjust), GINT_TO_POINTER(100));
+    gtk_menu_shell_append(GTK_MENU_SHELL(timing_submenu), timing_plus);
+
+    GtkWidget *timing_minus = gtk_menu_item_new_with_label("-100ms");
+    g_signal_connect(timing_minus, "activate", G_CALLBACK(on_timing_adjust), GINT_TO_POINTER(-100));
+    gtk_menu_shell_append(GTK_MENU_SHELL(timing_submenu), timing_minus);
+
+    GtkWidget *timing_reset = gtk_menu_item_new_with_label("Reset");
+    g_signal_connect(timing_reset, "activate", G_CALLBACK(on_timing_adjust), GINT_TO_POINTER(0));
+    gtk_menu_shell_append(GTK_MENU_SHELL(timing_submenu), timing_reset);
+
+    gtk_menu_item_set_submenu(GTK_MENU_ITEM(timing_item), timing_submenu);
+    gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), timing_item);
+
+    // Separator
+    gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), gtk_separator_menu_item_new());
+
+    // Edit Settings (only if $EDITOR and $TERMINAL are set)
+    const char *editor = getenv("EDITOR");
+    const char *terminal = getenv("TERMINAL");
+    if (editor && editor[0] != '\0' && terminal && terminal[0] != '\0') {
+        edit_settings_item = gtk_menu_item_new_with_label("Edit Settings");
+        g_signal_connect(edit_settings_item, "activate", G_CALLBACK(on_edit_settings), NULL);
+        gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), edit_settings_item);
+
+        // Separator
+        gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), gtk_separator_menu_item_new());
+    }
+
+    // Quit
+    GtkWidget *quit_item = gtk_menu_item_new_with_label("Quit");
+    g_signal_connect(quit_item, "activate", G_CALLBACK(on_quit), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(tray_menu), quit_item);
 
     gtk_widget_show_all(tray_menu);
 
-    log_info("Minimal tray menu created (album art display only)");
+    log_info("Context menu created");
 
     return tray_menu;
 }
@@ -275,7 +441,6 @@ bool system_tray_init(void) {
     }
 
     app_indicator_set_status(indicator, APP_INDICATOR_STATUS_ACTIVE);
-    app_indicator_set_title(indicator, "Lyrics");
 
     // Create minimal menu (required by AppIndicator)
     menu = create_menu();
@@ -838,4 +1003,41 @@ void system_tray_set_overlay_state(bool enabled) {
 
         log_info("Overlay disabled - icon updated");
     }
+}
+
+// Set lyrics state for menu callbacks
+void system_tray_set_state(struct lyrics_state *state) {
+    g_tray_state = state;
+
+    // Update overlay checkbox to match current state
+    if (overlay_item && state) {
+        // Block signal to prevent callback during programmatic update
+        g_signal_handlers_block_by_func(overlay_item, on_overlay_toggled, NULL);
+        gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(overlay_item), state->overlay_enabled);
+        g_signal_handlers_unblock_by_func(overlay_item, on_overlay_toggled, NULL);
+    }
+}
+
+// Update track info in menu
+void system_tray_update_track_info(const char *artist, const char *title) {
+    if (!track_info_item) {
+        return;
+    }
+
+    char label[128];
+
+    if (!artist && !title) {
+        snprintf(label, sizeof(label), "♪ No track");
+    } else {
+        // Truncate artist and title to max 10 chars each
+        char *trunc_artist = truncate_utf8(artist, TRACK_INFO_MAX_CHARS);
+        char *trunc_title = truncate_utf8(title, TRACK_INFO_MAX_CHARS);
+
+        snprintf(label, sizeof(label), "♪ %s - %s", trunc_artist, trunc_title);
+
+        free(trunc_artist);
+        free(trunc_title);
+    }
+
+    gtk_menu_item_set_label(GTK_MENU_ITEM(track_info_item), label);
 }

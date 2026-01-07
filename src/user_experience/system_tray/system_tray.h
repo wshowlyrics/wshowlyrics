@@ -3,6 +3,9 @@
 
 #include <stdbool.h>
 
+// Forward declaration
+struct lyrics_state;
+
 // Notification metadata for desktop notifications
 struct notification_info {
     const char *title;
@@ -13,6 +16,12 @@ struct notification_info {
 
 // Initialize system tray icon
 bool system_tray_init(void);
+
+// Set lyrics state for menu callbacks (must be called after init)
+void system_tray_set_state(struct lyrics_state *state);
+
+// Update track info displayed in context menu
+void system_tray_update_track_info(const char *artist, const char *title);
 
 // Update tray icon with album art URL (artUrl from MPRIS)
 // Returns true if icon was updated successfully

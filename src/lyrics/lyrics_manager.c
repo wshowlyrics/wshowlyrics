@@ -93,8 +93,9 @@ static void handle_no_player_found(struct lyrics_state *state) {
     state->prev_line = NULL;
     state->next_line = NULL;
 
-    // Reset tray icon to default
+    // Reset tray icon and track info
     system_tray_reset_icon();
+    system_tray_update_track_info(NULL, NULL);
 
     // Clear the display
     rendering_manager_set_dirty(state);
@@ -143,8 +144,9 @@ static void handle_track_changed(struct lyrics_state *state, struct track_metada
     state->track_start_time_us = (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
     state->track_start_time_us -= state->current_track.position_us;
 
-    // Reset tray icon to default before updating
+    // Reset tray icon and update track info
     system_tray_reset_icon();
+    system_tray_update_track_info(new_track->artist, new_track->title);
 }
 
 bool lyrics_manager_update_track_info(struct lyrics_state *state) {
