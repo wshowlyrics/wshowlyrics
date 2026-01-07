@@ -111,7 +111,7 @@
       platformNotice.style.background = 'rgba(248, 81, 73, 0.1)';
       platformMessage.textContent = 'This application is not supported on macOS. It requires Linux with Wayland.';
     } else {
-      platformMessage.textContent = 'This application requires a Wayland compositor (e.g., Sway, Hyprland).';
+      platformMessage.innerHTML = 'This application requires a Wayland compositor. See <a href="#compatibility" style="color: var(--color-accent);">compatibility</a> for details.';
     }
   }
 
