@@ -33,7 +33,12 @@ A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https:/
   - Automatically loads album art from MPRIS metadata
   - **iTunes API Fallback**: Automatically fetches album artwork from iTunes Search API when MPRIS doesn't provide it
   - Shows default music icon when album art is unavailable from all sources
-  - Tooltip displays current track info (Artist - Title)
+  - **Context Menu**: Right-click on system tray icon to access:
+    - Track info display (Artist - Title)
+    - Show Overlay toggle
+    - Timing Offset submenu (+100ms, -100ms, Reset)
+    - Edit Settings (requires $EDITOR and $TERMINAL environment variables)
+    - Quit
 - **Smart Lyrics Search**:
   - **Local file search**: Prioritizes searching in the same directory as the currently playing file
   - **Online fallback**: Automatically fetches lyrics from [lrclib.net](https://lrclib.net) when local files are not found
@@ -228,6 +233,46 @@ mpv --force-window=yes song.mp3
 
 # Also works with other MPRIS-compatible players like Spotify, VLC, etc.
 ```
+
+### Environment Variables
+
+The following environment variables are used by wshowlyrics:
+
+- **$EDITOR**: Text editor for editing settings files (e.g., `nvim`, `vim`, `nano`)
+  - Used when clicking "Edit Settings" in the system tray context menu
+  - Required for the Edit Settings feature to work
+  - Examples:
+    ```bash
+    export EDITOR=nvim
+    export EDITOR=vim
+    export EDITOR=nano
+    ```
+
+- **$TERMINAL**: Terminal emulator to launch the editor (e.g., `konsole`, `foot`, `gnome-terminal`)
+  - Used to open the settings editor from the system tray menu
+  - Required for the Edit Settings feature to work
+  - Examples by desktop environment:
+    ```bash
+    # Sway
+    export TERMINAL=foot
+
+    # KDE Plasma
+    export TERMINAL=konsole
+
+    # GNOME
+    export TERMINAL=gnome-terminal
+
+    # Wayland-agnostic approach using XDG_CURRENT_DESKTOP
+    if [[ "$XDG_CURRENT_DESKTOP" == 'Sway' ]]; then
+        export TERMINAL=foot
+    elif [[ "$XDG_CURRENT_DESKTOP" == 'KDE' ]]; then
+        export TERMINAL=konsole
+    elif [[ "$XDG_CURRENT_DESKTOP" == 'GNOME' ]]; then
+        export TERMINAL=gnome-terminal
+    fi
+    ```
+
+Add these to your shell configuration file (`~/.bashrc`, `~/.zshrc`, etc.) or systemd user environment.
 
 ### Options
 
