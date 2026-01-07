@@ -512,7 +512,7 @@ rm /tmp/wshowlyrics.lock
 ```
 
 ### SRT/VTT 형식
-<img width="361" height="131" alt="4cfd477" src="https://github.com/user-attachments/assets/09e7b68d-16ab-441b-b1a9-87bedda7547a" />
+<img width="379" height="139" alt="image" src="https://github.com/user-attachments/assets/ec25f97d-5097-4cb9-b02a-3e682e66a2a5" />
 
 자막 형식도 지원합니다:
 

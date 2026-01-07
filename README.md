@@ -517,7 +517,7 @@ Synchronized lyrics file format:
 ```
 
 ### SRT/VTT Format
-<img width="361" height="131" alt="4cfd477" src="https://github.com/user-attachments/assets/664a2f52-c186-42dc-8f1b-c5e98c186b38" />
+<img width="379" height="139" alt="image" src="https://github.com/user-attachments/assets/ec25f97d-5097-4cb9-b02a-3e682e66a2a5" />
 
 
 Subtitle formats are also supported:
