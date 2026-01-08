@@ -355,7 +355,7 @@ static void render_segments_with_optional_translation(cairo_t *cairo,
 
 void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
                                        int scale, uint32_t *width, uint32_t *height) {
-    const char *text_to_display = " "; // Default to single space
+    const char *text_to_display = NULL; // NULL means no content to display
     bool has_lyrics = (state->current_line && state->current_line->text);
     bool is_empty_line = false; // Track if current line is empty (instrumental break)
     bool is_karaoke = false; // Track if this is karaoke-style LRCX
@@ -371,7 +371,7 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
         if (text[0] == '\0') {
             // Empty string - treat as idle/instrumental break
             is_empty_line = true;
-            text_to_display = " "; // Display single space to keep surface visible
+            // text_to_display remains NULL - surface will be transparent
         } else {
             text_to_display = text;
             // Karaoke mode is only enabled for LRCX format
@@ -380,6 +380,13 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
     } else if (has_multiline_context) {
         // During instrumental breaks in LRCX, we still render prev/next lines
         is_karaoke = true;
+    }
+
+    // No content to display - return zero size for transparent surface
+    if (!text_to_display && !is_karaoke) {
+        *width = 0;
+        *height = 0;
+        return;
     }
 
     // Use transparent background when no lyrics or during instrumental breaks
@@ -419,28 +426,10 @@ void rendering_manager_render_transparent(struct lyrics_state *state) {
         return;
     }
 
-    const int scale = state->output ? state->output->scale : 1;
-    state->current_buffer = get_next_buffer(state->shm,
-            state->buffers, state->width * scale, state->height * scale);
-    if (state->current_buffer) {
-        cairo_t *shm = state->current_buffer->cairo;
-        cairo_save(shm);
-        cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
-        cairo_paint(shm);
-        cairo_restore(shm);
-
-        wl_surface_set_buffer_scale(state->surface, scale);
-        wl_surface_attach(state->surface, state->current_buffer->buffer, 0, 0);
-        wl_surface_damage_buffer(state->surface, 0, 0, state->width, state->height);
-
-        // Request frame callback for vsync
-        state->frame_callback = wl_surface_frame(state->surface);
-        wl_callback_add_listener(state->frame_callback,
-                wayland_events_get_frame_listener(), state);
-        state->frame_scheduled = true;
-
-        wl_surface_commit(state->surface);
-    }
+    // Detach buffer to make surface fully transparent
+    // This avoids buffer/surface size mismatch during resize
+    wl_surface_attach(state->surface, NULL, 0, 0);
+    wl_surface_commit(state->surface);
 }
 
 void rendering_manager_render_frame(struct lyrics_state *state) {
@@ -479,7 +468,7 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
 
         // Reconfigure surface size
         if (width == 0 || height == 0) {
-            // Keep a minimal 1x1 surface instead of detaching
+            // No content - keep minimal 1x1 surface (buffer already detached above)
             zwlr_layer_surface_v1_set_size(state->layer_surface, 1, 1);
         } else {
             zwlr_layer_surface_v1_set_size(
