@@ -418,9 +418,17 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
     openai_translator_cleanup();
     lang_detect_cleanup();
 
-    if (state->display) {
-        wl_display_disconnect(state->display);
+    // Cleanup Wayland buffers before disconnecting display
+    destroy_buffer(&state->buffers[0]);
+    destroy_buffer(&state->buffers[1]);
+
+    // Cleanup Wayland connection (handles proper resource destruction order:
+    // layer_surface -> surface -> layer_shell -> compositor -> shm -> registry -> display)
+    if (state->wl_conn) {
+        wayland_manager_cleanup(state->wl_conn);
+        state->wl_conn = NULL;
     }
+
     FcFini();
 
     free(font_from_config);
