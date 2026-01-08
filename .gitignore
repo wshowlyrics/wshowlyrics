@@ -64,6 +64,7 @@ builddir/
 *~
 .vscode/
 .idea/
+.cache/
 
 # Claude Code local settings (user preferences)
 .claude/settings.local.json
