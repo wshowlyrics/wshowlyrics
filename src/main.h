@@ -95,6 +95,9 @@ struct lyrics_state {
     // Surface configuration for reinitialization
     uint32_t anchor;
     int32_t margin;
+
+    // Compositor quirks
+    bool no_buffer_detach; // Use transparent buffer instead of attach(NULL) to avoid position reset
 };
 
 /* Main function */

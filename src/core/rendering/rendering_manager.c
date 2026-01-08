@@ -426,10 +426,30 @@ void rendering_manager_render_transparent(struct lyrics_state *state) {
         return;
     }
 
-    // Detach buffer to make surface fully transparent
-    // This avoids buffer/surface size mismatch during resize
-    wl_surface_attach(state->surface, NULL, 0, 0);
-    wl_surface_commit(state->surface);
+    if (state->no_buffer_detach) {
+        // Some compositors (e.g., KDE) reset surface position on buffer detach
+        // Use transparent buffer instead
+        const int scale = state->output ? state->output->scale : 1;
+        state->current_buffer = get_next_buffer(state->shm,
+                state->buffers, state->width * scale, state->height * scale);
+        if (state->current_buffer) {
+            cairo_t *shm = state->current_buffer->cairo;
+            cairo_save(shm);
+            cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
+            cairo_paint(shm);
+            cairo_restore(shm);
+
+            wl_surface_set_buffer_scale(state->surface, scale);
+            wl_surface_attach(state->surface, state->current_buffer->buffer, 0, 0);
+            wl_surface_damage_buffer(state->surface, 0, 0, state->width, state->height);
+            wl_surface_commit(state->surface);
+        }
+    } else {
+        // Detach buffer to make surface fully transparent
+        // This avoids buffer/surface size mismatch during resize
+        wl_surface_attach(state->surface, NULL, 0, 0);
+        wl_surface_commit(state->surface);
+    }
 }
 
 void rendering_manager_render_frame(struct lyrics_state *state) {

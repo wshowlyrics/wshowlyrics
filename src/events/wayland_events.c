@@ -163,6 +163,12 @@ static void registry_global(void *data, struct wl_registry *wl_registry,
     } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
         state->layer_shell = wl_registry_bind(wl_registry,
                 name, &zwlr_layer_shell_v1_interface, 1);
+    } else if (strncmp(interface, "org_kde_", 8) == 0) {
+        // KDE compositor detected - buffer detach causes position reset
+        if (!state->no_buffer_detach) {
+            state->no_buffer_detach = true;
+            log_info("KDE compositor detected (via %s) - using transparent buffer mode", interface);
+        }
     } else if (strcmp(interface, wl_output_interface.name) == 0) {
         struct lyrics_output *output = calloc(1, sizeof(struct lyrics_output));
         if (!output) {
