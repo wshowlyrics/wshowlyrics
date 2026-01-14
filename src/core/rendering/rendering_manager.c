@@ -121,14 +121,19 @@ static void render_karaoke_content(cairo_t *cairo, struct lyrics_state *state,
             .position_us = position_us
         };
         render_karaoke_multiline(&params);
-    } else {
-        // Fallback to single-line karaoke
+    } else if (state->current_line) {
+        // Fallback to single-line karaoke (only if current_line exists)
         struct karaoke_params params = {
             .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
             .segments = state->current_line->segments,
             .position_us = position_us
         };
         render_karaoke_segments(&params);
+    } else {
+        // No content to render
+        *width = 0;
+        *height = 0;
+        return;
     }
 
     *width = w;
@@ -389,10 +394,10 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
         return;
     }
 
-    // Use transparent background when no lyrics or during instrumental breaks
-    // Exception: For LRCX multiline, show background if we have context lines (prev/next)
-    bool show_background = (has_lyrics && !is_empty_line) || has_multiline_context;
-    uint32_t background_color = show_background ? state->background : 0x00000000;
+    // Background is always shown when we reach here because:
+    // - Either text_to_display != NULL (implies has_lyrics && !is_empty_line)
+    // - Or is_karaoke from multiline context (implies has_multiline_context)
+    uint32_t background_color = state->background;
 
     cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
     cairo_set_source_u32(cairo, background_color);
