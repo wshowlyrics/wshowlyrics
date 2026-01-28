@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/Fedora-51A2DA?style=for-the-badge&logo=fedora&logoColor=white" alt="Fedora">
   <img src="https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white" alt="Ubuntu">
   <img src="https://img.shields.io/badge/Arch%20Linux-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="Arch Linux">
+  <img src="https://img.shields.io/badge/NixOS-5277C3?style=for-the-badge&logo=nixos&logoColor=white" alt="NixOS">
 </p>
 
 <img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/1909f0c1-445b-4526-b30f-6a5df93e624d" />
@@ -118,6 +119,45 @@ Or download `.rpm` from [Releases](https://github.com/unstable-code/lyrics/relea
 
 ```bash
 sudo dnf install wshowlyrics-*.rpm
+```
+
+### NixOS (NUR)
+
+**With Flakes (recommended):**
+
+```nix
+# flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nur-unstable-code.url = "github:unstable-code/nur-packages";
+  };
+
+  outputs = { self, nixpkgs, nur-unstable-code, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      modules = [
+        ({ pkgs, ... }: {
+          environment.systemPackages = [
+            nur-unstable-code.packages.${pkgs.system}.wshowlyrics
+            # or wshowlyrics-unstable for nightly builds
+          ];
+        })
+      ];
+    };
+  };
+}
+```
+
+**With NUR (after [NUR registration](https://github.com/nix-community/NUR)):**
+
+```nix
+{ pkgs, ... }:
+{
+  environment.systemPackages = [
+    pkgs.nur.repos.unstable-code.wshowlyrics
+    # or pkgs.nur.repos.unstable-code.wshowlyrics-unstable
+  ];
+}
 ```
 
 ### Manual Installation (Arch Linux)

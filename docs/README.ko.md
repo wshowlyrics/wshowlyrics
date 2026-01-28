@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/Fedora-51A2DA?style=for-the-badge&logo=fedora&logoColor=white" alt="Fedora">
   <img src="https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white" alt="Ubuntu">
   <img src="https://img.shields.io/badge/Arch%20Linux-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="Arch Linux">
+  <img src="https://img.shields.io/badge/NixOS-5277C3?style=for-the-badge&logo=nixos&logoColor=white" alt="NixOS">
 </p>
 
 <img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/e33bb35e-24f3-4632-811c-b7e55a0660a1" />
@@ -114,6 +115,45 @@ sudo dnf install wshowlyrics
 
 ```bash
 sudo dnf install wshowlyrics-*.rpm
+```
+
+### NixOS (NUR)
+
+**Flakes 사용 (권장):**
+
+```nix
+# flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nur-unstable-code.url = "github:unstable-code/nur-packages";
+  };
+
+  outputs = { self, nixpkgs, nur-unstable-code, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      modules = [
+        ({ pkgs, ... }: {
+          environment.systemPackages = [
+            nur-unstable-code.packages.${pkgs.system}.wshowlyrics
+            # 또는 나이틀리 빌드: wshowlyrics-unstable
+          ];
+        })
+      ];
+    };
+  };
+}
+```
+
+**NUR 사용 ([NUR 등록](https://github.com/nix-community/NUR) 후):**
+
+```nix
+{ pkgs, ... }:
+{
+  environment.systemPackages = [
+    pkgs.nur.repos.unstable-code.wshowlyrics
+    # 또는 pkgs.nur.repos.unstable-code.wshowlyrics-unstable
+  ];
+}
 ```
 
 ### 수동 설치 (Arch Linux)
