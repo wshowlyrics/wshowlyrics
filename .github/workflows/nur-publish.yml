@@ -1,0 +1,98 @@
+name: Publish to NUR (Unstable)
+
+on:
+  workflow_run:
+    workflows: ["Security Scan"]
+    types:
+      - completed
+    branches:
+      - master
+
+concurrency:
+  group: nur-publish
+  cancel-in-progress: false
+
+jobs:
+  nur-publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Security check - Reject forks
+        run: |
+          if [ "${{ github.event.workflow_run.head_repository.full_name }}" != "${{ github.repository }}" ]; then
+            echo "::error::Security: Refusing to run workflow from fork"
+            exit 1
+          fi
+
+      - name: Checkout lyrics repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Check if this is a release tag
+        id: check_tag
+        run: |
+          TAG=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          if [ -z "$TAG" ]; then
+            echo "is_release=false" >> $GITHUB_OUTPUT
+            echo "Not a release tag, proceeding with NUR unstable publish"
+          else
+            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "Release tag found ($TAG), skipping unstable publish"
+          fi
+
+      - name: Get commit info
+        if: steps.check_tag.outputs.is_release == 'false'
+        id: commit_info
+        run: |
+          COMMIT_HASH="${{ github.event.workflow_run.head_sha }}"
+          COMMIT_DATE=$(git show -s --format=%cs $COMMIT_HASH)
+          echo "hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "date=$COMMIT_DATE" >> $GITHUB_OUTPUT
+          echo "Commit: $COMMIT_HASH"
+          echo "Date: $COMMIT_DATE"
+
+      - name: Install Nix
+        if: steps.check_tag.outputs.is_release == 'false'
+        uses: cachix/install-nix-action@v31
+
+      - name: Calculate Nix hash
+        if: steps.check_tag.outputs.is_release == 'false'
+        id: nix_hash
+        run: |
+          HASH_BASE32=$(nix-prefetch-url --unpack \
+            "https://github.com/${{ github.repository }}/archive/${{ steps.commit_info.outputs.hash }}.tar.gz" 2>&1 | tail -1)
+          HASH_SRI=$(nix hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
+          echo "hash=$HASH_SRI" >> $GITHUB_OUTPUT
+          echo "Nix SRI hash: $HASH_SRI"
+
+      - name: Checkout NUR repository
+        if: steps.check_tag.outputs.is_release == 'false'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/nur-packages
+          token: ${{ secrets.NUR_PAT }}
+          path: nur-packages
+
+      - name: Update unstable.nix
+        if: steps.check_tag.outputs.is_release == 'false'
+        run: |
+          cd nur-packages/pkgs/wshowlyrics
+
+          sed -i 's|version = "[^"]*";|version = "${{ steps.commit_info.outputs.date }}";|' unstable.nix
+          sed -i 's|rev = "[^"]*";|rev = "${{ steps.commit_info.outputs.hash }}";|' unstable.nix
+          sed -i 's|hash = "[^"]*";|hash = "${{ steps.nix_hash.outputs.hash }}";|' unstable.nix
+
+          echo "Updated unstable.nix:"
+          grep -E "version|rev|hash" unstable.nix | head -3
+
+      - name: Commit and push to NUR
+        if: steps.check_tag.outputs.is_release == 'false'
+        run: |
+          cd nur-packages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pkgs/wshowlyrics/unstable.nix
+          git diff --staged --quiet || git commit -m "wshowlyrics-unstable: ${{ steps.commit_info.outputs.date }}"
+          git push origin main || git push origin master
