@@ -148,14 +148,15 @@ sudo dnf install wshowlyrics-*.rpm
 }
 ```
 
-**With NUR (after [NUR registration](https://github.com/nix-community/NUR)):**
+**With NUR:**
 
 ```nix
+# Add NUR to your flake inputs or configuration
 { pkgs, ... }:
 {
   environment.systemPackages = [
     pkgs.nur.repos.unstable-code.wshowlyrics
-    # or pkgs.nur.repos.unstable-code.wshowlyrics-unstable
+    # or pkgs.nur.repos.unstable-code.wshowlyrics-unstable for nightly
   ];
 }
 ```

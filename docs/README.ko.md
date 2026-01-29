@@ -144,14 +144,15 @@ sudo dnf install wshowlyrics-*.rpm
 }
 ```
 
-**NUR 사용 ([NUR 등록](https://github.com/nix-community/NUR) 후):**
+**NUR 사용:**
 
 ```nix
+# NUR를 flake inputs 또는 설정에 추가
 { pkgs, ... }:
 {
   environment.systemPackages = [
     pkgs.nur.repos.unstable-code.wshowlyrics
-    # 또는 pkgs.nur.repos.unstable-code.wshowlyrics-unstable
+    # 또는 나이틀리 빌드: pkgs.nur.repos.unstable-code.wshowlyrics-unstable
   ];
 }
 ```

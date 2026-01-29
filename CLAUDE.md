@@ -55,6 +55,36 @@ git push origin master --tags
 
 **Important**: Always update versions BEFORE tagging to ensure consistency across the codebase.
 
+### NUR (Nix User Repository) CD
+
+The project uses automated CD workflows to keep NUR packages in sync:
+
+**Repository:** [unstable-code/nur-packages](https://github.com/unstable-code/nur-packages)
+
+**Packages:**
+- `wshowlyrics` - Stable release (updated on version tags)
+- `wshowlyrics-unstable` - Nightly build (updated on every commit)
+
+**Workflows:**
+1. **`nur-publish.yml`** - Triggered on every push to master (without version tag)
+   - Updates `unstable.nix` with new commit hash and Nix hash
+   - Version format: `YYYY-MM-DD`
+
+2. **`nur-release.yml`** - Triggered on version tags (`v*`)
+   - Updates `default.nix` with new version and Nix hash
+   - Version matches the git tag
+
+**Package Structure:**
+```
+nur-packages/pkgs/wshowlyrics/
+├── generic.nix    # Shared builder (dependencies, postPatch, meta)
+├── default.nix    # Stable package (calls generic with release tag)
+└── unstable.nix   # Unstable package (calls generic with commit hash)
+```
+
+**GitHub Secrets Required:**
+- `NUR_PAT` - Personal Access Token with repo scope for nur-packages
+
 ## Code Architecture
 
 ### Multi-Provider Lyrics System
