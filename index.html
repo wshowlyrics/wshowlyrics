@@ -112,6 +112,7 @@ layout: default
     <button class="tab-btn active" data-tab="arch">Arch Linux</button>
     <button class="tab-btn" data-tab="ubuntu">Ubuntu/Debian</button>
     <button class="tab-btn" data-tab="fedora">Fedora</button>
+    <button class="tab-btn" data-tab="nixos">NixOS</button>
     <button class="tab-btn" data-tab="source">From Source</button>
   </div>
 
@@ -138,6 +139,17 @@ layout: default
       <div class="code-block">
         <code translate="no"><span class="comment"># Stable releases</span><br>sudo dnf copr enable unstable-code/wshowlyrics<br>sudo dnf install wshowlyrics<br><br><span class="comment"># Nightly builds (latest development)</span><br>sudo dnf copr enable unstable-code/wshowlyrics-nightly<br>sudo dnf install wshowlyrics</code>
       </div>
+    </div>
+
+    <div id="nixos" class="tab-content">
+      <h3>NixOS (NUR)</h3>
+      <p>Available via <a href="https://github.com/nix-community/NUR" target="_blank" rel="noopener">Nix User Repository</a>:</p>
+      <div class="code-block">
+        <code translate="no"><span class="comment"># With Flakes (recommended)</span><br><span class="comment"># Add to flake.nix inputs:</span><br>nur-unstable-code.url = "github:unstable-code/nur-packages";<br><br><span class="comment"># Then in packages:</span><br>nur-unstable-code.packages.${system}.wshowlyrics<br><br><span class="comment"># Or for nightly:</span><br>nur-unstable-code.packages.${system}.wshowlyrics-unstable</code>
+      </div>
+      <p style="margin-top: 1rem; color: var(--color-text-muted); font-size: 0.9rem;">
+        See <a href="https://github.com/unstable-code/nur-packages" target="_blank">nur-packages</a> for detailed configuration examples.
+      </p>
     </div>
 
     <div id="source" class="tab-content">
