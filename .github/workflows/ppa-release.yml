@@ -94,7 +94,7 @@ jobs:
           Package: wshowlyrics
           Architecture: any
           Depends: ${shlibs:Depends}, ${misc:Depends}
-          Recommends: sway | hyprland
+          Suggests: sway | hyprland
           Description: Wayland-native lyrics display with online fallback
            wshowlyrics is a lightweight lyrics overlay for Wayland compositors
            that displays synchronized lyrics for currently playing music.

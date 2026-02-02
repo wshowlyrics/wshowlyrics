@@ -99,7 +99,7 @@ jobs:
           BuildRequires:  json-c-devel
           BuildRequires:  openssl-devel
 
-          Requires:       wayland
+          Requires:       libwayland-client
           Requires:       cairo
           Requires:       pango
           Requires:       libcurl
@@ -110,7 +110,8 @@ jobs:
           Requires:       json-c
           Requires:       openssl-libs
 
-          Recommends:     sway
+          Suggests:       sway
+          Suggests:       hyprland
 
           Provides:       wshowlyrics = %{version}-%{release}
           Conflicts:      wshowlyrics
