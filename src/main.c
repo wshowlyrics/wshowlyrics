@@ -254,6 +254,10 @@ static int parse_command_line_options(int argc, char *argv[], struct lyrics_stat
 static void monitor_track_and_files(struct lyrics_state *state, int *update_counter) {
     // Check for track changes
     if (mpris_check_metadata_changed()) {
+        // When Metadata signal arrives, metadata is cached from the signal
+        // so mpris_get_metadata() returns accurate new data (no stale data race)
+        // When PlaybackStatus changes to Playing (resume), no cache exists
+        // so mpris_get_metadata() queries DBus - if same track, no reload
         if (lyrics_manager_update_track_info(state)) {
             lyrics_manager_load_lyrics(state);
             mpris_apply_position_fix_if_needed();
@@ -386,6 +390,12 @@ static void run_main_event_loop(struct lyrics_state *state, struct wayland_conne
             continue;
         }
 
+        // Process GTK/GLib events first to ensure DBus signals (including MPRIS
+        // metadata changes) are processed before checking for track changes.
+        // This prevents the race condition where position resets to 0 but old
+        // lyrics are still displayed for one frame.
+        system_tray_update();
+
         monitor_track_and_files(state, &update_counter);
         update_playback_state(state);
 
@@ -395,7 +405,6 @@ static void run_main_event_loop(struct lyrics_state *state, struct wayland_conne
         }
 
         handle_instrumental_break(state);
-        system_tray_update();
     }
 }
 

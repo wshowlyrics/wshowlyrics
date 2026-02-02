@@ -41,6 +41,7 @@ static struct {
     bool metadata_changed;          // Flag: track metadata changed (needs refresh)
     bool position_fix_needed;       // Flag: Spotify position fix needed after track change
     bool position_fix_in_progress;  // Flag: Spotify position fix in progress (prevents infinite loop)
+    struct track_metadata *cached_metadata;  // Metadata parsed from DBus signal (avoids stale data race)
     GMutex mutex;                   // Thread safety for signal callbacks
     guint subscription_id;          // PropertiesChanged subscription ID (current player)
     guint seeked_subscription_id;   // Seeked signal subscription ID
@@ -102,6 +103,80 @@ static char* extract_string_array(GVariant *variant) {
     }
 
     return result;
+}
+
+// Helper: Parse metadata from GVariant dictionary into track_metadata struct
+// Returns newly allocated track_metadata, caller must free with mpris_free_metadata()
+static struct track_metadata* parse_metadata_from_dict(GVariant *metadata_dict, const char *player_name) {
+    if (!metadata_dict) {
+        return NULL;
+    }
+
+    struct track_metadata *metadata = calloc(1, sizeof(struct track_metadata));
+    if (!metadata) {
+        return NULL;
+    }
+
+    if (player_name) {
+        metadata->player_name = strdup(player_name);
+    }
+
+    GVariant *value;
+
+    // Title (xesam:title)
+    value = get_dict_value(metadata_dict, "xesam:title");
+    if (value) {
+        metadata->title = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
+    // Artist (xesam:artist) - array of strings
+    value = get_dict_value(metadata_dict, "xesam:artist");
+    if (value) {
+        metadata->artist = extract_string_array(value);
+        g_variant_unref(value);
+    }
+
+    // Album (xesam:album)
+    value = get_dict_value(metadata_dict, "xesam:album");
+    if (value) {
+        metadata->album = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
+    // URL (xesam:url)
+    value = get_dict_value(metadata_dict, "xesam:url");
+    if (value) {
+        metadata->url = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
+    // Track ID (mpris:trackid)
+    value = get_dict_value(metadata_dict, "mpris:trackid");
+    if (value) {
+        metadata->trackid = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
+    // Art URL (mpris:artUrl)
+    value = get_dict_value(metadata_dict, "mpris:artUrl");
+    if (value) {
+        metadata->art_url = strdup(g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+
+    // Length (mpris:length)
+    value = get_dict_value(metadata_dict, "mpris:length");
+    if (value) {
+        if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64)) {
+            metadata->length_us = g_variant_get_int64(value);
+        } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT64)) {
+            metadata->length_us = (int64_t)g_variant_get_uint64(value);
+        }
+        g_variant_unref(value);
+    }
+
+    return metadata;
 }
 
 // Helper: List all MPRIS2 players on D-Bus
@@ -288,6 +363,26 @@ static void on_properties_changed(
             mpris_state.position_us = 0;
             mpris_state.position_timestamp_us = get_monotonic_time_us();
             mpris_state.metadata_changed = true;  // Signal that metadata needs refresh
+
+            // Parse and cache metadata from signal to avoid stale data race condition
+            // When querying metadata later, the player might not have updated yet
+            if (mpris_state.cached_metadata) {
+                mpris_free_metadata(mpris_state.cached_metadata);
+                free(mpris_state.cached_metadata);
+                mpris_state.cached_metadata = NULL;
+            }
+            // metadata_variant may be variant(dict) or dict directly depending on player
+            GVariant *metadata_dict = NULL;
+            if (g_variant_is_of_type(metadata_variant, G_VARIANT_TYPE_VARIANT)) {
+                metadata_dict = g_variant_get_variant(metadata_variant);
+            } else {
+                metadata_dict = g_variant_ref(metadata_variant);
+            }
+            if (metadata_dict) {
+                mpris_state.cached_metadata = parse_metadata_from_dict(
+                    metadata_dict, mpris_state.current_player);
+                g_variant_unref(metadata_dict);
+            }
 
             // Spotify position drift fix: Mark that position fix is needed
             // Actual fix will be applied after lyrics load for better timing
@@ -1099,6 +1194,24 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     // Use cached player (avoid expensive find_best_player() call)
     g_mutex_lock(&mpris_state.mutex);
     char *player = mpris_state.current_player ? strdup(mpris_state.current_player) : NULL;
+
+    // If we have cached metadata from DBus signal, use it instead of querying
+    // This avoids the race condition where the player hasn't updated yet when we query
+    if (mpris_state.cached_metadata) {
+        struct track_metadata *cached = mpris_state.cached_metadata;
+        mpris_state.cached_metadata = NULL;  // Transfer ownership
+        g_mutex_unlock(&mpris_state.mutex);
+
+        // Copy cached metadata to output
+        *metadata = *cached;
+        free(cached);  // Free the container (fields transferred to metadata)
+
+        // Update position from current state
+        metadata->position_us = mpris_get_position();
+
+        free(player);
+        return metadata->title != NULL;
+    }
     g_mutex_unlock(&mpris_state.mutex);
 
     if (!player) {
@@ -1349,6 +1462,13 @@ void mpris_cleanup(void) {
     mpris_state.playback_status = NULL;
     mpris_state.position_us = 0;
     mpris_state.position_timestamp_us = 0;
+
+    // Clean up cached metadata
+    if (mpris_state.cached_metadata) {
+        mpris_free_metadata(mpris_state.cached_metadata);
+        free(mpris_state.cached_metadata);
+        mpris_state.cached_metadata = NULL;
+    }
 
     // Clean up unique name mapping
     if (mpris_state.unique_name_map) {

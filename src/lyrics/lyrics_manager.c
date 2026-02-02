@@ -101,19 +101,22 @@ static void handle_no_player_found(struct lyrics_state *state) {
     rendering_manager_set_dirty(state);
 }
 
-// Helper: Detect if track changed by comparing trackid or URL
+// Helper: Detect if track changed by comparing URL or trackid
 static bool detect_track_change(struct track_metadata *new_track, struct track_metadata *current_track) {
-    // Check trackid first (most reliable for streaming services)
-    if (new_track->trackid && current_track->trackid) {
-        return strcmp(new_track->trackid, current_track->trackid) != 0;
+    // Check URL first (most reliable for local files)
+    // mpv and other local players reuse trackids (e.g., /9) across different files
+    if (new_track->url && current_track->url) {
+        return strcmp(new_track->url, current_track->url) != 0;
     }
 
-    // Fallback to URL comparison
+    // If one has URL and other doesn't, assume changed
     if (new_track->url || current_track->url) {
-        if (!current_track->url || !new_track->url) {
-            return true;
-        }
-        return strcmp(new_track->url, current_track->url) != 0;
+        return true;
+    }
+
+    // Fallback to trackid comparison (for streaming services like Spotify)
+    if (new_track->trackid && current_track->trackid) {
+        return strcmp(new_track->trackid, current_track->trackid) != 0;
     }
 
     // Neither trackid nor URL available - assume changed if we had a previous track
