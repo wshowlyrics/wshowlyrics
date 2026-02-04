@@ -9,7 +9,7 @@
 #include <string.h>
 #include <fontconfig/fontconfig.h>
 
-bool wayland_init_surface(struct lyrics_state *state, unsigned int anchor, int margin) {
+bool wayland_init_surface(struct lyrics_state *state, uint32_t layer, unsigned int anchor, int margin) {
     if (!state) {
         return false;
     }
@@ -76,7 +76,7 @@ bool wayland_init_surface(struct lyrics_state *state, unsigned int anchor, int m
 
     state->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
             state->layer_shell, state->surface, NULL,
-            ZWLR_LAYER_SHELL_V1_LAYER_TOP, "lyrics");
+            layer, "lyrics");
     assert(state->layer_surface);
 
     // Add listeners
@@ -120,6 +120,7 @@ bool wayland_init_surface(struct lyrics_state *state, unsigned int anchor, int m
     // Store surface configuration for reinitialization
     state->anchor = anchor;
     state->margin = margin;
+    state->layer = layer;
 
     return true;
 }

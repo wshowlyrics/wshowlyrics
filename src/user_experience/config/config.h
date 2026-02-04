@@ -19,6 +19,8 @@ struct display_config {
     int line_spacing;
 
     bool enable_multiline_lrcx;  // Enable multi-line display for LRCX format (prev, current, next)
+
+    char *layer;  // Wayland layer: "bottom", "top", "overlay" (default: "top")
 };
 
 // Lyrics settings

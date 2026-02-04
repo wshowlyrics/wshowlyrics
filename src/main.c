@@ -136,6 +136,24 @@ static uint32_t parse_anchor_string(const char *anchor_str) {
     return ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
 }
 
+// Parse layer string to Wayland layer shell layer
+static uint32_t parse_layer_string(const char *layer_str) {
+    if (!layer_str) {
+        return ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+    }
+
+    if (strcmp(layer_str, "bottom") == 0) {
+        return ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM;
+    } else if (strcmp(layer_str, "top") == 0) {
+        return ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+    } else if (strcmp(layer_str, "overlay") == 0) {
+        return ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+    }
+
+    log_warn("Unknown layer '%s', using default 'top'", layer_str);
+    return ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+}
+
 // Register signal handlers for graceful shutdown
 static void setup_signal_handlers(struct lyrics_state *state) {
     g_state = state;
@@ -475,8 +493,9 @@ int main(int argc, char *argv[]) {
     char *config_loaded_path = config_load_with_fallback(&g_config);
     config_validate_user_config();
 
-    // Parse anchor from config
+    // Parse anchor and layer from config
     uint32_t anchor = parse_anchor_string(g_config.display.anchor);
+    uint32_t layer = parse_layer_string(g_config.display.layer);
     int margin = g_config.display.margin;
 
     // Initialize state
@@ -514,7 +533,7 @@ int main(int argc, char *argv[]) {
     initialize_subsystems(&state);
 
     // Initialize Wayland surface and connections
-    if (!wayland_init_surface(&state, anchor, margin)) {
+    if (!wayland_init_surface(&state, layer, anchor, margin)) {
         ret = 1;
         goto exit;
     }
@@ -535,8 +554,7 @@ int main(int argc, char *argv[]) {
     };
 
     state.wl_conn = &wl_conn;
-    state.anchor = anchor;
-    state.margin = margin;
+    // Note: anchor, margin, and layer are stored by wayland_init_surface()
 
     // Run main event loop
     run_main_event_loop(&state, &wl_conn);

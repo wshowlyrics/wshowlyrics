@@ -70,6 +70,9 @@ static void parse_display_section(struct config *cfg, const char *key, const cha
         cfg->display.line_spacing = atoi(value);
     } else if (strcmp(key, "enable_multiline_lrcx") == 0) {
         cfg->display.enable_multiline_lrcx = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
+    } else if (strcmp(key, "layer") == 0) {
+        free(cfg->display.layer);
+        cfg->display.layer = strdup(value);
     }
 }
 
@@ -274,6 +277,7 @@ void config_init_defaults(struct config *cfg) {
     cfg->display.margin = 32;
     cfg->display.line_spacing = 10;
     cfg->display.enable_multiline_lrcx = true;  // Enabled by default
+    cfg->display.layer = strdup("top");  // Default: above normal windows
 
     // Lyrics defaults
     cfg->lyrics.search_dirs = strdup("");  // Empty = use hardcoded defaults
@@ -309,6 +313,7 @@ void config_free(struct config *cfg) {
     free(cfg->display.font_family);
     free(cfg->display.font_weight);
     free(cfg->display.anchor);
+    free(cfg->display.layer);
     free(cfg->lyrics.search_dirs);
     free(cfg->lyrics.extensions);
     free(cfg->lyrics.preferred_players);

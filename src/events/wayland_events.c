@@ -241,7 +241,7 @@ bool wayland_events_handle_reconnection(struct lyrics_state *state,
     }
     state->current_buffer = NULL;
 
-    if (!wayland_manager_reconnect_full(wl_conn, ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+    if (!wayland_manager_reconnect_full(wl_conn, state->layer,
             "lyrics", state->anchor, state->margin)) {
         log_error("Full reconnection failed, will retry...");
         state->reconnecting = false;

@@ -41,6 +41,15 @@ anchor = bottom
 margin = 32
 line_spacing = 10
 
+# Layer position (Wayland layer-shell layer)
+# Determines the stacking order of the lyrics overlay:
+#   - bottom: Below normal windows (useful for desktop widgets)
+#   - top: Above normal windows but below fullscreen (default, recommended)
+#   - overlay: On top of everything including fullscreen windows
+# Note: "overlay" is useful for gaming/video while keeping lyrics visible
+# Default: top
+layer = top
+
 # Multi-line display for LRCX format
 # When enabled, LRCX files display 3 lines: previous, current (with karaoke), and next
 # Previous line: 70% scale, no ruby text, 75% opacity
