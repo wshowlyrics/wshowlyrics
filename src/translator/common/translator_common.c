@@ -495,7 +495,7 @@ bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
     if (translator_check_cache_complete(data, translatable_count, already_translated)) {
         // Update cache access time to prevent cleanup
         touch_cache_file(args->cache_path);
-        log_success("Found cached translation: %s", args->cache_path);
+        log_success("Found cached translation: %s", sanitize_path(args->cache_path));
         log_success("%s: Loaded complete translation from cache (%d lines)",
                    args->provider_name, *already_translated);
         data->translation_current = *already_translated;
@@ -509,7 +509,7 @@ bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
     translator_prepare_cache_resume(data, already_translated, revalidate_count);
     // Update cache access time to prevent cleanup
     touch_cache_file(args->cache_path);
-    log_info("Found cached translation: %s", args->cache_path);
+    log_info("Found cached translation: %s", sanitize_path(args->cache_path));
     log_info("%s: Loaded partial cache (%d/%d), re-validating last %d lines",
             args->provider_name, *already_translated, translatable_count, revalidate_count);
     data->translation_current = *already_translated;

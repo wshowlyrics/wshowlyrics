@@ -61,6 +61,51 @@ const char* get_cache_translated_dir(void) {
     return g_cache_translated_dir;
 }
 
+// Sanitize file path for logging: replaces username in $HOME with numeric UID
+const char* sanitize_path(const char *path) {
+    static char bufs[2][PATH_BUFFER_SIZE];
+    static int idx = 0;
+
+    if (!path) return path;
+
+    const char *home = getenv("HOME");
+    if (!home || home[0] == '\0') return path;
+
+    size_t home_len = strlen(home);
+
+    // Determine where $HOME starts in the path
+    const char *home_pos = NULL;
+    size_t prefix_len = 0;
+
+    if (strncmp(path, home, home_len) == 0) {
+        home_pos = path;
+    } else if (strncmp(path, "file://", 7) == 0 &&
+               strncmp(path + 7, home, home_len) == 0) {
+        home_pos = path + 7;
+        prefix_len = 7;
+    }
+
+    if (!home_pos) return path;
+
+    // Find parent directory of HOME (e.g., /home/)
+    const char *last_slash = strrchr(home, '/');
+    if (!last_slash) return path;
+
+    size_t parent_len = (size_t)(last_slash - home + 1);
+    uid_t uid = getuid();
+
+    char *buf = bufs[idx];
+    idx = (idx + 1) % 2;
+
+    snprintf(buf, PATH_BUFFER_SIZE, "%.*s%.*s%u%s",
+             (int)prefix_len, path,
+             (int)parent_len, home,
+             uid,
+             home_pos + home_len);
+
+    return buf;
+}
+
 bool calculate_file_md5(const char *filepath, char *checksum_out) {
     if (!filepath || !checksum_out) {
         return false;
@@ -372,7 +417,7 @@ static bool handle_unlinkat_failure(const char *path, const char *filename, bool
     if (is_warning) {
         log_warn("Failed to remove file %s: %s", filename, strerror(errno));
     } else {
-        log_error("Failed to remove file %s/%s: %s", path, filename, strerror(errno));
+        log_error("Failed to remove file %s/%s: %s", sanitize_path(path), filename, strerror(errno));
     }
 
     return false;
@@ -387,13 +432,13 @@ static bool remove_directory_recursive(const char *path) {
         if (errno == ENOENT) {
             return true; // Already doesn't exist - success
         }
-        log_error("Failed to open directory %s: %s", path, strerror(errno));
+        log_error("Failed to open directory %s: %s", sanitize_path(path), strerror(errno));
         return false;
     }
 
     int dir_fd = dirfd(dir);
     if (dir_fd == -1) {
-        log_error("Failed to get directory fd for %s: %s", path, strerror(errno));
+        log_error("Failed to get directory fd for %s: %s", sanitize_path(path), strerror(errno));
         closedir(dir);
         return false;
     }
@@ -411,7 +456,7 @@ static bool remove_directory_recursive(const char *path) {
         // Use fstatat() with dirfd to avoid TOCTOU race condition
         // AT_SYMLINK_NOFOLLOW: don't follow symlinks (security)
         if (fstatat(dir_fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) == -1) {
-            log_error("Failed to stat %s/%s: %s", path, entry->d_name, strerror(errno));
+            log_error("Failed to stat %s/%s: %s", sanitize_path(path), entry->d_name, strerror(errno));
             success = false;
             continue;
         }
@@ -437,7 +482,7 @@ static bool remove_directory_recursive(const char *path) {
 
     // Remove the directory itself
     if (rmdir(path) == -1) {
-        log_error("Failed to remove directory %s: %s", path, strerror(errno));
+        log_error("Failed to remove directory %s: %s", sanitize_path(path), strerror(errno));
         return false;
     }
 
@@ -511,13 +556,13 @@ static int cleanup_directory(const char *dir_path, int max_days) {
         if (errno == ENOENT) {
             return 0;  // Directory doesn't exist, nothing to clean
         }
-        log_warn("Failed to open directory %s: %s", dir_path, strerror(errno));
+        log_warn("Failed to open directory %s: %s", sanitize_path(dir_path), strerror(errno));
         return 0;
     }
 
     int dir_fd = dirfd(dir);
     if (dir_fd == -1) {
-        log_warn("Failed to get directory fd for %s: %s", dir_path, strerror(errno));
+        log_warn("Failed to get directory fd for %s: %s", sanitize_path(dir_path), strerror(errno));
         closedir(dir);
         return 0;
     }
@@ -609,7 +654,7 @@ bool touch_cache_file(const char *filepath) {
 
     // If utime fails, it might not exist yet, which is fine
     if (errno != ENOENT) {
-        log_warn("Failed to update access time for %s: %s", filepath, strerror(errno));
+        log_warn("Failed to update access time for %s: %s", sanitize_path(filepath), strerror(errno));
     }
 
     return false;

@@ -402,7 +402,7 @@ static void check_and_fix_config_permissions(const char *path) {
     if (group_readable || group_writable || other_readable || other_writable) {
         log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         log_warn("⚠️  Config file has insecure permissions: %04o", mode);
-        log_warn("File: %s", path);
+        log_warn("File: %s", sanitize_path(path));
 
         // Try to automatically fix permissions using fchmod to avoid TOCTOU
         if (fchmod(fd, 0600) == 0) {
@@ -419,7 +419,7 @@ static void check_and_fix_config_permissions(const char *path) {
             log_warn("Recommended permissions: 0600 or 0400");
             log_warn("");
             log_warn("Please manually run:");
-            log_warn("  chmod 600 %s", path);
+            log_warn("  chmod 600 %s", sanitize_path(path));
             log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
             // Send error notification only on failure
@@ -434,8 +434,8 @@ static void check_and_fix_config_permissions(const char *path) {
                     "Please run: chmod 600 %s\" 2>/dev/null",
                     cfg->lyrics.notification_timeout,
                     mode,
-                    path,
-                    path);
+                    sanitize_path(path),
+                    sanitize_path(path));
                 // Notification failure is not critical, but check return value to satisfy compiler
                 if (system(cmd) != 0) {
                     // Notification failed, but we continue anyway
@@ -452,7 +452,7 @@ static void check_and_fix_config_permissions(const char *path) {
 bool config_load(struct config *cfg, const char *path) {
     // Validate path for security (path traversal prevention)
     if (!validate_config_path(path)) {
-        log_warn("Config path validation failed: %s", path);
+        log_warn("Config path validation failed: %s", sanitize_path(path));
         return false;
     }
 
@@ -515,7 +515,7 @@ bool config_load(struct config *cfg, const char *path) {
     }
 
     fclose(f);
-    log_info("Loaded configuration from: %s", path);
+    log_info("Loaded configuration from: %s", sanitize_path(path));
     return true;
 }
 
@@ -1047,7 +1047,7 @@ static void display_unknown_keys_warning(struct config_key *unknown_keys, const 
 
     log_warn("");
     log_warn("These may be from an older version or typos.");
-    log_warn("Please check: %s", example_path);
+    log_warn("Please check: %s", sanitize_path(example_path));
     log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
@@ -1057,7 +1057,7 @@ static void display_missing_keys_warning(struct config_key *missing_keys, const 
 
     log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     log_warn("Your configuration file is missing some new settings:");
-    log_warn("User config: %s", user_path);
+    log_warn("User config: %s", sanitize_path(user_path));
     log_warn("");
 
     // Build missing keys list for notification
@@ -1091,7 +1091,7 @@ static void display_missing_keys_warning(struct config_key *missing_keys, const 
 
     log_warn("");
     log_warn("Please check the example configuration file for details:");
-    log_warn("  %s", example_path);
+    log_warn("  %s", sanitize_path(example_path));
     log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     // Send desktop notification
@@ -1112,7 +1112,7 @@ static void display_missing_keys_warning(struct config_key *missing_keys, const 
             "Check: %s\" 2>/dev/null",
             g_config.lyrics.notification_timeout,
             missing_keys_list,
-            example_path);
+            sanitize_path(example_path));
 
         int ret = system(cmd);
         if (ret != 0) {
@@ -1138,7 +1138,7 @@ void config_validate_user_config(void) {
 
     // Validate path for security (path traversal prevention)
     if (!validate_config_path(user_path)) {
-        log_warn("Config path validation failed: %s", user_path);
+        log_warn("Config path validation failed: %s", sanitize_path(user_path));
         free(user_path);
         return;
     }
@@ -1184,7 +1184,7 @@ static void create_config_directory(const char *config_path) {
     if (last_slash) {
         *last_slash = '\0';
         if (mkdir(dir_path, 0700) == -1 && errno != EEXIST) {
-            log_warn("Failed to create config directory %s: %s", dir_path, strerror(errno));
+            log_warn("Failed to create config directory %s: %s", sanitize_path(dir_path), strerror(errno));
         }
     }
 
@@ -1219,7 +1219,7 @@ static bool copy_system_config_to_user(int fd, const char *user_config_path) {
 
     fclose(dst);  // Also closes fd
     fclose(src);
-    log_info("Copied system config to user config: %s", user_config_path);
+    log_info("Copied system config to user config: %s", sanitize_path(user_config_path));
     return true;
 }
 
@@ -1228,7 +1228,7 @@ static bool copy_system_config_to_user(int fd, const char *user_config_path) {
 static char* try_load_user_config(struct config *cfg, const char *path) {
     // Validate path before file operations (security)
     if (!validate_config_path(path)) {
-        log_error("Config path validation failed: %s", path);
+        log_error("Config path validation failed: %s", sanitize_path(path));
         return NULL;
     }
 

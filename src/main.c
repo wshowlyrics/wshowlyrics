@@ -344,13 +344,13 @@ static void handle_instrumental_break(struct lyrics_state *state) {
     bool file_exists = (stat(state->lyrics.source_file_path, &st) == 0);
 
     if (!state->need_lyrics_search && !file_exists) {
-        log_info("Lyrics file was deleted or moved: %s", state->lyrics.source_file_path);
+        log_info("Lyrics file was deleted or moved: %s", sanitize_path(state->lyrics.source_file_path));
         log_info("Will search for lyrics during next instrumental break");
         state->need_lyrics_search = true;
         state->in_instrumental_break = false;
     } else if (state->need_lyrics_search) {
         if (file_exists) {
-            log_info("Lyrics file is back at original location: %s", state->lyrics.source_file_path);
+            log_info("Lyrics file is back at original location: %s", sanitize_path(state->lyrics.source_file_path));
         } else {
             log_info("Searching for lyrics again...");
             lrc_free_data(&state->lyrics);
@@ -511,7 +511,7 @@ int main(int argc, char *argv[]) {
     state.config_md5_checksum[0] = '\0';
 
     if (config_loaded_path && !calculate_file_md5(config_loaded_path, state.config_md5_checksum)) {
-        log_warn("Failed to calculate MD5 for config file: %s", config_loaded_path);
+        log_warn("Failed to calculate MD5 for config file: %s", sanitize_path(config_loaded_path));
     }
 
     // Setup signal handlers

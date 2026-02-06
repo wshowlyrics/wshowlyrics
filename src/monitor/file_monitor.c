@@ -26,7 +26,7 @@ bool file_monitor_check_and_reload(
     }
 
     if (strcmp(current_checksum, stored_checksum) != 0) {
-        log_info("%s file changed, reloading: %s", file_type_name, file_path);
+        log_info("%s file changed, reloading: %s", file_type_name, sanitize_path(file_path));
 
         // Call the reload callback
         reload_callback(state, file_path);

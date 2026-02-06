@@ -38,6 +38,13 @@ int build_config_path(char *dest, size_t dest_size, const char *base);
 // Returns $XDG_CACHE_HOME/wshowlyrics or $HOME/.cache/wshowlyrics
 const char* get_cache_base_dir(void);
 
+// Sanitize file path for logging: replaces username in $HOME with numeric UID
+// e.g., /home/username/Music/song.lrc -> /home/1000/Music/song.lrc
+// Also handles file:// URLs: file:///home/username/... -> file:///home/1000/...
+// Uses 2 rotating internal buffers (safe for up to 2 calls in a single expression)
+// If path doesn't contain $HOME prefix, returns the original pointer unchanged
+const char* sanitize_path(const char *path);
+
 // Get translated cache directory path
 // Returns $XDG_CACHE_HOME/wshowlyrics/translated or $HOME/.cache/wshowlyrics/translated
 const char* get_cache_translated_dir(void);

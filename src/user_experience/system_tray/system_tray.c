@@ -345,7 +345,8 @@ static void on_edit_settings(GtkMenuItem *item, gpointer user_data) {
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "%s -e %s \"%s\" &", terminal, editor, config_path);
 
-    log_info("Menu: Opening settings with: %s", cmd);
+    log_info("Menu: Opening settings with: %s -e %s \"%s\"",
+             terminal, editor, sanitize_path(config_path));
     int ret = system(cmd);
     if (ret != 0) {
         log_warn("Menu: Failed to open editor (exit code: %d)", ret);
@@ -719,7 +720,7 @@ static bool cache_current_artwork(const char *cache_path) {
         umask(old_mask);
         g_object_unref(current);
         if (success) {
-            log_info("Cached album art: %s", cache_path);
+            log_info("Cached album art: %s", sanitize_path(cache_path));
         }
         return success;
     } else if (error) {
@@ -739,7 +740,7 @@ static bool load_cached_album_art(const char *cache_path, const char *metadata_h
     // Update access time to prevent automatic cleanup
     touch_cache_file(cache_path);
 
-    log_success("Found cached album art: %s", cache_path);
+    log_success("Found cached album art: %s", sanitize_path(cache_path));
 
     GError *error = NULL;
     GdkPixbuf *cached = gdk_pixbuf_new_from_file(cache_path, &error);

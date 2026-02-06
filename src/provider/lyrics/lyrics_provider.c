@@ -129,19 +129,19 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
 
     // Try LRCX only for .lrcx files
     if (strcasecmp(ext, ".lrcx") == 0 && lrcx_parse_file(path, data)) {
-        log_success("Loaded LRCX file: %s", path);
+        log_success("Loaded LRCX file: %s", sanitize_path(path));
         success = true;
     }
 
     // Try LRC for .lrc files
     if (strcasecmp(ext, ".lrc") == 0 && lrc_parse_file(path, data)) {
-        log_success("Loaded LRC file: %s", path);
+        log_success("Loaded LRC file: %s", sanitize_path(path));
         success = true;
     }
 
     // Try SRT for .srt and .vtt files
     if ((strcasecmp(ext, ".srt") == 0 || strcasecmp(ext, ".vtt") == 0) && srt_parse_file(path, data)) {
-        log_success("Loaded %s file: %s", strcasecmp(ext, ".vtt") == 0 ? "VTT" : "SRT", path);
+        log_success("Loaded %s file: %s", strcasecmp(ext, ".vtt") == 0 ? "VTT" : "SRT", sanitize_path(path));
         success = true;
     }
 
@@ -149,7 +149,7 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
         // Store the file path and calculate checksum
         data->source_file_path = strdup(path);
         if (!calculate_file_md5(path, data->md5_checksum)) {
-            log_warn("Failed to calculate MD5 checksum for %s", path);
+            log_warn("Failed to calculate MD5 checksum for %s", sanitize_path(path));
             data->md5_checksum[0] = '\0';
         }
     }
@@ -310,7 +310,7 @@ static char* get_directory_from_url(const char *url) {
         return NULL;
     }
 
-    log_info("Extracted directory from URL: %s", decoded_path);
+    log_info("Extracted directory from URL: %s", sanitize_path(decoded_path));
     return decoded_path;
 }
 
@@ -407,7 +407,7 @@ static bool try_exact_filename(const char *dir, const char *filename,
         if (build_path_with_ext(path, sizeof(path), dir, filename, extensions[ext_idx]) < 0) {
             continue;  // Path too long, skip
         }
-        log_info("Trying: %s", path);
+        log_info("Trying: %s", sanitize_path(path));
         if (try_load_lyrics_file(path, data)) {
             return true;
         }
@@ -427,7 +427,7 @@ static bool try_title_patterns(const char *dir, const char *title_safe,
 
         // Pattern 1: Title.ext
         if (build_path_with_ext(path, sizeof(path), dir, title_safe, ext) >= 0) {
-            log_info("Trying: %s", path);
+            log_info("Trying: %s", sanitize_path(path));
             if (try_load_lyrics_file(path, data)) {
                 return true;
             }
@@ -570,7 +570,7 @@ static bool try_load_from_cache(const char *metadata_hash, struct lyrics_data *d
         return false;
     }
 
-    log_info("Found cached lyrics: %s", cache_path);
+    log_info("Found cached lyrics: %s", sanitize_path(cache_path));
     log_success("Found lyrics via cache");
 
     // Update access time to prevent automatic cleanup
@@ -579,7 +579,7 @@ static bool try_load_from_cache(const char *metadata_hash, struct lyrics_data *d
     // Store the file path and calculate checksum
     data->source_file_path = strdup(cache_path);
     if (!calculate_file_md5(cache_path, data->md5_checksum)) {
-        log_warn("Failed to calculate MD5 checksum for %s", cache_path);
+        log_warn("Failed to calculate MD5 checksum for %s", sanitize_path(cache_path));
         data->md5_checksum[0] = '\0';
     }
 
@@ -641,12 +641,12 @@ static void cache_lrclib_lyrics(struct track_metadata *track, struct lyrics_data
         line = line->next;
     }
     fclose(f);
-    log_info("Cached lyrics: %s", cache_path);
+    log_info("Cached lyrics: %s", sanitize_path(cache_path));
 
     // Calculate MD5 checksum of cached file
     data->source_file_path = strdup(cache_path);
     if (!calculate_file_md5(cache_path, data->md5_checksum)) {
-        log_warn("Failed to calculate MD5 checksum for %s", cache_path);
+        log_warn("Failed to calculate MD5 checksum for %s", sanitize_path(cache_path));
         data->md5_checksum[0] = '\0';
     }
 }
@@ -711,7 +711,7 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
              track->artist ? track->artist : "Unknown", track->title);
 
     if (track->url) {
-        log_info("File location: %s", track->url);
+        log_info("File location: %s", sanitize_path(track->url));
     }
 
     // Convert duration from microseconds to milliseconds

@@ -6,6 +6,7 @@
 #include "../provider/lyrics/lyrics_provider.h"
 #include "../user_experience/system_tray/system_tray.h"
 #include "../parser/lrc/lrc_common.h"
+#include "../utils/file/file_utils.h"
 #include "../parser/lrc/lrcx_parser.h"
 #include <strings.h>
 #include <string.h>
@@ -129,7 +130,7 @@ static void handle_track_changed(struct lyrics_state *state, struct track_metada
     log_info("Title: %s", new_track->title ? new_track->title : "Unknown");
     log_info("Artist: %s", new_track->artist ? new_track->artist : "Unknown");
     log_info("Album: %s", new_track->album ? new_track->album : "Unknown");
-    log_info("URL: %s", new_track->url ? new_track->url : "None");
+    log_info("URL: %s", new_track->url ? sanitize_path(new_track->url) : "None");
     log_info("Track ID: %s", new_track->trackid ? new_track->trackid : "None");
     log_info("Art URL: %s", new_track->art_url ? new_track->art_url : "None");
 
