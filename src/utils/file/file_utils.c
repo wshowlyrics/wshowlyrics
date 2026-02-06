@@ -1,4 +1,5 @@
 #include "file_utils.h"
+#include "../runtime/runtime_dir.h"
 #include "../../constants.h"
 #include <stdio.h>
 #include <string.h>
@@ -36,8 +37,8 @@ static void init_cache_directories(void) {
         // Fallback to $HOME/.cache
         snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/.cache/wshowlyrics", home);
     } else {
-        // Last resort: use /tmp (should rarely happen)
-        snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "/tmp/wshowlyrics");
+        // Last resort: use runtime dir (XDG_RUNTIME_DIR or /tmp fallback)
+        snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/cache", get_runtime_dir());
     }
 
     // Build subdirectory paths

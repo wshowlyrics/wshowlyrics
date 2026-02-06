@@ -11,6 +11,7 @@
 #include "utils/curl/curl_utils.h"
 #include "utils/lang_detect/lang_detect.h"
 #include "utils/dbus_control/dbus_control.h"
+#include "utils/lock/lock_file.h"
 #include "translator/deepl/deepl_translator.h"
 #include "translator/gemini/gemini_translator.h"
 #include "translator/claude/claude_translator.h"
@@ -285,7 +286,8 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
 
     // Check if lyrics or config files have changed (every 2 seconds)
     if ((*update_counter)++ % TRACK_UPDATE_CHECK_INTERVAL == 0) {
-        if (state->lyrics.source_file_path && strncmp(state->lyrics.source_file_path, "/tmp/", 5) != 0) {
+        const char *cache_base = get_cache_base_dir();
+        if (state->lyrics.source_file_path && strncmp(state->lyrics.source_file_path, cache_base, strlen(cache_base)) != 0) {
             file_monitor_check_and_reload(
                 state->lyrics.source_file_path,
                 state->lyrics.md5_checksum,
@@ -458,6 +460,8 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
 
     FcFini();
 
+    lock_file_release();
+
     free(font_from_config);
     free(state->config_file_path);
     config_free(&g_config);
@@ -512,6 +516,14 @@ int main(int argc, char *argv[]) {
 
     // Setup signal handlers
     setup_signal_handlers(&state);
+
+    // Acquire lock file (single instance enforcement)
+    if (!lock_file_acquire()) {
+        log_error("Failed to acquire lock file. Another instance may be running.");
+        free(argv0_copy);
+        config_free(&g_config);
+        return 1;
+    }
 
     // Initialize state colors
     initialize_state_colors(&state);

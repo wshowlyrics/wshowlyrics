@@ -502,10 +502,10 @@ bind = $mainMod, PAUSE, exec, wshowlyrics-offset toggle
 
 ### 다중 인스턴스 방지
 
-wshowlyrics는 lock 파일(`/tmp/wshowlyrics.lock`)을 사용하여 여러 인스턴스가 동시에 실행되는 것을 방지합니다. 다른 인스턴스가 실행 중이라는 오류가 나타나지만 실제로는 실행 중이지 않다고 생각되면:
+wshowlyrics는 lock 파일을 사용하여 여러 인스턴스가 동시에 실행되는 것을 방지합니다. Lock 파일은 `$XDG_RUNTIME_DIR/wshowlyrics/wshowlyrics.lock` (일반적으로 `/run/user/$UID/wshowlyrics/wshowlyrics.lock`)에 위치합니다. 다른 인스턴스가 실행 중이라는 오류가 나타나지만 실제로는 실행 중이지 않다고 생각되면:
 
 ```bash
-rm /tmp/wshowlyrics.lock
+rm "$XDG_RUNTIME_DIR/wshowlyrics/wshowlyrics.lock"
 ```
 
 ## 가사 파일 형식

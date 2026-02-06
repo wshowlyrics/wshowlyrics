@@ -1,0 +1,10 @@
+#ifndef _LYRICS_RUNTIME_DIR_H
+#define _LYRICS_RUNTIME_DIR_H
+
+// Get runtime directory path for wshowlyrics
+// Returns "$XDG_RUNTIME_DIR/wshowlyrics" or "/tmp/wshowlyrics" as fallback
+// Creates the directory on first call (mode 0700)
+// Returns static buffer (do not free)
+const char* get_runtime_dir(void);
+
+#endif // _LYRICS_RUNTIME_DIR_H

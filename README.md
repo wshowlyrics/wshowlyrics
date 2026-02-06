@@ -506,10 +506,10 @@ bind = $mainMod, PAUSE, exec, wshowlyrics-offset toggle
 
 ### Multiple Instance Prevention
 
-wshowlyrics uses a lock file (`/tmp/wshowlyrics.lock`) to prevent multiple instances from running simultaneously. If you see an error about another instance running but believe it's incorrect:
+wshowlyrics uses a lock file to prevent multiple instances from running simultaneously. The lock file is located at `$XDG_RUNTIME_DIR/wshowlyrics/wshowlyrics.lock` (typically `/run/user/$UID/wshowlyrics/wshowlyrics.lock`). If you see an error about another instance running but believe it's incorrect:
 
 ```bash
-rm /tmp/wshowlyrics.lock
+rm "$XDG_RUNTIME_DIR/wshowlyrics/wshowlyrics.lock"
 ```
 
 ## Lyrics File Formats

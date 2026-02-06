@@ -1,6 +1,7 @@
 #include "system_tray.h"
 #include "../../main.h"
 #include "../../utils/curl/curl_utils.h"
+#include "../../utils/runtime/runtime_dir.h"
 #include "../../provider/itunes/itunes_artwork.h"
 #include "../../utils/file/file_utils.h"
 #include "../../utils/icon/icon_utils.h"
@@ -35,10 +36,21 @@ static struct lyrics_state *g_tray_state = NULL;
 // Maximum display length for track info (UTF-8 characters, not bytes)
 #define TRACK_INFO_MAX_CHARS 10
 
-// Fixed paths
-static const char *ICON_DIR = "/tmp/wshowlyrics";
-static const char *ICON_PATH = "/tmp/wshowlyrics/album-art.png";
+// Icon paths (initialized from runtime dir)
+static char g_icon_dir[512] = {0};
+static char g_icon_path[600] = {0};
+static char g_notification_icon_path[600] = {0};
+static char g_disabled_icon_path[600] = {0};
 static const char *ICON_NAME = "album-art";
+
+// Initialize icon paths from runtime directory
+static void init_icon_paths(void) {
+    const char *runtime = get_runtime_dir();
+    snprintf(g_icon_dir, sizeof(g_icon_dir), "%s", runtime);
+    snprintf(g_icon_path, sizeof(g_icon_path), "%s/album-art.png", runtime);
+    snprintf(g_notification_icon_path, sizeof(g_notification_icon_path), "%s/notification-icon.png", runtime);
+    snprintf(g_disabled_icon_path, sizeof(g_disabled_icon_path), "%s/disabled-icon.png", runtime);
+}
 
 // Download image from URL to memory
 static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
@@ -415,6 +427,9 @@ static GtkWidget* create_menu(void) {
 }
 
 bool system_tray_init(void) {
+    // Initialize icon paths from runtime directory
+    init_icon_paths();
+
     // Initialize GTK if not already initialized
     if (!gtk_init_check(NULL, NULL)) {
         log_error("Failed to initialize GTK");
@@ -448,11 +463,11 @@ bool system_tray_init(void) {
 
     // Set initial default icon
     log_info("Setting initial default icon");
-    if (mkdir(ICON_DIR, 0700) != 0 && errno != EEXIST) {
+    if (mkdir(g_icon_dir, 0700) != 0 && errno != EEXIST) {
         log_warn("Failed to create icon directory: %s", strerror(errno));
     }
-    if (save_default_icon(ICON_PATH)) {
-        app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+    if (save_default_icon(g_icon_path)) {
+        app_indicator_set_icon_theme_path(indicator, g_icon_dir);
         app_indicator_set_icon_full(indicator, ICON_NAME, "Music Player");
         log_info("Initial icon set to default");
     } else {
@@ -490,7 +505,7 @@ bool system_tray_update_icon(const char *art_url) {
     log_info("Image loaded successfully");
 
     // Create directory if it doesn't exist
-    if (mkdir(ICON_DIR, 0700) != 0 && errno != EEXIST) {
+    if (mkdir(g_icon_dir, 0700) != 0 && errno != EEXIST) {
         log_warn("Failed to create icon directory: %s", strerror(errno));
     }
 
@@ -510,7 +525,7 @@ bool system_tray_update_icon(const char *art_url) {
     // Save as PNG (overwrites previous, owner-only access for privacy)
     GError *error = NULL;
     mode_t old_mask = umask(0077);
-    bool save_result = gdk_pixbuf_save(rounded, ICON_PATH, "png", &error, NULL);
+    bool save_result = gdk_pixbuf_save(rounded, g_icon_path, "png", &error, NULL);
     umask(old_mask);
     if (!save_result) {
         log_error("Failed to save icon: %s", error->message);
@@ -521,15 +536,15 @@ bool system_tray_update_icon(const char *art_url) {
 
     g_object_unref(rounded);
 
-    log_info("Album art saved to: %s", ICON_PATH);
+    log_info("Album art saved to: %s", g_icon_path);
 
     // Set the icon theme path to our directory
-    app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+    app_indicator_set_icon_theme_path(indicator, g_icon_dir);
 
     // Update indicator icon using just the name (without extension or path)
     app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
 
-    log_info("Icon updated: name=%s, theme_path=%s", ICON_NAME, ICON_DIR);
+    log_info("Icon updated: name=%s, theme_path=%s", ICON_NAME, g_icon_dir);
 
     // Update last URL
     free(last_art_url);
@@ -551,12 +566,12 @@ void system_tray_reset_icon(void) {
     last_metadata_hash[0] = '\0';
 
     // Create directory if it doesn't exist
-    if (mkdir(ICON_DIR, 0700) != 0 && errno != EEXIST) {
+    if (mkdir(g_icon_dir, 0700) != 0 && errno != EEXIST) {
         log_warn("Failed to create icon directory: %s", strerror(errno));
     }
 
     // Save default icon to file
-    if (!save_default_icon(ICON_PATH)) {
+    if (!save_default_icon(g_icon_path)) {
         log_warn("Could not save default icon");
         // Fallback: use system icon name without file
         app_indicator_set_icon_theme_path(indicator, NULL);
@@ -565,12 +580,12 @@ void system_tray_reset_icon(void) {
     }
 
     // Set the icon theme path to our directory
-    app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+    app_indicator_set_icon_theme_path(indicator, g_icon_dir);
 
     // Update indicator icon
     app_indicator_set_icon_full(indicator, ICON_NAME, "Music Player");
 
-    log_info("Icon reset to default: %s", ICON_PATH);
+    log_info("Icon reset to default: %s", g_icon_path);
 }
 
 // Helper: Build notification body with artist, album, and player
@@ -591,17 +606,17 @@ static void build_notification_body(const struct notification_info *info,
 }
 
 // Helper: Create badged notification icon (album art + player badge)
-// Returns: icon path to use (NOTIFICATION_ICON_PATH if successful, ICON_PATH otherwise)
+// Returns: icon path to use (NOTIFICATION_g_icon_path if successful, g_icon_path otherwise)
 static const char* create_badged_icon(const char *player_display,
                                      const char *notification_icon_path) {
     GError *error = NULL;
-    GdkPixbuf *album_art = gdk_pixbuf_new_from_file(ICON_PATH, &error);
+    GdkPixbuf *album_art = gdk_pixbuf_new_from_file(g_icon_path, &error);
 
     if (!album_art) {
         log_warn("Failed to load album art for notification: %s",
                 error ? error->message : "unknown error");
         if (error) g_error_free(error);
-        return ICON_PATH;
+        return g_icon_path;
     }
 
     // Load player icon and add badge
@@ -627,14 +642,14 @@ static const char* create_badged_icon(const char *player_display,
 
     if (player_icon) g_object_unref(player_icon);
     g_object_unref(album_art);
-    return ICON_PATH;
+    return g_icon_path;
 }
 
 // Helper: Prepare notification icon (album art with badge, or player icon)
 static const char* prepare_notification_icon(const char *player_display,
                                             const char *notification_icon_path) {
     struct stat st;
-    bool has_album_art = (stat(ICON_PATH, &st) == 0);
+    bool has_album_art = (stat(g_icon_path, &st) == 0);
 
     if (has_album_art && player_display && strcmp(player_display, "Unknown") != 0) {
         // Album art exists - add player badge
@@ -646,7 +661,7 @@ static const char* prepare_notification_icon(const char *player_display,
         return player_icon_name;
     }
 
-    return ICON_PATH;
+    return g_icon_path;
 }
 
 void system_tray_send_notification(const struct notification_info *info) {
@@ -673,8 +688,7 @@ void system_tray_send_notification(const struct notification_info *info) {
     escape_shell_string(body, escaped_body, sizeof(escaped_body));
 
     // Prepare notification icon
-    static const char *NOTIFICATION_ICON_PATH = "/tmp/wshowlyrics/notification-icon.png";
-    const char *icon_path = prepare_notification_icon(player_display, NOTIFICATION_ICON_PATH);
+    const char *icon_path = prepare_notification_icon(player_display, g_notification_icon_path);
 
     // Build and execute notify-send command
     char cmd[3072];
@@ -694,10 +708,10 @@ void system_tray_send_notification(const struct notification_info *info) {
     }
 }
 
-// Cache current artwork from ICON_PATH to cache_path
+// Cache current artwork from g_icon_path to cache_path
 static bool cache_current_artwork(const char *cache_path) {
     GError *error = NULL;
-    GdkPixbuf *current = gdk_pixbuf_new_from_file(ICON_PATH, &error);
+    GdkPixbuf *current = gdk_pixbuf_new_from_file(g_icon_path, &error);
 
     if (current) {
         mode_t old_mask = umask(0077);
@@ -732,14 +746,14 @@ static bool load_cached_album_art(const char *cache_path, const char *metadata_h
 
     if (cached) {
         // Set the icon theme path and update
-        app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+        app_indicator_set_icon_theme_path(indicator, g_icon_dir);
 
         // Copy cached file to active icon path
         GdkPixbuf *scaled = gdk_pixbuf_scale_simple(cached, 48, 48, GDK_INTERP_BILINEAR);
         g_object_unref(cached);
 
         mode_t old_mask = umask(0077);
-        bool save_result = gdk_pixbuf_save(scaled, ICON_PATH, "png", NULL, NULL);
+        bool save_result = gdk_pixbuf_save(scaled, g_icon_path, "png", NULL, NULL);
         umask(old_mask);
         if (save_result) {
             g_object_unref(scaled);
@@ -862,11 +876,10 @@ void system_tray_update(void) {
 }
 
 void system_tray_cleanup(void) {
-    // Clean up icon file
-    unlink(ICON_PATH);
-
-    // Remove icon directory
-    rmdir(ICON_DIR);
+    // Clean up icon files
+    unlink(g_icon_path);
+    unlink(g_notification_icon_path);
+    unlink(g_disabled_icon_path);
 
     free(last_art_url);
     last_art_url = NULL;
@@ -947,7 +960,6 @@ static GdkPixbuf* create_disabled_icon(void) {
 // Set overlay state and update icon
 void system_tray_set_overlay_state(bool enabled) {
     static bool current_state = true;
-    static const char *DISABLED_ICON_PATH = "/tmp/wshowlyrics/disabled-icon.png";
     static const char *DISABLED_ICON_NAME = "disabled-icon";
 
     if (!indicator) {
@@ -964,9 +976,9 @@ void system_tray_set_overlay_state(bool enabled) {
     if (enabled) {
         // Overlay enabled: restore to album art or default icon
         struct stat st;
-        if (stat(ICON_PATH, &st) == 0) {
+        if (stat(g_icon_path, &st) == 0) {
             // Album art file exists, restore it
-            app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+            app_indicator_set_icon_theme_path(indicator, g_icon_dir);
             app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
             log_info("Overlay enabled - album art restored");
         } else {
@@ -985,7 +997,7 @@ void system_tray_set_overlay_state(bool enabled) {
         // Save as PNG
         GError *error = NULL;
         mode_t old_mask = umask(0077);
-        bool save_result = gdk_pixbuf_save(disabled, DISABLED_ICON_PATH, "png", &error, NULL);
+        bool save_result = gdk_pixbuf_save(disabled, g_disabled_icon_path, "png", &error, NULL);
         umask(old_mask);
 
         if (!save_result) {
@@ -998,7 +1010,7 @@ void system_tray_set_overlay_state(bool enabled) {
         g_object_unref(disabled);
 
         // Update indicator icon
-        app_indicator_set_icon_theme_path(indicator, ICON_DIR);
+        app_indicator_set_icon_theme_path(indicator, g_icon_dir);
         app_indicator_set_icon_full(indicator, DISABLED_ICON_NAME, "Overlay Disabled");
 
         log_info("Overlay disabled - icon updated");

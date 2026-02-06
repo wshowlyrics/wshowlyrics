@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "lock_file.h"
+#include "../runtime/runtime_dir.h"
 #include "../../constants.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,15 @@
 #include <sys/stat.h>
 
 static int lock_fd = -1;
+static char g_lock_path[600] = {0};
+
+// Get lock file path (runtime_dir + "/wshowlyrics.lock")
+static const char* get_lock_path(void) {
+    if (g_lock_path[0] == '\0') {
+        snprintf(g_lock_path, sizeof(g_lock_path), "%s/wshowlyrics.lock", get_runtime_dir());
+    }
+    return g_lock_path;
+}
 
 // Check if process is still running
 static bool is_process_running(pid_t pid) {
@@ -93,9 +103,9 @@ static bool handle_lock_contention(int fd, struct flock *fl) {
 
 bool lock_file_acquire(void) {
     // Try to open/create lock file (owner-only access for security)
-    lock_fd = open(LOCK_FILE_PATH, O_RDWR | O_CREAT, 0600);
+    lock_fd = open(get_lock_path(), O_RDWR | O_CREAT, 0600);
     if (lock_fd < 0) {
-        log_error("Failed to open lock file %s: %s", LOCK_FILE_PATH, strerror(errno));
+        log_error("Failed to open lock file %s: %s", get_lock_path(), strerror(errno));
         return false;
     }
 
@@ -132,7 +142,7 @@ bool lock_file_acquire(void) {
 void lock_file_release(void) {
     if (lock_fd >= 0) {
         // Remove lock file
-        if (unlink(LOCK_FILE_PATH) != 0 && errno != ENOENT) {
+        if (unlink(get_lock_path()) != 0 && errno != ENOENT) {
             log_warn("Failed to unlink lock file: %s", strerror(errno));
         }
 
