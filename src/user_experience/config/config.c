@@ -183,7 +183,17 @@ static void parse_translation_section(struct config *cfg, const char *key, const
 
 // Parse [cache] section
 static void parse_cache_section(struct config *cfg, const char *key, const char *value) {
-    if (strcmp(key, "cleanup_policy") == 0) {
+    if (strcmp(key, "cache_mode") == 0) {
+        if (strcmp(value, "persistent") == 0) {
+            cfg->cache.mode = CACHE_MODE_PERSISTENT;
+        } else if (strcmp(value, "session") == 0) {
+            cfg->cache.mode = CACHE_MODE_SESSION;
+        } else if (strcmp(value, "off") == 0) {
+            cfg->cache.mode = CACHE_MODE_OFF;
+        } else {
+            log_warn("Invalid cache.cache_mode value: %s (using default: persistent)", value);
+        }
+    } else if (strcmp(key, "cleanup_policy") == 0) {
         if (strcmp(value, "off") == 0) {
             cfg->cache.cleanup_policy = CACHE_CLEANUP_OFF;
         } else if (strcmp(value, "aggressive") == 0) {
@@ -306,6 +316,7 @@ void config_init_defaults(struct config *cfg) {
     cfg->translation.cache_policy = CACHE_POLICY_BALANCED;  // 75% threshold by default
 
     // Cache defaults
+    cfg->cache.mode = CACHE_MODE_PERSISTENT;  // Persistent cache by default
     cfg->cache.cleanup_policy = CACHE_CLEANUP_NORMAL;  // 15 days by default
 }
 

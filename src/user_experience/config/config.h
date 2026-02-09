@@ -42,6 +42,13 @@ enum translation_cache_policy {
     CACHE_POLICY_AGGRESSIVE     // Save at 90% completion (late save, more complete)
 };
 
+// Cache storage mode
+enum cache_mode {
+    CACHE_MODE_PERSISTENT,  // ~/.cache/wshowlyrics (default, survives reboot)
+    CACHE_MODE_SESSION,     // $XDG_RUNTIME_DIR/wshowlyrics/cache (RAM, cleared on reboot)
+    CACHE_MODE_OFF          // No caching (API calls every time)
+};
+
 // Cache cleanup policy (automatic removal of old cache files)
 enum cache_cleanup_policy {
     CACHE_CLEANUP_OFF,          // Disable automatic cleanup
@@ -52,7 +59,8 @@ enum cache_cleanup_policy {
 
 // Cache settings
 struct cache_config {
-    enum cache_cleanup_policy cleanup_policy;  // Automatic cleanup policy
+    enum cache_mode mode;                       // Cache storage mode
+    enum cache_cleanup_policy cleanup_policy;    // Automatic cleanup policy
 };
 
 // Spotify settings

@@ -254,6 +254,14 @@ cache_policy = balanced
 # ============================================================================
 
 [cache]
+# Cache storage mode
+# Controls where cache files are stored:
+#   - persistent: Store in ~/.cache/wshowlyrics (default, survives reboot)
+#   - session: Store in $XDG_RUNTIME_DIR (RAM-based, cleared on reboot, no disk writes)
+#   - off: Disable caching entirely (not recommended if using translation — API costs increase)
+# Default: persistent
+cache_mode = persistent
+
 # Automatic cleanup policy for old cache files
 # The program automatically removes cache files that haven't been accessed for the specified period
 # When cache is accessed (loaded), the access time is updated to keep it fresh

@@ -17,7 +17,11 @@ static char g_lock_path[600] = {0};
 // Get lock file path (runtime_dir + "/wshowlyrics.lock")
 static const char* get_lock_path(void) {
     if (g_lock_path[0] == '\0') {
-        snprintf(g_lock_path, sizeof(g_lock_path), "%s/wshowlyrics.lock", get_runtime_dir());
+        const char *runtime = get_runtime_dir();
+        if (!runtime) {
+            return NULL;
+        }
+        snprintf(g_lock_path, sizeof(g_lock_path), "%s/wshowlyrics.lock", runtime);
     }
     return g_lock_path;
 }
@@ -102,10 +106,15 @@ static bool handle_lock_contention(int fd, struct flock *fl) {
 }
 
 bool lock_file_acquire(void) {
+    const char *lock_path = get_lock_path();
+    if (!lock_path) {
+        return false;
+    }
+
     // Try to open/create lock file (owner-only access for security)
-    lock_fd = open(get_lock_path(), O_RDWR | O_CREAT, 0600);
+    lock_fd = open(lock_path, O_RDWR | O_CREAT, 0600);
     if (lock_fd < 0) {
-        log_error("Failed to open lock file %s: %s", get_lock_path(), strerror(errno));
+        log_error("Failed to open lock file %s: %s", lock_path, strerror(errno));
         return false;
     }
 

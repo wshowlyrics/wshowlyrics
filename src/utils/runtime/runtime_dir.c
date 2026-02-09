@@ -16,18 +16,18 @@ const char* get_runtime_dir(void) {
     }
 
     const char *xdg_runtime = getenv("XDG_RUNTIME_DIR");
-
-    if (xdg_runtime && xdg_runtime[0] != '\0') {
-        snprintf(g_runtime_dir, sizeof(g_runtime_dir), "%s/wshowlyrics", xdg_runtime);
-    } else {
-        // Fallback to /tmp (should rarely happen on modern systems)
-        snprintf(g_runtime_dir, sizeof(g_runtime_dir), "/tmp/wshowlyrics");
-        log_warn("XDG_RUNTIME_DIR not set, using fallback: %s", g_runtime_dir);
+    if (!xdg_runtime || xdg_runtime[0] == '\0') {
+        log_error("XDG_RUNTIME_DIR is not set. "
+                  "A Wayland compositor with XDG_RUNTIME_DIR support is required.");
+        return NULL;
     }
+
+    snprintf(g_runtime_dir, sizeof(g_runtime_dir), "%s/wshowlyrics", xdg_runtime);
 
     // Create directory (owner-only access for security)
     if (mkdir(g_runtime_dir, 0700) != 0 && errno != EEXIST) {
-        log_warn("Failed to create runtime directory %s: %s", g_runtime_dir, strerror(errno));
+        log_warn("Failed to create runtime directory %s: %s",
+                 g_runtime_dir, strerror(errno));
     }
 
     g_runtime_dir_initialized = true;

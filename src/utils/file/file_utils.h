@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "../../user_experience/config/config.h"
 
 // Calculate MD5 checksum of a file
 // Returns true on success, false on error
@@ -33,6 +34,12 @@ int build_path_artist_title(char *dest, size_t dest_size, const char *dir,
 
 // Build config path: "base/wshowlyrics/settings.ini"
 int build_config_path(char *dest, size_t dest_size, const char *base);
+
+// Set cache storage mode (must be called before first cache access)
+void set_cache_mode(enum cache_mode mode);
+
+// Check if cache is enabled (persistent or session)
+bool is_cache_enabled(void);
 
 // Get cache base directory path
 // Returns $XDG_CACHE_HOME/wshowlyrics or $HOME/.cache/wshowlyrics

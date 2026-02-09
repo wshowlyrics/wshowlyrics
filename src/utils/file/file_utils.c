@@ -20,6 +20,15 @@ static char g_cache_album_art_dir[600] = {0};
 static char g_cache_lyrics_dir[600] = {0};
 static char g_cache_translated_dir[600] = {0};
 static bool g_cache_dirs_initialized = false;
+static enum cache_mode g_cache_mode = CACHE_MODE_PERSISTENT;
+
+void set_cache_mode(enum cache_mode mode) {
+    g_cache_mode = mode;
+}
+
+bool is_cache_enabled(void) {
+    return g_cache_mode != CACHE_MODE_OFF;
+}
 
 // Initialize cache directory paths using XDG Base Directory specification
 static void init_cache_directories(void) {
@@ -27,18 +36,45 @@ static void init_cache_directories(void) {
         return;
     }
 
-    const char *xdg_cache = getenv("XDG_CACHE_HOME");
-    const char *home = getenv("HOME");
+    if (g_cache_mode == CACHE_MODE_OFF) {
+        // Empty paths — all path builders will return -1
+        g_cache_base_dir[0] = '\0';
+        g_cache_album_art_dir[0] = '\0';
+        g_cache_lyrics_dir[0] = '\0';
+        g_cache_translated_dir[0] = '\0';
+        g_cache_dirs_initialized = true;
+        return;
+    }
 
-    if (xdg_cache && xdg_cache[0] != '\0') {
-        // Use XDG_CACHE_HOME
-        snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/wshowlyrics", xdg_cache);
-    } else if (home && home[0] != '\0') {
-        // Fallback to $HOME/.cache
-        snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/.cache/wshowlyrics", home);
-    } else {
-        // Last resort: use runtime dir (XDG_RUNTIME_DIR or /tmp fallback)
-        snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/cache", get_runtime_dir());
+    if (g_cache_mode == CACHE_MODE_SESSION) {
+        // Use XDG_RUNTIME_DIR (RAM-based, cleared on reboot)
+        const char *runtime = get_runtime_dir();
+        if (runtime) {
+            snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/cache", runtime);
+        } else {
+            // XDG_RUNTIME_DIR not available, fall back to persistent
+            log_warn("Session cache requires XDG_RUNTIME_DIR, falling back to persistent cache");
+            g_cache_mode = CACHE_MODE_PERSISTENT;
+            // fall through to persistent logic below
+        }
+    }
+
+    if (g_cache_mode == CACHE_MODE_PERSISTENT) {
+        const char *xdg_cache = getenv("XDG_CACHE_HOME");
+        const char *home = getenv("HOME");
+
+        if (xdg_cache && xdg_cache[0] != '\0') {
+            snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/wshowlyrics", xdg_cache);
+        } else if (home && home[0] != '\0') {
+            snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/.cache/wshowlyrics", home);
+        } else {
+            // Last resort: use runtime dir
+            const char *runtime = get_runtime_dir();
+            if (runtime) {
+                snprintf(g_cache_base_dir, sizeof(g_cache_base_dir), "%s/cache", runtime);
+            }
+            // If runtime is NULL, main() will have already exited
+        }
     }
 
     // Build subdirectory paths
@@ -287,6 +323,10 @@ static bool mkdir_p(const char *path) {
 
 bool ensure_cache_directories(void) {
     init_cache_directories();
+
+    if (g_cache_mode == CACHE_MODE_OFF) {
+        return false;  // Cache disabled
+    }
 
     // Create base directory
     if (!mkdir_p(g_cache_base_dir)) {

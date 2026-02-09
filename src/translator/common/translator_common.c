@@ -590,6 +590,11 @@ void translator_save_to_cache_ex(const char *cache_path,
                                    struct lyrics_data *data,
                                    const char *target_lang,
                                    const char *provider_name) {
+    if (!cache_path || cache_path[0] == '\0') {
+        log_info("%s: Cache disabled, skipping save", provider_name);
+        return;
+    }
+
     struct config *cfg = config_get();
     float cache_threshold = config_get_cache_threshold(cfg->translation.cache_policy);
     float completion_ratio = (float)data->translation_current / (float)data->translation_total;
@@ -943,16 +948,18 @@ bool translator_translate_lyrics_generic(struct lyrics_data *data,
         return false;
     }
 
-    // Build cache path
-    char cache_path[512];
-    snprintf(cache_path, sizeof(cache_path),
-             "%s/%s_%s.json",
-             get_cache_translated_dir(), data->md5_checksum, target_lang);
+    // Build cache path (empty if cache disabled)
+    char cache_path[512] = {0};
+    if (is_cache_enabled()) {
+        snprintf(cache_path, sizeof(cache_path),
+                 "%s/%s_%s.json",
+                 get_cache_translated_dir(), data->md5_checksum, target_lang);
 
-    // Create cache directories
-    if (!ensure_cache_directories()) {
-        log_error("%s: Failed to create cache directories", provider_name);
-        return false;
+        // Create cache directories
+        if (!ensure_cache_directories()) {
+            log_error("%s: Failed to create cache directories", provider_name);
+            return false;
+        }
     }
 
     // Prepare thread arguments

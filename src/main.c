@@ -12,6 +12,7 @@
 #include "utils/lang_detect/lang_detect.h"
 #include "utils/dbus_control/dbus_control.h"
 #include "utils/lock/lock_file.h"
+#include "utils/runtime/runtime_dir.h"
 #include "translator/deepl/deepl_translator.h"
 #include "translator/gemini/gemini_translator.h"
 #include "translator/claude/claude_translator.h"
@@ -496,6 +497,28 @@ int main(int argc, char *argv[]) {
     config_init_defaults(&g_config);
     char *config_loaded_path = config_load_with_fallback(&g_config);
     config_validate_user_config();
+
+    // Set cache mode before any cache access
+    set_cache_mode(g_config.cache.mode);
+
+    // Warn if cache disabled with translation enabled
+    if (g_config.cache.mode == CACHE_MODE_OFF &&
+        g_config.translation.provider &&
+        strcmp(g_config.translation.provider, "false") != 0) {
+        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        log_warn("Cache disabled with translation enabled");
+        log_warn("Translations will NOT be saved — API costs may increase");
+        log_warn("Consider using cache_mode = session for RAM-based caching");
+        log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    }
+
+    // Verify XDG_RUNTIME_DIR is available (required for Wayland)
+    if (!get_runtime_dir()) {
+        free(argv0_copy);
+        config_free(&g_config);
+        free(config_loaded_path);
+        return 1;
+    }
 
     // Parse anchor and layer from config
     uint32_t anchor = parse_anchor_string(g_config.display.anchor);
