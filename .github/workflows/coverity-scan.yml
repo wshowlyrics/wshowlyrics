@@ -56,13 +56,21 @@ jobs:
       run: tar czvf lyrics.tgz cov-int
 
     - name: Submit to Coverity Scan
+      continue-on-error: true
       run: |
-        curl --form token=${{ secrets.COVERITY_SCAN_TOKEN }} \
+        HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
+             --form token=${{ secrets.COVERITY_SCAN_TOKEN }} \
              --form email=${{ secrets.COVERITY_EMAIL }} \
              --form file=@lyrics.tgz \
              --form version="${GITHUB_SHA:0:8}" \
              --form description="Automated weekly scan - commit ${{ github.sha }}" \
-             https://scan.coverity.com/builds?project=unstable-code%2Flyrics
+             https://scan.coverity.com/builds?project=unstable-code%2Flyrics)
+        echo "HTTP response code: $HTTP_CODE"
+        cat response.txt
+        if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+          echo "::warning::Coverity Scan upload failed with HTTP $HTTP_CODE"
+          exit 1
+        fi
 
     - name: Upload build log on failure
       if: failure()
