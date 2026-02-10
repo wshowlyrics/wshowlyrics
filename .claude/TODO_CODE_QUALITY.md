@@ -1,26 +1,47 @@
 # TODO: SonarCloud Code Quality Improvements
 
-## 현재 상태 (2026-01-01)
+## 현재 상태 (2026-02-11)
 
 ### ✅ 완료된 Phase (1-8)
 - **Bugs**: 0개
 - **Vulnerabilities**: 0개
 - **BLOCKER**: 0개
-- **CRITICAL**: 0개
+- **CRITICAL**: ⚠️ 1개 (NEW — mpris.c:288 Cognitive Complexity, 2026-02-02 발생)
 - **전체 등급**: ⭐ A등급 (Maintainability, Reliability, Security)
 - **Quality Gate**: 🟢 GREEN
 - **Security Hotspots**: 100% Reviewed
 
 ### 📊 남은 작업
-- **총 미해결 이슈**: 169개 (C 코드만, Python 제외)
-  - **MAJOR**: 43개
-  - **MINOR**: 126개
+- **총 미해결 이슈**: 174개 (C 코드만, Python 제외)
+  - **CRITICAL**: 1개 (+1, NEW)
+  - **MAJOR**: 57개 (+14 from 43)
+  - **MINOR**: 116개 (-10 from 126)
+
+### 📈 변동 사항 (2026-01-01 → 2026-02-11)
+- cache_mode, runtime_dir 등 기능 추가로 MAJOR 이슈 증가
+- 일부 MINOR 이슈는 코드 변경으로 자연 해소
+- **새로운 CRITICAL**: mpris.c `get_current_song()` Cognitive Complexity 34 > 25 (S3776)
 
 ---
 
-## Phase 9: MAJOR Severity 이슈 해결 (43개)
+## Phase 8.5: CRITICAL Severity 이슈 해결 (1개) — NEW
 
-### Priority 1: 중첩 if 병합 (7개) - 35min
+### Cognitive Complexity 초과 (1개) - 30min
+**Rule**: c:S3776 (Cognitive Complexity)
+**파일**: mpris.c:288 (`get_current_song()`)
+**메시지**: "Refactor this function to reduce its Cognitive Complexity from 34 to the 25 allowed."
+**생성일**: 2026-02-02
+
+**리팩토링 방향**:
+- 중첩 조건문을 early return으로 변환
+- helper 함수로 분리 (metadata 파싱, playerctl 호출 등)
+- 복잡한 분기를 별도 함수로 추출
+
+---
+
+## Phase 9: MAJOR Severity 이슈 해결 (57개)
+
+### Priority 1: 중첩 if 병합 (11개) - 55min
 **Rule**: c:S1066 (Merge nested if statements)
 **예상 시간**: 5min/개
 
@@ -39,9 +60,18 @@ if (a && b) {
 }
 ```
 
+**대상 파일**:
+- parser_utils.c:525, 560, 617, 627
+- lyrics_provider.c:595, 602
+- config.c:1254
+- main.c:281
+- lrc_parser.c:154
+- shm.c:138
+- system_tray.c:194
+
 ---
 
-### Priority 2: 파라미터 수 제한 초과 (10개) - 3h 20min
+### Priority 2: 파라미터 수 제한 초과 (12개) - 4h
 **Rule**: c:S107 (Function has too many parameters > 7)
 **예상 시간**: 20min/개
 
@@ -58,21 +88,22 @@ void func(struct func_params *params);
 ```
 
 **주요 대상 파일**:
-- rendering_manager.c (3개 함수)
-- ruby_render.c (2개 함수)
-- word_render.c (3개 함수)
-- dbus_control.c (1개 함수)
-- wayland_events.c (1개 함수)
+- rendering_manager.c:48, 65, 95 (3개 함수)
+- ruby_render.c:200, 252 (2개 함수)
+- word_render.c:168, 331, 365 (3개 함수)
+- lrcx_parser.c:83, 208 (2개 함수, NEW)
+- dbus_control.c:66 (1개 함수)
+- wayland_events.c:115 (1개 함수)
 
 ---
 
-### Priority 3: 미사용 파라미터 제거 (10개) - 50min
+### Priority 3: 미사용 파라미터 제거 (12개) - 1h
 **Rule**: c:S1172 (Remove unused function parameters)
 **예상 시간**: 5min/개
 
 **주요 대상 파일**:
-- parser_utils.c (4개)
-- dbus_control.c (6개)
+- parser_utils.c:152, 492, 522, 544 (4개)
+- dbus_control.c:67, 68, 69, 70, 157, 193, 193, 198 (8개, +2 NEW)
 
 ---
 
@@ -100,23 +131,23 @@ while (outer && !should_exit) {
 ```
 
 **대상 파일**:
-- mpris.c:515
-- translator_common.c:261
+- mpris.c:618
+- translator_common.c:263
 - lrclib_provider.c:108
 
 ---
 
-### Priority 5: 기타 MAJOR 이슈 (13개) - 2h 30min
+### Priority 5: 기타 MAJOR 이슈 (19개) - 3h 30min
 
 #### 1. 주석 처리된 코드 제거 (2개) - 10min
 **Rule**: c:S125
-**예상 시간**: 5min/개
+- lyrics_provider.c:428, 443
 
 ---
 
 #### 2. Obsolete function 교체 (1개) - 10min
 **Rule**: c:S1911
-**파일**: file_utils.c:605
+**파일**: file_utils.c:691
 
 **수정**:
 ```c
@@ -134,7 +165,7 @@ utimes(path, NULL);  // POSIX standard
 #### 3. 구조체 필드 제한 (1개) - 1h
 **Rule**: c:S1820
 **파일**: main.h:51
-**메시지**: "Refactor structure to have max 20 fields (currently 40)"
+**메시지**: "Refactor structure to have max 20 fields (currently 42, was 40)"
 
 **리팩토링**:
 - `struct lyrics_state`를 논리적 그룹으로 분리
@@ -142,21 +173,22 @@ utimes(path, NULL);  // POSIX standard
 
 ---
 
-#### 4. 중복 브랜치 통합 (1개) - 15min
-**Rule**: c:S1871
-**예상 시간**: 15min
-
----
-
-#### 5. 기타 (1개) - 15min
+#### 4. #include 위치 (1개) - 15min
 **Rule**: c:S954
-**예상 시간**: 15min
+- lang_detect.c:12
 
 ---
 
-## Phase 10: MINOR Severity 이슈 해결 (126개)
+#### 5. 기타 신규 MAJOR (14개 추정)
+- 코드 변경(cache_mode, runtime_dir 등)으로 신규 발생
+- API에서 확인된 57개 중 위 43개 이외의 나머지
+- 세부 파일/라인은 다음 스캔 후 확인 필요
 
-### Priority 1: Pointer-to-const 파라미터 (54개) - 2h 42min
+---
+
+## Phase 10: MINOR Severity 이슈 해결 (116개)
+
+### Priority 1: Pointer-to-const 파라미터 (47개) - 2h 21min
 **Rule**: c:S995
 **메시지**: "Make the type of this parameter a pointer-to-const"
 **예상 시간**: 3min/개
@@ -177,28 +209,7 @@ void process(const struct lyrics_data *data);
 
 ---
 
-### Priority 2: Pointer-to-const 변수 (44개) - 2h 12min
-**Rule**: c:S5350
-**메시지**: "Make the type of this variable a pointer-to-const"
-**예상 시간**: 3min/개
-
-**리팩토링 패턴**:
-```c
-// Before
-char *text = line->text;
-
-// After
-const char *text = line->text;
-```
-
-**효과**:
-- 불변성 보장
-- 의도치 않은 수정 방지
-- 컴파일러 최적화 향상
-
----
-
-### Priority 3: 다중 선언 분리 (23개) - 1h 9min
+### Priority 2: 다중 선언 분리 (38개) - 1h 54min
 **Rule**: c:S1659
 **메시지**: "Define each identifier in a dedicated statement"
 **예상 시간**: 3min/개
@@ -225,7 +236,28 @@ char *c;
 
 ---
 
-### Priority 4: 불필요한 cast 제거 (4개) - 12min
+### Priority 3: Pointer-to-const 변수 (35개) - 1h 45min
+**Rule**: c:S5350
+**메시지**: "Make the type of this variable a pointer-to-const"
+**예상 시간**: 3min/개
+
+**리팩토링 패턴**:
+```c
+// Before
+char *text = line->text;
+
+// After
+const char *text = line->text;
+```
+
+**효과**:
+- 불변성 보장
+- 의도치 않은 수정 방지
+- 컴파일러 최적화 향상
+
+---
+
+### Priority 4: 불필요한 cast 제거 (9개) - 27min
 **Rule**: c:S1905
 **메시지**: "Remove redundant casts"
 **예상 시간**: 3min/개
@@ -246,11 +278,12 @@ char *c;
 
 | Phase | 작업 | 이슈 수 | 예상 시간 |
 |-------|------|---------|-----------|
-| 9 | MAJOR 이슈 | 43 | 8h 20min |
-| 10 | MINOR 이슈 | 126 | 6h 30min |
-| **총합계** | | **169** | **14h 50min** |
+| 8.5 | CRITICAL 이슈 | 1 | 30min |
+| 9 | MAJOR 이슈 | 57 | 10h 25min |
+| 10 | MINOR 이슈 | 116 | 6h 42min |
+| **총합계** | | **174** | **17h 37min** |
 
-**버퍼 포함**: ~16-17시간 (테스트 및 디버깅)
+**버퍼 포함**: ~20시간 (테스트 및 디버깅)
 
 ---
 
@@ -306,10 +339,11 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 
 ## 상태
 
-- **최종 업데이트**: 2026-01-01 (최신 API 데이터 반영)
-- **현재 Phase**: Phase 9 시작 준비
-- **완료 Phases**: 1-8 (Bugs 0개, Vulnerabilities 0개, BLOCKER 0개, CRITICAL 0개)
-- **남은 이슈**: MAJOR 43개, MINOR 126개
-- **우선순위**: Medium (코드 품질, 유지보수성)
-- **목표**: A등급 유지, Quality Gate GREEN 유지
-- **남은 예상 시간**: ~16-17h
+- **최종 업데이트**: 2026-02-11 (SonarCloud API 데이터 반영)
+- **현재 Phase**: Phase 8.5 (CRITICAL 1개 신규 발생) → Phase 9
+- **완료 Phases**: 1-8 (Bugs 0개, Vulnerabilities 0개, BLOCKER 0개)
+- **남은 이슈**: CRITICAL 1개, MAJOR 57개, MINOR 116개 (총 174개)
+- **우선순위**: Medium-High (CRITICAL 이슈 신규 발생)
+- **목표**: A등급 유지, Quality Gate GREEN 유지, CRITICAL 0개 복원
+- **남은 예상 시간**: ~20h
+- **참고**: S1871 (중복 브랜치) 이슈는 코드 변경으로 자연 해소됨

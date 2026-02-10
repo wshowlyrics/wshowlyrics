@@ -56,7 +56,6 @@ jobs:
       run: tar czvf lyrics.tgz cov-int
 
     - name: Submit to Coverity Scan
-      continue-on-error: true
       run: |
         HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
              --form token=${{ secrets.COVERITY_SCAN_TOKEN }} \
