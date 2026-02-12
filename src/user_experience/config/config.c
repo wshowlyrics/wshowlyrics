@@ -95,6 +95,9 @@ static void parse_lyrics_section(struct config *cfg, const char *key, const char
         cfg->lyrics.enable_notifications = (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0);
     } else if (strcmp(key, "notification_timeout") == 0) {
         cfg->lyrics.notification_timeout = atoi(value);
+    } else if (strcmp(key, "ignore_dirs") == 0) {
+        free(cfg->lyrics.ignore_dirs);
+        cfg->lyrics.ignore_dirs = strdup(value);
     } else if (strcmp(key, "global_offset_ms") == 0) {
         cfg->lyrics.global_offset_ms = atoi(value);
         // Clamp to reasonable range [-5000, +5000] (-5s to +5s)
@@ -291,6 +294,7 @@ void config_init_defaults(struct config *cfg) {
 
     // Lyrics defaults
     cfg->lyrics.search_dirs = strdup("");  // Empty = use hardcoded defaults
+    cfg->lyrics.ignore_dirs = strdup("");  // Empty = no directories ignored
     cfg->lyrics.extensions = strdup("lrcx,lrc,srt");  // All formats
     cfg->lyrics.preferred_players = strdup("");  // Empty = use %any
     cfg->lyrics.enable_lrclib = true;
@@ -326,6 +330,7 @@ void config_free(struct config *cfg) {
     free(cfg->display.anchor);
     free(cfg->display.layer);
     free(cfg->lyrics.search_dirs);
+    free(cfg->lyrics.ignore_dirs);
     free(cfg->lyrics.extensions);
     free(cfg->lyrics.preferred_players);
     free(cfg->translation.provider);

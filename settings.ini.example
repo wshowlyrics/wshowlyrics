@@ -62,15 +62,33 @@ enable_multiline_lrcx = true
 [lyrics]
 # Search directories (colon-separated paths)
 # Empty string or not set = use default search locations
-# Default locations:
+# When set: REPLACES default locations with your custom paths
+# Default locations (when empty):
 #   1. Same directory as the music file
 #   2. Current directory (only for local builds, not /usr/bin)
 #   3. XDG_MUSIC_DIR environment variable
 #   4. ~/.lyrics/
 #   5. $HOME
 #
-# Example: search_dirs = ~/.lyrics:~/Music:~/Documents/Lyrics
+# Special tokens:
+#   {music_dir} = directory of currently playing music file
+#   ~ = home directory
+#
+# Example: search_dirs = {music_dir}:~/.lyrics:~/Music/Lyrics
 search_dirs =
+
+# Directories to ignore for lyrics search (colon-separated paths)
+# When a music file is located in one of these directories, lyrics search
+# is skipped entirely (no local search, no online provider, no cache lookup)
+# Useful for ignoring directories with sound effects, podcasts, etc.
+#
+# Special tokens:
+#   {music_dir} = directory of currently playing music file
+#   ~ = home directory
+#
+# Example: ignore_dirs = ~/Podcasts:~/SoundEffects
+# Default: empty (no directories ignored)
+ignore_dirs =
 
 # File extensions to search (comma-separated, no dots)
 # Supported formats: lrcx, lrc, srt, vtt

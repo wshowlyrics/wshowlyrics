@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "lyrics_provider.h"
 #include "../lrclib/lrclib_provider.h"
 #include "../../parser/lrc/lrc_parser.h"
@@ -17,6 +18,7 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <limits.h>
 #include <libgen.h>
 
 // ============================================================================
@@ -359,37 +361,133 @@ static bool is_local_build_executable(void) {
              strncmp(exe_path, "/usr/", 5) != 0));
 }
 
+// Expand path token: ~ → $HOME, {music_dir} → music file directory
+// Caller must free the returned string
+static char* expand_path_token(const char *token, const char *music_file_dir) {
+    if (strcmp(token, "{music_dir}") == 0) {
+        return music_file_dir ? strdup(music_file_dir) : strdup("");
+    }
+
+    if (token[0] == '~' && (token[1] == '/' || token[1] == '\0')) {
+        const char *home = getenv("HOME");
+        if (home) {
+            char *result = malloc(strlen(home) + strlen(token));
+            if (result) {
+                sprintf(result, "%s%s", home, token + 1);
+            }
+            return result;
+        }
+    }
+
+    return strdup(token);
+}
+
+// Check if the music file's directory matches any entry in ignore_dirs
+// Returns true if the track should be skipped (not searched for lyrics)
+static bool is_track_ignored(const char *music_file_dir) {
+    if (!music_file_dir || !g_config.lyrics.ignore_dirs ||
+        g_config.lyrics.ignore_dirs[0] == '\0') {
+        return false;
+    }
+
+    char *ignore_copy = strdup(g_config.lyrics.ignore_dirs);
+    if (!ignore_copy) return false;
+
+    char *saveptr;
+    char *token = strtok_r(ignore_copy, ":", &saveptr);
+
+    while (token) {
+        char *trimmed = config_trim_whitespace(token);
+        char *expanded = expand_path_token(trimmed, music_file_dir);
+        if (!expanded) {
+            token = strtok_r(NULL, ":", &saveptr);
+            continue;
+        }
+
+        // Compare using realpath to handle symlinks/relative paths
+        char resolved_dir[PATH_MAX], resolved_ignore[PATH_MAX];
+        bool match = false;
+
+        if (realpath(music_file_dir, resolved_dir) && realpath(expanded, resolved_ignore)) {
+            match = (strcmp(resolved_dir, resolved_ignore) == 0);
+        } else {
+            // realpath failed, fall back to direct string comparison
+            match = (strcmp(music_file_dir, expanded) == 0);
+        }
+
+        free(expanded);
+        if (match) {
+            free(ignore_copy);
+            return true;
+        }
+        token = strtok_r(NULL, ":", &saveptr);
+    }
+
+    free(ignore_copy);
+    return false;
+}
+
 // Build list of directories to search for lyrics files
+// allocated_dirs/alloc_count track dynamically allocated paths (from search_dirs config)
+// Caller must free allocated_dirs[0..alloc_count-1] after use
 // Returns number of directories added
 static int build_search_directories(const char **search_dirs, int max_dirs,
-                                    const char *current_dir, char *lyrics_dir_buf, size_t buf_size) {
+                                    const char *current_dir, char *lyrics_dir_buf, size_t buf_size,
+                                    char **allocated_dirs, int *alloc_count) {
     int dir_count = 0;
+    *alloc_count = 0;
 
-    // Priority 1: Directory of currently playing file
-    if (current_dir && dir_count < max_dirs) {
-        search_dirs[dir_count++] = current_dir;
-    }
+    if (g_config.lyrics.search_dirs && g_config.lyrics.search_dirs[0] != '\0') {
+        // User-defined search paths: replace default locations
+        char *dirs_copy = strdup(g_config.lyrics.search_dirs);
+        if (!dirs_copy) return 0;
 
-    // Priority 2: Current directory (only for local builds)
-    if (is_local_build_executable() && dir_count < max_dirs) {
-        search_dirs[dir_count++] = ".";
-    }
+        char *saveptr;
+        char *token = strtok_r(dirs_copy, ":", &saveptr);
 
-    // Priority 3: XDG_MUSIC_DIR
-    const char *xdg_music = getenv("XDG_MUSIC_DIR");
-    if (xdg_music && dir_count < max_dirs) {
-        search_dirs[dir_count++] = xdg_music;
-    }
+        while (token && dir_count < max_dirs) {
+            char *trimmed = config_trim_whitespace(token);
+            char *expanded = expand_path_token(trimmed, current_dir);
 
-    // Priority 4: ~/.lyrics directory
-    const char *home = getenv("HOME");
-    if (home && dir_count < max_dirs && join_path_2(lyrics_dir_buf, buf_size, home, ".lyrics") >= 0) {
-        search_dirs[dir_count++] = lyrics_dir_buf;
-    }
+            if (expanded && expanded[0] != '\0') {
+                allocated_dirs[*alloc_count] = expanded;
+                search_dirs[dir_count++] = expanded;
+                (*alloc_count)++;
+            } else {
+                free(expanded);
+            }
+            token = strtok_r(NULL, ":", &saveptr);
+        }
+        free(dirs_copy);
+    } else {
+        // Default hardcoded search paths
 
-    // Priority 5: Home directory
-    if (home && dir_count < max_dirs) {
-        search_dirs[dir_count++] = home;
+        // Priority 1: Directory of currently playing file
+        if (current_dir && dir_count < max_dirs) {
+            search_dirs[dir_count++] = current_dir;
+        }
+
+        // Priority 2: Current directory (only for local builds)
+        if (is_local_build_executable() && dir_count < max_dirs) {
+            search_dirs[dir_count++] = ".";
+        }
+
+        // Priority 3: XDG_MUSIC_DIR
+        const char *xdg_music = getenv("XDG_MUSIC_DIR");
+        if (xdg_music && dir_count < max_dirs) {
+            search_dirs[dir_count++] = xdg_music;
+        }
+
+        // Priority 4: ~/.lyrics directory
+        const char *home = getenv("HOME");
+        if (home && dir_count < max_dirs && join_path_2(lyrics_dir_buf, buf_size, home, ".lyrics") >= 0) {
+            search_dirs[dir_count++] = lyrics_dir_buf;
+        }
+
+        // Priority 5: Home directory
+        if (home && dir_count < max_dirs) {
+            search_dirs[dir_count++] = home;
+        }
     }
 
     return dir_count;
@@ -451,15 +549,24 @@ static bool try_title_patterns(const char *dir, const char *title_safe,
     return false;
 }
 
+// Free dynamically allocated search directories
+static void free_allocated_dirs(char **allocated_dirs, int alloc_count) {
+    for (int i = 0; i < alloc_count; i++) {
+        free(allocated_dirs[i]);
+    }
+}
+
 // Cleanup all allocated resources used in search
 static void cleanup_search_resources(char **extensions, char *title_safe,
                                      char *artist_safe, char *current_dir,
-                                     char *filename_from_url) {
+                                     char *filename_from_url,
+                                     char **allocated_dirs, int alloc_count) {
     free_extension_priority(extensions);
     free(title_safe);
     free(artist_safe);
     free(current_dir);
     free(filename_from_url);
+    free_allocated_dirs(allocated_dirs, alloc_count);
 }
 
 static bool local_search(const char *title, const char *artist, const char *album,
@@ -486,35 +593,39 @@ static bool local_search(const char *title, const char *artist, const char *albu
     // Get extension priority list
     char **extensions = get_extension_priority();
     if (!extensions) {
-        cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url);
+        cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url, NULL, 0);
         return false;
     }
 
     // Build directory search list
     const char *search_dirs[10] = {0};
     char lyrics_dir[FILENAME_BUFFER_SIZE] = {0};
-    int dir_count = build_search_directories(search_dirs, 10, current_dir, lyrics_dir, sizeof(lyrics_dir));
+    char *allocated_dirs[10] = {0};
+    int alloc_count = 0;
+    int dir_count = build_search_directories(search_dirs, 10, current_dir, lyrics_dir, sizeof(lyrics_dir),
+                                             allocated_dirs, &alloc_count);
 
     // Search all directories
+    bool found = false;
     for (int i = 0; i < dir_count; i++) {
         if (!search_dirs[i]) continue;
 
         // Try exact filename first (only in first directory - file's own directory)
         if (i == 0 && try_exact_filename(search_dirs[i], filename_from_url, extensions, data)) {
-            cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url);
-            return true;
+            found = true;
+            break;
         }
 
         // Try title-based patterns
         if (try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data)) {
-            cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url);
-            return true;
+            found = true;
+            break;
         }
     }
 
-    // No lyrics found
-    cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url);
-    return false;
+    cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url,
+                             allocated_dirs, alloc_count);
+    return found;
 }
 
 static bool local_init(void) {
@@ -712,6 +823,20 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
 
     if (track->url) {
         log_info("File location: %s", sanitize_path(track->url));
+    }
+
+    // Check if music file's directory is in ignore_dirs (skip lyrics search entirely)
+    if (track->url) {
+        char *music_dir = get_directory_from_url(track->url);
+        if (music_dir) {
+            if (is_track_ignored(music_dir)) {
+                log_info("Skipping lyrics search: music directory is in ignore_dirs (%s)",
+                         sanitize_path(music_dir));
+                free(music_dir);
+                return false;
+            }
+            free(music_dir);
+        }
     }
 
     // Convert duration from microseconds to milliseconds

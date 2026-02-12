@@ -26,6 +26,7 @@ struct display_config {
 // Lyrics settings
 struct lyrics_config {
     char *search_dirs;  // Colon-separated paths
+    char *ignore_dirs;  // Colon-separated paths to exclude from search
     char *extensions;   // Comma-separated extensions (e.g., "lrcx,lrc,srt")
     char *preferred_players;  // Comma-separated player names (e.g., "mpv,spotify")
     bool enable_lrclib;
