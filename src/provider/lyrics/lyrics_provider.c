@@ -371,9 +371,10 @@ static char* expand_path_token(const char *token, const char *music_file_dir) {
     if (token[0] == '~' && (token[1] == '/' || token[1] == '\0')) {
         const char *home = getenv("HOME");
         if (home) {
-            char *result = malloc(strlen(home) + strlen(token));
+            size_t len = strlen(home) + strlen(token);
+            char *result = malloc(len);
             if (result) {
-                sprintf(result, "%s%s", home, token + 1);
+                snprintf(result, len, "%s%s", home, token + 1);
             }
             return result;
         }
