@@ -4,9 +4,7 @@
 [![AUR version](https://img.shields.io/aur/version/wshowlyrics-git)](https://aur.archlinux.org/packages/wshowlyrics-git)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://www.linux.org/)
 [![Wayland](https://img.shields.io/badge/Wayland-Only-orange.svg)](https://wayland.freedesktop.org/)
-<!-- Coverity Scan is currently under maintenance (413 errors since 2026-02)
 [![Coverity Scan](https://scan.coverity.com/projects/32766/badge.svg?flat=1)](https://scan.coverity.com/projects/unstable-code-lyrics)
--->
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=unstable-code_lyrics&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=unstable-code_lyrics)
 
 <p align="center">
