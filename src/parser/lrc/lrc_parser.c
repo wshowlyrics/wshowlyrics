@@ -150,12 +150,11 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
         }
 
         // Try to parse as timed line
-        if (line[0] == '[') {
-            if (!process_timed_line(line, data, &next_line, &last_timestamp_us)) {
-                free(content_copy);
-                lrc_free_data(data);
-                return false;
-            }
+        if (line[0] == '[' &&
+            !process_timed_line(line, data, &next_line, &last_timestamp_us)) {
+            free(content_copy);
+            lrc_free_data(data);
+            return false;
         }
 
         line = strtok_r(NULL, "\n", &saveptr);

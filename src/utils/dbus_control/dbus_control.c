@@ -73,6 +73,10 @@ static void handle_method_call(
     GDBusMethodInvocation *invocation,
     gpointer user_data)
 {
+    (void)connection;       // Required by GDBus callback signature
+    (void)sender;           // Required by GDBus callback signature
+    (void)object_path;      // Required by GDBus callback signature
+    (void)interface_name;   // Required by GDBus callback signature
     struct lyrics_state *state = (struct lyrics_state *)user_data;
 
     if (strcmp(method_name, "ToggleOverlay") == 0) {
@@ -155,6 +159,7 @@ static const GDBusInterfaceVTable interface_vtable = {
 
 // Bus acquired callback
 static void on_bus_acquired(GDBusConnection *connection, const gchar *name, gpointer user_data) {
+    (void)name;  // Required by GDBus callback signature
     GError *error = NULL;
     GDBusNodeInfo *introspection_data;
 
@@ -191,11 +196,14 @@ static void on_bus_acquired(GDBusConnection *connection, const gchar *name, gpoi
 
 // Name acquired callback
 static void on_name_acquired(GDBusConnection *connection, const gchar *name, gpointer user_data) {
+    (void)connection;  // Required by GDBus callback signature
+    (void)user_data;   // Required by GDBus callback signature
     log_info("D-Bus name acquired: %s", name);
 }
 
 // Name lost callback
 static void on_name_lost(GDBusConnection *connection, const gchar *name, gpointer user_data) {
+    (void)user_data;  // Required by GDBus callback signature
     if (connection == NULL) {
         log_error("Failed to connect to D-Bus session bus");
     } else {

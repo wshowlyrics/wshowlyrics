@@ -189,11 +189,9 @@ static GdkPixbuf* load_image_from_url(const char *url) {
         }
 
         GError *close_error = NULL;
-        if (!gdk_pixbuf_loader_close(loader, &close_error)) {
-            if (close_error) {
-                log_warn("Failed to close pixbuf loader: %s", close_error->message);
-                g_error_free(close_error);
-            }
+        if (!gdk_pixbuf_loader_close(loader, &close_error) && close_error) {
+            log_warn("Failed to close pixbuf loader: %s", close_error->message);
+            g_error_free(close_error);
         }
         pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
 

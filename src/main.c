@@ -273,16 +273,15 @@ static int parse_command_line_options(int argc, char *argv[], struct lyrics_stat
 // Monitor and update system state in main loop
 static void monitor_track_and_files(struct lyrics_state *state, int *update_counter) {
     // Check for track changes
-    if (mpris_check_metadata_changed()) {
-        // When Metadata signal arrives, metadata is cached from the signal
-        // so mpris_get_metadata() returns accurate new data (no stale data race)
-        // When PlaybackStatus changes to Playing (resume), no cache exists
-        // so mpris_get_metadata() queries DBus - if same track, no reload
-        if (lyrics_manager_update_track_info(state)) {
-            lyrics_manager_load_lyrics(state);
-            mpris_apply_position_fix_if_needed();
-            rendering_manager_set_dirty(state);
-        }
+    // When Metadata signal arrives, metadata is cached from the signal
+    // so mpris_get_metadata() returns accurate new data (no stale data race)
+    // When PlaybackStatus changes to Playing (resume), no cache exists
+    // so mpris_get_metadata() queries DBus - if same track, no reload
+    if (mpris_check_metadata_changed() &&
+        lyrics_manager_update_track_info(state)) {
+        lyrics_manager_load_lyrics(state);
+        mpris_apply_position_fix_if_needed();
+        rendering_manager_set_dirty(state);
     }
 
     // Check if lyrics or config files have changed (every 2 seconds)

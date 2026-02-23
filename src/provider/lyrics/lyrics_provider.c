@@ -722,18 +722,15 @@ static bool try_load_from_cache(const char *metadata_hash, struct lyrics_data *d
 
 // Check if provider should be skipped
 static bool should_skip_provider(const struct lyrics_provider *provider) {
-    if (strcmp(provider->name, "local") == 0) {
-        if (!g_config.lyrics.extensions || g_config.lyrics.extensions[0] == '\0') {
-            log_info("Skipped provider: %s (no extensions configured)", provider->name);
-            return true;
-        }
+    if (strcmp(provider->name, "local") == 0 &&
+        (!g_config.lyrics.extensions || g_config.lyrics.extensions[0] == '\0')) {
+        log_info("Skipped provider: %s (no extensions configured)", provider->name);
+        return true;
     }
 
-    if (strcmp(provider->name, "lrclib") == 0) {
-        if (!g_config.lyrics.enable_lrclib) {
-            log_info("Skipped provider: %s (disabled in config)", provider->name);
-            return true;
-        }
+    if (strcmp(provider->name, "lrclib") == 0 && !g_config.lyrics.enable_lrclib) {
+        log_info("Skipped provider: %s (disabled in config)", provider->name);
+        return true;
     }
 
     return false;

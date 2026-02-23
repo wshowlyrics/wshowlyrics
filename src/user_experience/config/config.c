@@ -1249,12 +1249,11 @@ static char* try_load_user_config(struct config *cfg, const char *path) {
     umask(old_mask);
 
     // If file was just created (fd >= 0), copy from system config
-    if (fd >= 0) {
-        if (!copy_system_config_to_user(fd, path)) {
-            // Copy failed (system config doesn't exist) - remove empty file
-            unlink(path);
-            return NULL;
-        }
+    if (fd >= 0 &&
+        !copy_system_config_to_user(fd, path)) {
+        // Copy failed (system config doesn't exist) - remove empty file
+        unlink(path);
+        return NULL;
     }
     // If fd < 0 and errno == EEXIST, file already exists - continue normally
 

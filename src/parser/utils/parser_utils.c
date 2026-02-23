@@ -616,21 +616,19 @@ static bool finalize_ruby_segments(const char *seg_start, const char *text_end,
                                    int *count, struct ruby_segment *head) {
     (void)head;  // Unused - caller handles cleanup
     // Add remaining text as final segment
-    if (seg_start < text_end) {
-        if (!create_and_append_segment(seg_start, text_end - seg_start, NULL, NULL,
-                                       next_seg, count)) {
-            // Memory cleanup handled by caller
-            return false;
-        }
+    if (seg_start < text_end &&
+        !create_and_append_segment(seg_start, text_end - seg_start, NULL, NULL,
+                                   next_seg, count)) {
+        // Memory cleanup handled by caller
+        return false;
     }
 
     // If no segments created, create one with entire text
-    if (*count == 0) {
-        // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
-        if (!create_and_append_segment(text, strlen(text), NULL, NULL, next_seg, count)) {
-            // Memory cleanup handled by caller
-            return false;
-        }
+    // strlen() is safe here: text is guaranteed to be NULL-terminated by precondition
+    if (*count == 0 &&
+        !create_and_append_segment(text, strlen(text), NULL, NULL, next_seg, count)) {
+        // Memory cleanup handled by caller
+        return false;
     }
 
     return true;
