@@ -99,8 +99,8 @@ const char* get_cache_translated_dir(void) {
 
 // Sanitize file path for logging: replaces username in $HOME with numeric UID
 const char* sanitize_path(const char *path) {
-    static char bufs[2][PATH_BUFFER_SIZE];
-    static int idx = 0;
+    static _Thread_local char bufs[2][PATH_BUFFER_SIZE];
+    static _Thread_local int idx = 0;
 
     if (!path) return path;
 

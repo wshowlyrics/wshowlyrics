@@ -174,6 +174,14 @@ bool translator_load_from_cache(const char *cache_path, struct lyrics_data *data
         fclose(f);
         return false;
     }
+
+    // Reject oversized cache files to prevent OOM from corrupted files
+    if (file_size > MAX_CACHE_FILE_SIZE) {
+        log_warn("Cache file too large: %ld bytes (max %d)", file_size, MAX_CACHE_FILE_SIZE);
+        fclose(f);
+        return false;
+    }
+
     fseek(f, 0, SEEK_SET);
 
     char *json_str = malloc(file_size + 1);

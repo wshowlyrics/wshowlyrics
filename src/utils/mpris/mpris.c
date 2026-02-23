@@ -313,6 +313,10 @@ static void on_properties_changed(
 
     g_mutex_lock(&mpris_state.mutex);
 
+    // Save player identity for safe use across unlock/relock gap (TOCTOU prevention)
+    // Another signal handler could change current_player during the unlock period
+    char *saved_player = mpris_state.current_player ? strdup(mpris_state.current_player) : NULL;
+
     // Check for PlaybackStatus change
     GVariant *status_variant = g_variant_lookup_value(changed_properties, "PlaybackStatus", G_VARIANT_TYPE_STRING);
     if (status_variant) {
@@ -389,14 +393,14 @@ static void on_properties_changed(
             }
             if (metadata_dict) {
                 mpris_state.cached_metadata = parse_metadata_from_dict(
-                    metadata_dict, mpris_state.current_player);
+                    metadata_dict, saved_player);
                 g_variant_unref(metadata_dict);
             }
 
             // Spotify position drift fix: Mark that position fix is needed
             // Actual fix will be applied after lyrics load for better timing
-            bool is_spotify = mpris_state.current_player &&
-                             strcasecmp(mpris_state.current_player, "spotify") == 0;
+            bool is_spotify = saved_player &&
+                             strcasecmp(saved_player, "spotify") == 0;
 
             struct config *cfg = config_get();
             if (is_spotify && cfg->spotify.auto_position_fix) {
@@ -408,6 +412,8 @@ static void on_properties_changed(
     }
 
     g_mutex_unlock(&mpris_state.mutex);
+
+    free(saved_player);
 
     g_variant_unref(changed_properties);
     g_variant_unref(invalidated_properties);

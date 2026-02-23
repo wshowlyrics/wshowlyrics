@@ -37,6 +37,10 @@
 #define URL_BUFFER_SIZE 2048
 #define USER_AGENT_STRING "wshowlyrics/0.9.6"
 
+// File size limits
+#define MAX_LYRICS_FILE_SIZE (10 * 1024 * 1024)   // 10 MB
+#define MAX_CACHE_FILE_SIZE  (5 * 1024 * 1024)    // 5 MB
+
 // Cryptographic buffers
 #define MD5_DIGEST_STRING_LENGTH 33  // 32 hex chars + null terminator
 

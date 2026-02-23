@@ -488,17 +488,20 @@ struct word_segment* lrcx_find_segment_at_time(struct lyrics_line *line, int64_t
     struct word_segment *current = NULL;
     struct word_segment *segment = line->segments;
     int index = 0;
+    int current_index = 0;
 
     while (segment) {
         if (segment->timestamp_us > timestamp_us) {
             break;
         }
         current = segment;
-        if (segment_index && segment == current) {
-            *segment_index = index;
-        }
+        current_index = index;
         segment = segment->next;
         index++;
+    }
+
+    if (segment_index) {
+        *segment_index = current_index;
     }
 
     return current;

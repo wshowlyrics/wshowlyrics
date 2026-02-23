@@ -175,6 +175,13 @@ bool parse_file_generic(const char *filename, const char *format_name,
         return false;
     }
 
+    // Reject oversized files to prevent OOM from malicious/corrupted files
+    if (size > MAX_LYRICS_FILE_SIZE) {
+        log_warn("Lyrics file too large: %ld bytes (max %d)", size, MAX_LYRICS_FILE_SIZE);
+        fclose(fp);
+        return false;
+    }
+
     // NOSONAR: size > 0 guaranteed by check above (line 162)
     // SonarCloud c:S5488 false positive - zero allocation prevented
     char *content = malloc(size + 1);

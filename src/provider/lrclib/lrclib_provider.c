@@ -49,6 +49,11 @@ static bool build_search_request_url(CURL *curl, const char *title, const char *
                          "https://lrclib.net/api/search?track_name=%s", title_encoded);
     curl_free(title_encoded);
 
+    // Check for truncation - if URL already truncated, skip artist parameter
+    if (offset < 0 || (size_t)offset >= buffer_size) {
+        return true;  // URL truncated but still usable (just without artist)
+    }
+
     // Add artist if available
     if (artist && artist[0] != '\0') {
         char *artist_encoded = url_encode(curl, artist);
