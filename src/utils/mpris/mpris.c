@@ -223,7 +223,16 @@ static char** list_mpris_players(int *count) {
             // Expand array if needed
             if (*count >= capacity) {
                 capacity = capacity == 0 ? 4 : capacity * 2;
-                players = realloc(players, capacity * sizeof(char*));
+                char **new_players = realloc(players, capacity * sizeof(char*));
+                if (!new_players) {
+                    for (int i = 0; i < *count; i++) free(players[i]);
+                    free(players);
+                    *count = 0;
+                    g_variant_unref(names_variant);
+                    g_variant_unref(result);
+                    return NULL;
+                }
+                players = new_players;
             }
 
             players[*count] = strdup(player_name);

@@ -568,11 +568,13 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
             log_warn("%s: [%d/%d] Skipped (same language after translation) - API cost wasted",
                    args->provider_name, *current, translatable_count);
             free(translation);
-            free(line->translation);
-            line->translation = NULL;
+            char *old = line->translation;
+            __atomic_store_n(&line->translation, NULL, __ATOMIC_RELEASE);
+            free(old);
         } else {
-            free(line->translation);
-            line->translation = translation;
+            char *old = line->translation;
+            __atomic_store_n(&line->translation, translation, __ATOMIC_RELEASE);
+            free(old);
             log_info("%s: [%d/%d] Translated: %s",
                    args->provider_name, *current, translatable_count, translation);
         }
@@ -987,6 +989,8 @@ bool translator_translate_lyrics_generic(struct lyrics_data *data,
         free(args);
         return false;
     }
+
+    data->translation_thread_active = true;
 
     // Don't detach - we need the handle for cancellation
     return true;

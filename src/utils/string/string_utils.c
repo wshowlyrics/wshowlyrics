@@ -83,27 +83,3 @@ char* trim_whitespace(char *str) {
 
     return str;
 }
-
-// Escape special shell characters in a string for safe use in shell commands
-void escape_shell_string(const char *input, char *output, size_t output_size) {
-    if (!input || !output || output_size == 0) {
-        if (output && output_size > 0) {
-            output[0] = '\0';
-        }
-        return;
-    }
-
-    const char *src = input;
-    char *dst = output;
-    size_t remaining = output_size - 1;
-
-    while (*src && remaining > 1) {
-        if ((*src == '"' || *src == '\\' || *src == '$' || *src == '`') && remaining > 2) {
-            *dst++ = '\\';
-            remaining--;
-        }
-        *dst++ = *src++;
-        remaining--;
-    }
-    *dst = '\0';
-}

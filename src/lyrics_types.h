@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <pthread.h>
 #include "constants.h"
 
@@ -55,12 +56,13 @@ struct lyrics_data {
     char md5_checksum[MD5_DIGEST_STRING_LENGTH]; // MD5 checksum of the file
 
     // Translation progress (for async translation)
-    bool translation_in_progress;
-    bool translation_should_cancel;  // Set to true to cancel ongoing translation
-    bool translation_will_discard;   // True if translation will be discarded (below threshold)
+    _Atomic bool translation_in_progress;
+    _Atomic bool translation_should_cancel;  // Set to true to cancel ongoing translation
+    _Atomic bool translation_will_discard;   // True if translation will be discarded (below threshold)
+    _Atomic bool translation_thread_active;  // True after pthread_create, false after join
     pthread_t translation_thread;    // Thread handle for cancellation
-    int translation_current;
-    int translation_total;
+    _Atomic int translation_current;
+    _Atomic int translation_total;
 };
 
 #endif // _LYRICS_TYPES_H

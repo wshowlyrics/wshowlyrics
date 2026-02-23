@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
+#include <glib.h>
 
 // Global configuration instance
 struct config g_config;
@@ -375,22 +376,6 @@ char* config_get_path(void) {
     return config_get_user_path();
 }
 
-// Validate path for safe use in shell commands
-static bool is_safe_path_for_shell(const char *path) {
-    if (!path || path[0] != '/') return false;  // Must be absolute path
-
-    // Check for shell metacharacters that could enable command injection
-    for (const char *p = path; *p; p++) {
-        if (*p == ';' || *p == '|' || *p == '&' || *p == '`' ||
-            *p == '$' || *p == '(' || *p == ')' || *p == '<' ||
-            *p == '>' || *p == '\n' || *p == '\r' || *p == '\\' ||
-            *p == '"' || *p == '\'') {
-            return false;
-        }
-    }
-    return true;
-}
-
 // Check config file permissions and fix them if they're too permissive
 static void check_and_fix_config_permissions(const char *path) {
     // Use open() + fstat() + fchmod() to avoid TOCTOU race condition
@@ -440,21 +425,24 @@ static void check_and_fix_config_permissions(const char *path) {
 
             // Send error notification only on failure
             struct config *cfg = config_get();
-            if (cfg->lyrics.enable_notifications && is_safe_path_for_shell(path)) {
-                char cmd[2048];
-                snprintf(cmd, sizeof(cmd),
-                    "notify-send -a wshowlyrics -u critical -t %d "
-                    "\"🔒 Security Warning\" "
-                    "\"Config file has insecure permissions (%04o)\\n\\n"
-                    "File: %s\\n\\n"
-                    "Please run: chmod 600 %s\" 2>/dev/null",
-                    cfg->lyrics.notification_timeout,
-                    mode,
-                    sanitize_path(path),
-                    sanitize_path(path));
-                // Notification failure is not critical, but check return value to satisfy compiler
-                if (system(cmd) != 0) {
-                    // Notification failed, but we continue anyway
+            if (cfg->lyrics.enable_notifications) {
+                char mode_str[8];
+                snprintf(mode_str, sizeof(mode_str), "%04o", mode);
+                char body[512];
+                snprintf(body, sizeof(body),
+                    "Config file has insecure permissions (%s)\n\n"
+                    "File: %s\n\n"
+                    "Please run: chmod 600 %s",
+                    mode_str, sanitize_path(path), sanitize_path(path));
+                char timeout_str[16];
+                snprintf(timeout_str, sizeof(timeout_str), "%d", cfg->lyrics.notification_timeout);
+                char *argv[] = {
+                    "notify-send", "-a", "wshowlyrics", "-u", "critical",
+                    "-t", timeout_str, "Security Warning", body, NULL
+                };
+                GError *error = NULL;
+                if (!g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error)) {
+                    g_error_free(error);
                 }
             }
             close(fd);
@@ -1119,20 +1107,21 @@ static void display_missing_keys_warning(struct config_key *missing_keys, const 
         should_notify = g_config.lyrics.enable_notifications;
     }
 
-    if (should_notify && is_safe_path_for_shell(example_path)) {
-        char cmd[2048];
-        snprintf(cmd, sizeof(cmd),
-            "notify-send -a wshowlyrics -u normal -t %d "
-            "\"⚠️ Configuration Update Required\" "
-            "\"Your config is missing new settings:\\n%s\\n"
-            "Check: %s\" 2>/dev/null",
-            g_config.lyrics.notification_timeout,
-            missing_keys_list,
-            sanitize_path(example_path));
-
-        int ret = system(cmd);
-        if (ret != 0) {
-            log_warn("Failed to send desktop notification (notify-send may not be available)");
+    if (should_notify) {
+        char body[2048];
+        snprintf(body, sizeof(body),
+            "Your config is missing new settings:\n%s\nCheck: %s",
+            missing_keys_list, sanitize_path(example_path));
+        char timeout_str[16];
+        snprintf(timeout_str, sizeof(timeout_str), "%d", g_config.lyrics.notification_timeout);
+        char *argv[] = {
+            "notify-send", "-a", "wshowlyrics", "-u", "normal",
+            "-t", timeout_str, "Configuration Update Required", body, NULL
+        };
+        GError *error = NULL;
+        if (!g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error)) {
+            log_warn("Failed to send notification: %s", error->message);
+            g_error_free(error);
         }
     }
 }

@@ -2,6 +2,7 @@
 #define LYRICS_MANAGER_H
 
 #include "../main.h"
+#include "../lyrics_types.h"
 #include <stdbool.h>
 
 /**
@@ -47,5 +48,13 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state);
  * @param state Lyrics state
  */
 void lyrics_manager_update_current_line(struct lyrics_state *state);
+
+/**
+ * Cancel ongoing translation and wait for thread to finish
+ * Prevents use-after-free errors when freeing lyrics data
+ *
+ * @param lyrics Lyrics data containing translation state
+ */
+void cancel_and_wait_translation(struct lyrics_data *lyrics);
 
 #endif // LYRICS_MANAGER_H

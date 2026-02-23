@@ -4,7 +4,6 @@
 #include "../lyrics/lyrics_manager.h"
 #include "../utils/file/file_utils.h"
 #include "../constants.h"
-#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -91,10 +90,7 @@ static bool check_translation_config_changed(struct lyrics_state *state,
         log_info("Translation config changed, reloading lyrics...");
 
         // Cancel current translation if in progress
-        if (state->lyrics.translation_in_progress) {
-            state->lyrics.translation_should_cancel = true;
-            pthread_join(state->lyrics.translation_thread, NULL);
-        }
+        cancel_and_wait_translation(&state->lyrics);
 
         // Reload lyrics with new translation config
         lyrics_manager_load_lyrics(state);

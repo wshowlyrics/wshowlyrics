@@ -321,12 +321,13 @@ static void render_segments_with_optional_translation(cairo_t *cairo,
         return;
     }
 
-    // Translation is enabled
-    if (state->current_line->translation) {
+    // Translation is enabled — atomic load to avoid data race with translator thread
+    const char *tr = __atomic_load_n(&state->current_line->translation, __ATOMIC_ACQUIRE);
+    if (tr) {
         // Line has translation - show it with icon
         char translation_text[512];
         build_translation_display_text(translation_text, sizeof(translation_text),
-                                      state, state->current_line->translation);
+                                      state, tr);
 
         struct translation_params params = {
             .base = base,

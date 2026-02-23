@@ -52,9 +52,11 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
     }
 }
 
-// Helper: Cancel ongoing translation and wait for it to finish
+// Cancel ongoing translation and wait for it to finish
 // Prevents use-after-free errors when freeing lyrics data
-static void cancel_and_wait_translation(struct lyrics_data *lyrics) {
+void cancel_and_wait_translation(struct lyrics_data *lyrics) {
+    if (!lyrics->translation_thread_active) return;
+
     lyrics->translation_should_cancel = true;
 
     int wait_count = 0;
@@ -67,11 +69,10 @@ static void cancel_and_wait_translation(struct lyrics_data *lyrics) {
     if (wait_count >= 100) {
         log_warn("Translation thread did not stop in time (waited 5s), force cancelling");
         pthread_cancel(lyrics->translation_thread);
-        pthread_join(lyrics->translation_thread, NULL);
-    } else if (lyrics->translation_in_progress == false && wait_count > 0) {
-        // Thread finished gracefully, join it to clean up resources
-        pthread_join(lyrics->translation_thread, NULL);
     }
+
+    pthread_join(lyrics->translation_thread, NULL);
+    lyrics->translation_thread_active = false;
 }
 
 // Helper: Handle case when no player is found

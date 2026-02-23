@@ -5,7 +5,6 @@
 #include "../../provider/itunes/itunes_artwork.h"
 #include "../../utils/file/file_utils.h"
 #include "../../utils/icon/icon_utils.h"
-#include "../../utils/string/string_utils.h"
 #include "../../core/rendering/rendering_manager.h"
 #include "../config/config.h"
 #include <stdio.h>
@@ -341,15 +340,14 @@ static void on_edit_settings(GtkMenuItem *item, gpointer user_data) {
     }
     snprintf(config_path, sizeof(config_path), "%s/.config/wshowlyrics/settings.ini", home);
 
-    // Build command: terminal -e editor config_path
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "%s -e %s \"%s\" &", terminal, editor, config_path);
-
     log_info("Menu: Opening settings with: %s -e %s \"%s\"",
              terminal, editor, sanitize_path(config_path));
-    int ret = system(cmd);
-    if (ret != 0) {
-        log_warn("Menu: Failed to open editor (exit code: %d)", ret);
+
+    char *argv[] = { (char *)terminal, "-e", (char *)editor, config_path, NULL };
+    GError *error = NULL;
+    if (!g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error)) {
+        log_warn("Menu: Failed to open editor: %s", error->message);
+        g_error_free(error);
     }
 }
 
@@ -682,19 +680,8 @@ void system_tray_send_notification(const struct notification_info *info) {
     // Get player display name for logging
     const char *player_display = (info->player_name && info->player_name[0]) ? info->player_name : "Unknown";
 
-    // Escape title and body for shell
-    char escaped_title[PATH_BUFFER_SIZE];
-    char escaped_body[PATH_BUFFER_SIZE];
-    escape_shell_string(notification_title, escaped_title, sizeof(escaped_title));
-    escape_shell_string(body, escaped_body, sizeof(escaped_body));
-
     // Prepare notification icon
     const char *icon_path = prepare_notification_icon(player_display, g_notification_icon_path);
-
-    // Build and execute notify-send command
-    char cmd[3072];
-    snprintf(cmd, sizeof(cmd), "notify-send -a wshowlyrics -i \"%s\" -e -t %d \"%s\" \"%s\" 2>/dev/null",
-             icon_path, g_config.lyrics.notification_timeout, escaped_title, escaped_body);
 
     // Log notification
     const char *artist = (info->artist && info->artist[0]) ? info->artist : "Unknown";
@@ -702,10 +689,19 @@ void system_tray_send_notification(const struct notification_info *info) {
     log_info("Sending desktop notification: %s - %s · %s (%s)",
             notification_title, album, artist, player_display);
 
-    // Execute notify-send
-    int ret = system(cmd);
-    if (ret != 0) {
-        log_warn("notify-send command failed with exit code: %d", ret);
+    // Execute notify-send via g_spawn_async (no shell interpretation)
+    char timeout_str[16];
+    snprintf(timeout_str, sizeof(timeout_str), "%d", g_config.lyrics.notification_timeout);
+    char *argv[] = {
+        "notify-send", "-a", "wshowlyrics",
+        "-i", (char *)icon_path,
+        "-e", "-t", timeout_str,
+        notification_title, body, NULL
+    };
+    GError *error = NULL;
+    if (!g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error)) {
+        log_warn("notify-send failed: %s", error->message);
+        g_error_free(error);
     }
 }
 
