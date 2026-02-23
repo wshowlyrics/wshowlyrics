@@ -109,36 +109,43 @@ static struct best_match_result find_best_match_in_results(
 
     struct best_match_result result = {NULL, NULL, INT64_MAX};
     const char *search_pos = response_data + 1; // Skip opening '['
-    char *obj_start;
 
-    while (search_pos && *search_pos &&
-           (obj_start = strchr((char *)search_pos, '{')) != NULL) {
+    while (search_pos && *search_pos) {
+        char *obj_start = strchr(search_pos, '{');
+        if (!obj_start) break;
+
         // Extract duration and syncedLyrics for this result
         int64_t result_duration = extract_json_int(response_data, "duration", obj_start);
         char *synced_lyrics = extract_json_string(obj_start, "syncedLyrics");
 
-        // Process only if valid synced lyrics found
-        if (synced_lyrics && synced_lyrics[0] != '\0') {
-            if (target_duration_ms > 0 && result_duration > 0) {
-                // We have both durations - compare
-                int64_t duration_diff = llabs((result_duration * 1000) - target_duration_ms);
-                log_info("Found result with duration %ld s (diff: %ld ms)",
-                       result_duration, duration_diff);
+        // Skip entries without valid synced lyrics
+        if (!synced_lyrics || synced_lyrics[0] == '\0') {
+            free(synced_lyrics);
+            char *obj_end = strchr(obj_start, '}');
+            if (!obj_end) break;
+            search_pos = obj_end + 1;
+            continue;
+        }
 
-                if (duration_diff < result.duration_diff) {
-                    result.duration_diff = duration_diff;
-                    free(result.synced_lyrics);
-                    result.synced_lyrics = synced_lyrics;
-                    result.obj_start = obj_start;
-                    synced_lyrics = NULL; // Prevent free below
-                }
-            } else if (!result.synced_lyrics) {
-                // No duration to compare, just take first result
+        if (target_duration_ms > 0 && result_duration > 0) {
+            // We have both durations - compare
+            int64_t duration_diff = llabs((result_duration * 1000) - target_duration_ms);
+            log_info("Found result with duration %ld s (diff: %ld ms)",
+                   result_duration, duration_diff);
+
+            if (duration_diff < result.duration_diff) {
+                result.duration_diff = duration_diff;
+                free(result.synced_lyrics);
                 result.synced_lyrics = synced_lyrics;
                 result.obj_start = obj_start;
                 synced_lyrics = NULL; // Prevent free below
-                log_info("Found result (no duration comparison)");
             }
+        } else if (!result.synced_lyrics) {
+            // No duration to compare, just take first result
+            result.synced_lyrics = synced_lyrics;
+            result.obj_start = obj_start;
+            synced_lyrics = NULL; // Prevent free below
+            log_info("Found result (no duration comparison)");
         }
 
         free(synced_lyrics);
