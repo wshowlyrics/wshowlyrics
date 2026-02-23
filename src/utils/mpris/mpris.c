@@ -642,29 +642,23 @@ static bool should_switch_to_player(const char *player_name) {
     if (cfg->lyrics.preferred_players && cfg->lyrics.preferred_players[0] != '\0') {
         char *players_copy = strdup(cfg->lyrics.preferred_players);
         char *saveptr;
-        char *preferred = strtok_r(players_copy, ",", &saveptr);
+        bool done = false;
 
-        while (preferred) {
-            // Trim whitespace
+        for (char *preferred = strtok_r(players_copy, ",", &saveptr);
+             preferred && !done;
+             preferred = strtok_r(NULL, ",", &saveptr)) {
             preferred = trim_whitespace_inplace(preferred);
-            if (*preferred == '\0') {
-                preferred = strtok_r(NULL, ",", &saveptr);
-                continue;
+            if (*preferred != '\0') {
+                // If new player matches preferred, switch
+                if (strcmp(player_name, preferred) == 0) {
+                    should_switch = true;
+                    log_info("Preferred player appeared, switching to: %s", player_name);
+                    done = true;
+                } else if (strcmp(mpris_state.current_player, preferred) == 0) {
+                    // Found current player first, don't switch
+                    done = true;
+                }
             }
-
-            // If new player matches preferred, switch
-            if (strcmp(player_name, preferred) == 0) {
-                should_switch = true;
-                log_info("Preferred player appeared, switching to: %s", player_name);
-                break;
-            }
-
-            // If we found current player first, don't switch
-            if (strcmp(mpris_state.current_player, preferred) == 0) {
-                break;
-            }
-
-            preferred = strtok_r(NULL, ",", &saveptr);
         }
         free(players_copy);
     }

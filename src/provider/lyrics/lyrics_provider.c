@@ -627,20 +627,12 @@ static bool local_search(const char *title, const char *artist, const char *albu
 
     // Search all directories
     bool found = false;
-    for (int i = 0; i < dir_count; i++) {
+    for (int i = 0; i < dir_count && !found; i++) {
         if (!search_dirs[i]) continue;
 
         // Try exact filename first (only in first directory - file's own directory)
-        if (i == 0 && try_exact_filename(search_dirs[i], filename_from_url, extensions, data)) {
-            found = true;
-            break;
-        }
-
-        // Try title-based patterns
-        if (try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data)) {
-            found = true;
-            break;
-        }
+        found = (i == 0 && try_exact_filename(search_dirs[i], filename_from_url, extensions, data)) ||
+                try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data);
     }
 
     cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url,

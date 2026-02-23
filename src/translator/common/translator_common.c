@@ -268,14 +268,11 @@ bool translator_should_translate(struct lyrics_data *data) {
     bool has_ruby_segments = false;
     bool has_word_segments = false;
 
-    while (line) {
+    while (line && !has_ruby_segments && !has_word_segments) {
         if (line->ruby_segments) {
             has_ruby_segments = true;
-            break;
-        }
-        if (line->segments) {
+        } else if (line->segments) {
             has_word_segments = true;
-            break;
         }
         line = line->next;
     }
