@@ -1,79 +1,44 @@
 # TODO: Code Quality & Security Improvements
 
-## 현재 상태 (2026-02-23, 2차 업데이트)
+## 현재 상태 (2026-02-24, 3차 업데이트)
 
 ### 완료된 Phase
 - **Phase 1-8**: Bugs 0개, Vulnerabilities 0개, BLOCKER 0개
 - **Phase S**: 보안취약점 3건 + 동시성 버그 수정 (d51ec9e)
 - **Phase H**: HIGH 5건 수정 (caa80a4)
 - **Phase 9**: Cognitive Complexity CRITICAL 2건 수정 (ba85ad3)
-- **Phase 10 일부**: MAJOR 8건 수정 (23ee4fc) — 미사용 파라미터 4건, if 병합 3건, 중첩 break 1건
-- **COPR 빌드 수정**: translator_common.c NULL 체크 (4d014d0)
+- **Phase 10-pre**: MAJOR 8건 수정 (23ee4fc) + COPR 빌드 수정 (4d014d0)
+- **Phase 10-A**: lrclib_provider.c 회귀 BLOCKER+CRITICAL 3건 수정 (8196b99)
+- **Phase 10-B**: 신규 CRITICAL 4건 수정 (5f4470d) — S134 x2, S859 x3
+- **Phase 10-C 일부**: MAJOR 23건 수정 (3a62cf3, 2de305e, 4356a66)
 
-### 📊 SonarCloud 현황
+### 📊 SonarCloud 현황 (푸시 전 예상)
 
-| 심각도 | 이전 (2/23 오전) | 현재 (2/23 오후) | 변동 |
+| 심각도 | 이전 (2/23) | 수정 | 예상 잔여 |
 |--------|:---:|:---:|:---:|
-| BLOCKER | 0 | **1** | +1 (회귀) |
-| CRITICAL | 2 | **7** | +5 (회귀 3 + 신규감지 4) |
-| MAJOR | 48 | **36** | -12 |
-| MINOR | 129 | **132** | +3 |
-| **합계** | **179** | **176** | **-3** |
+| BLOCKER | 1 | -1 | **0** |
+| CRITICAL | 7 | -7 | **0** |
+| MAJOR | 36 | -23 | **13** |
+| MINOR | 132 | 0 | **132** |
+| **합계** | **176** | **-31** | **~145** |
 
-### 회귀 이슈 (lrclib_provider.c 리팩토링으로 발생)
-
-중첩 break 감소 리팩토링(23ee4fc)에서 while 조건에 대입식을 넣으면서 3건 발생:
-
-| 심각도 | 파일 | 라인 | Rule | 문제 |
-|--------|------|------|------|------|
-| **BLOCKER** | lrclib_provider.c | 114 | S912 | `&&` 우측에 side effect (대입식) |
-| CRITICAL | lrclib_provider.c | 115 | S859 | `(char *)search_pos` const 캐스트 |
-| CRITICAL | lrclib_provider.c | 128 | S134 | 중첩 깊이 > 3 |
-
-### 신규 감지 이슈 (기존 코드, SonarCloud가 새로 탐지)
-
-| 심각도 | 파일 | 라인 | Rule | 문제 |
-|--------|------|------|------|------|
-| CRITICAL | mpris.c | 227 | S134 | 중첩 깊이 > 3 |
-| CRITICAL | config.c | 444 | S134 | 중첩 깊이 > 3 |
-| CRITICAL | system_tray.c | 346 | S859 | const 캐스트 (x2) |
-| CRITICAL | system_tray.c | 697 | S859 | const 캐스트 |
+> 실제 수치는 푸시 후 SonarCloud 스캔 결과로 확인 필요
 
 ---
 
-## Phase 10-A: 회귀 이슈 수정 (최우선)
+## 미푸시 커밋 (5건)
 
-### 10-A1. lrclib_provider.c BLOCKER + CRITICAL 3건
-
-**원인**: `find_best_match_in_results()`에서 while 조건에 `obj_start = strchr(...)` 대입을 넣은 것.
-
-**수정 방향**:
-- `&&` 우측의 대입식을 루프 본문 첫 줄로 이동
-- `strchr`에 const-correct 포인터 전달
-- 중첩 깊이 줄이기 위해 early-continue 패턴 적용
-
----
-
-## Phase 10-B: 신규 CRITICAL 이슈 (4건)
-
-### 10-B1. mpris.c:227 — 중첩 깊이 > 3 (S134)
-
-`list_available_players()` 내 realloc 에러 처리 블록. 중첩 조건문 평탄화 필요.
-
-### 10-B2. config.c:444 — 중첩 깊이 > 3 (S134)
-
-설정 파일 파싱 로직. 헬퍼 함수 추출로 해결.
-
-### 10-B3. system_tray.c:346, 697 — const 캐스트 (S859, 3건)
-
-`posix_spawn()` argv에 const 문자열을 `(char *)` 캐스트하는 패턴.
-`posix_spawn`의 `argv`가 `char *const []` 타입이라 캐스트가 필요한 상황이지만, SonarCloud가 위험으로 판단.
-
-**수정 방향**: 비-const 로컬 복사본 사용 또는 `char *` 배열에 strdup 후 free.
+| 커밋 | 설명 | 수정 건수 |
+|------|------|:---:|
+| 8196b99 | lrclib_provider.c 회귀 수정 (S912, S859, S134) | BLOCKER 1 + CRITICAL 2 |
+| 5f4470d | CRITICAL 4건 (mpris S134, config S134, system_tray S859 x3) | CRITICAL 4 |
+| 3a62cf3 | if 병합 8건 (S1066) + 미사용 파라미터 8건 (S1172) | MAJOR 16 |
+| 2de305e | 주석 수정 (S125 x2) + utime 교체 (S1911) + include 위치 (S954) | MAJOR 4 |
+| 4356a66 | 중첩 break 감소 (S924 x3) | MAJOR 3 |
 
 ---
 
-## Phase 10-C: 남은 MAJOR 이슈 (36건)
+## 남은 MAJOR 이슈 (예상 13건)
 
 ### Priority 1: 과다 파라미터 (12건) — 구조체 리팩토링
 **Rule**: c:S107 (>7 파라미터)
@@ -93,52 +58,16 @@
 | lrcx_parser.c | 208 | 8 |
 | dbus_control.c | 66 | 8 |
 
-### Priority 2: 중첩 if 병합 (8건)
-**Rule**: c:S1066
+### Priority 2: 구조체 필드 과다 (1건)
+**Rule**: c:S1820
 
-| 파일 | 라인 |
-|------|------|
-| config.c | 1248 |
-| parser_utils.c | 620 |
-| parser_utils.c | 630 |
-| main.c | 281 |
-| lrc_parser.c | 154 |
-| lyrics_provider.c | 726 |
-| lyrics_provider.c | 733 |
-| system_tray.c | 193 |
+| 파일 | 라인 | 문제 |
+|------|------|------|
+| main.h | 51 | 구조체 필드 42개 (최대 20) |
 
-### Priority 3: 미사용 파라미터 (8건)
-**Rule**: c:S1172
-
-| 파일 | 라인 | 파라미터 |
-|------|------|---------|
-| dbus_control.c | 67 | connection |
-| dbus_control.c | 68 | sender |
-| dbus_control.c | 69 | object_path |
-| dbus_control.c | 70 | interface_name |
-| dbus_control.c | 157 | name |
-| dbus_control.c | 193 | user_data |
-| dbus_control.c | 193 | connection |
-| dbus_control.c | 198 | user_data |
-
-### Priority 4: 중첩 break (3건)
-**Rule**: c:S924
-
-| 파일 | 라인 |
-|------|------|
-| lyrics_provider.c | 630 |
-| mpris.c | 645 |
-| translator_common.c | 271 |
-
-### Priority 5: 기타 MAJOR (5건)
-
-| Rule | 파일 | 라인 | 문제 |
-|------|------|------|------|
-| S125 | lyrics_provider.c | 546 | 주석 처리된 코드 제거 |
-| S125 | lyrics_provider.c | 561 | 주석 처리된 코드 제거 |
-| S1911 | file_utils.c | 691 | `utime()` → `utimensat()` 교체 |
-| S1820 | main.h | 51 | 구조체 필드 42개 (최대 20) |
-| S954 | lang_detect.c | 12 | #include 위치 이동 |
+> S107 12건과 S1820 1건은 모두 구조체 리팩토링이 필요하며 API 변경이 광범위함.
+> rendering_manager, word_render, ruby_render는 렌더링 파라미터 구조체로 묶을 수 있음.
+> dbus_control.c:66은 GDBus 콜백 시그니처라 변경 불가 (제외 가능).
 
 ---
 
@@ -183,7 +112,7 @@
 | 9-1 | `on_properties_changed()` CC 34→분리 | ba85ad3 |
 | 9-2 | `build_search_directories()` CC 28→분리 | ba85ad3 |
 
-### Phase 10 일부 (완료)
+### Phase 10: MAJOR/CRITICAL 수정 (완료)
 
 | 문제 | 건수 | 커밋 |
 |------|:---:|------|
@@ -191,6 +120,16 @@
 | 중첩 if 병합 (parser_utils, shm) | 3 | 23ee4fc |
 | 중첩 break 감소 (lrclib_provider) | 1 | 23ee4fc |
 | COPR 빌드 수정 (translator_common NULL 체크) | 1 | 4d014d0 |
+| lrclib_provider.c 회귀 (S912, S859, S134) | 3 | 8196b99 |
+| mpris.c S134 early-continue | 1 | 5f4470d |
+| config.c S134 헬퍼 추출 | 1 | 5f4470d |
+| system_tray.c S859 strdup 교체 (x3) | 3 | 5f4470d |
+| 중첩 if 병합 (S1066 x8) | 8 | 3a62cf3 |
+| 미사용 파라미터 dbus_control (S1172 x8) | 8 | 3a62cf3 |
+| 주석 수정 (S125 x2) | 2 | 2de305e |
+| utime→utimensat (S1911) | 1 | 2de305e |
+| include 위치 이동 (S954) | 1 | 2de305e |
+| 중첩 break 감소 (S924 x3) | 3 | 4356a66 |
 
 ### MEDIUM 이슈 (미착수)
 
@@ -210,11 +149,10 @@
 
 ## 권장 작업 순서
 
-1. **Phase 10-A** — lrclib_provider.c 회귀 3건 수정 (BLOCKER 1 + CRITICAL 2)
-2. **Phase 10-B** — 신규 CRITICAL 4건 (중첩 깊이 2 + const 캐스트 3)
-3. **Phase 10-C** — 남은 MAJOR 36건
-4. **Phase 11** — MINOR 132건
-5. **MEDIUM** — 코드 분석 발견 이슈 9건
+1. **푸시** — 미푸시 커밋 5건 반영 후 SonarCloud 스캔 결과 확인
+2. **Phase 10 잔여** — S107 (12건) + S1820 (1건) 구조체 리팩토링
+3. **Phase 11** — MINOR 132건
+4. **MEDIUM** — 코드 분석 발견 이슈 9건
 
 ---
 
@@ -228,9 +166,9 @@
 
 ## 상태
 
-- **최종 업데이트**: 2026-02-23 오후 (Phase 9 + Phase 10 일부 완료 후)
-- **현재 Phase**: Phase 10-A (회귀 수정) → 10-B → 10-C → 11
-- **완료**: Phase 1-9, Phase S, Phase H, Phase 10 일부
-- **남은 이슈**: SonarCloud 176건 (BLOCKER 1 + CRITICAL 7 + MAJOR 36 + MINOR 132)
+- **최종 업데이트**: 2026-02-24 (Phase 10-A/B/C 일부 완료)
+- **현재 Phase**: 푸시 대기 → Phase 10 잔여 (구조체) → Phase 11
+- **완료**: Phase 1-10 (BLOCKER/CRITICAL 전부, MAJOR 대부분)
+- **남은 이슈**: 예상 ~145건 (MAJOR 13 + MINOR 132)
 - **목표**: A등급 유지, Quality Gate GREEN 유지, BLOCKER/CRITICAL 0개
 - **참고**: Coverity CID 643610 수정 완료 (b3a410a)
