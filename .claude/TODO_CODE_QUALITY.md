@@ -1,6 +1,6 @@
 # TODO: Code Quality & Security Improvements
 
-## 현재 상태 (2026-02-24, 3차 업데이트)
+## 현재 상태 (2026-02-24, 스캔 반영 후)
 
 ### 완료된 Phase
 - **Phase 1-8**: Bugs 0개, Vulnerabilities 0개, BLOCKER 0개
@@ -9,36 +9,45 @@
 - **Phase 9**: Cognitive Complexity CRITICAL 2건 수정 (ba85ad3)
 - **Phase 10-pre**: MAJOR 8건 수정 (23ee4fc) + COPR 빌드 수정 (4d014d0)
 - **Phase 10-A**: lrclib_provider.c 회귀 BLOCKER+CRITICAL 3건 수정 (8196b99)
-- **Phase 10-B**: 신규 CRITICAL 4건 수정 (5f4470d) — S134 x2, S859 x3
-- **Phase 10-C 일부**: MAJOR 23건 수정 (3a62cf3, 2de305e, 4356a66)
+- **Phase 10-B**: CRITICAL 4건 수정 (5f4470d) — S134 x2, S859 x3
+- **Phase 10-C**: MAJOR 23건 수정 (3a62cf3, 2de305e, 4356a66)
 
-### 📊 SonarCloud 현황 (푸시 전 예상)
+### 📊 SonarCloud 현황 (실측)
 
-| 심각도 | 이전 (2/23) | 수정 | 예상 잔여 |
+| 심각도 | 이전 (2/23) | 현재 (2/24) | 변동 |
 |--------|:---:|:---:|:---:|
-| BLOCKER | 1 | -1 | **0** |
-| CRITICAL | 7 | -7 | **0** |
-| MAJOR | 36 | -23 | **13** |
-| MINOR | 132 | 0 | **132** |
-| **합계** | **176** | **-31** | **~145** |
+| BLOCKER | 1 | **0** | -1 |
+| CRITICAL | 7 | **2** | -5 (신규 2건) |
+| MAJOR | 36 | **14** | -22 |
+| MINOR | 132 | **137** | +5 |
+| **합계** | **176** | **153** | **-23** |
 
-> 실제 수치는 푸시 후 SonarCloud 스캔 결과로 확인 필요
+### Security Hotspot (1건, TO_REVIEW)
 
----
+| 파일 | 라인 | Rule | 문제 | 확률 |
+|------|------|------|------|------|
+| parser_utils.c | 629 | S5813 | `strlen` 사용 안전성 | HIGH |
 
-## 미푸시 커밋 (5건)
-
-| 커밋 | 설명 | 수정 건수 |
-|------|------|:---:|
-| 8196b99 | lrclib_provider.c 회귀 수정 (S912, S859, S134) | BLOCKER 1 + CRITICAL 2 |
-| 5f4470d | CRITICAL 4건 (mpris S134, config S134, system_tray S859 x3) | CRITICAL 4 |
-| 3a62cf3 | if 병합 8건 (S1066) + 미사용 파라미터 8건 (S1172) | MAJOR 16 |
-| 2de305e | 주석 수정 (S125 x2) + utime 교체 (S1911) + include 위치 (S954) | MAJOR 4 |
-| 4356a66 | 중첩 break 감소 (S924 x3) | MAJOR 3 |
+> `finalize_ruby_segments()`에서 text는 호출자에 의해 NULL-terminated 보장.
+> SonarCloud 웹에서 수동으로 "Safe" 마킹 필요.
 
 ---
 
-## 남은 MAJOR 이슈 (예상 13건)
+## 신규 CRITICAL 이슈 (2건) — 리팩토링 회귀
+
+우리 리팩토링으로 인해 mpris.c에서 새로 감지된 중첩 깊이 이슈:
+
+| 파일 | 라인 | Rule | 문제 |
+|------|------|------|------|
+| mpris.c | 231 | S134 | `list_available_players()` 중첩 깊이 > 3 |
+| mpris.c | 653 | S134 | preferred player 루프 중첩 깊이 > 3 |
+
+> mpris.c:231은 이전 10-B1에서 수정했으나 라인이 이동하여 다시 감지된 것일 수 있음.
+> mpris.c:653은 S924 수정(4356a66)에서 for+done 패턴 도입 시 발생한 신규 이슈.
+
+---
+
+## 남은 MAJOR 이슈 (14건)
 
 ### Priority 1: 과다 파라미터 (12건) — 구조체 리팩토링
 **Rule**: c:S107 (>7 파라미터)
@@ -65,22 +74,29 @@
 |------|------|------|
 | main.h | 51 | 구조체 필드 42개 (최대 20) |
 
-> S107 12건과 S1820 1건은 모두 구조체 리팩토링이 필요하며 API 변경이 광범위함.
-> rendering_manager, word_render, ruby_render는 렌더링 파라미터 구조체로 묶을 수 있음.
-> dbus_control.c:66은 GDBus 콜백 시그니처라 변경 불가 (제외 가능).
+### Priority 3: 중첩 break (1건)
+**Rule**: c:S924
+
+| 파일 | 라인 | 문제 |
+|------|------|------|
+| lrclib_provider.c | 113 | 중첩 break 3→1 필요 |
+
+> dbus_control.c:66은 GDBus 콜백 시그니처라 변경 불가 (Won't Fix 가능).
+> lrclib_provider.c:113은 이전 수정(8196b99)의 early-continue 패턴에서 잔존.
 
 ---
 
-## Phase 11: MINOR 이슈 (132건)
+## Phase 11: MINOR 이슈 (137건)
 
-| Rule | 설명 | 건수 |
+| Rule | 설명 | 예상 건수 |
 |------|------|:---:|
-| c:S995 | Pointer-to-const 파라미터 | 47 |
-| c:S1659 | 다중 선언 분리 | 39 |
-| c:S5350 | Pointer-to-const 변수 | 36 |
-| c:S1905 | 불필요한 cast 제거 | 9 |
-| c:S886 | 루프 리팩토링 | 1 |
-| **합계** | | **132** |
+| c:S995 | Pointer-to-const 파라미터 | ~47 |
+| c:S1659 | 다중 선언 분리 | ~39 |
+| c:S5350 | Pointer-to-const 변수 | ~36 |
+| c:S1905 | 불필요한 cast 제거 | ~9 |
+| c:S886 | 루프 리팩토링 | ~1 |
+| 기타 | 신규 감지 | ~5 |
+| **합계** | | **137** |
 
 ---
 
@@ -149,10 +165,11 @@
 
 ## 권장 작업 순서
 
-1. **푸시** — 미푸시 커밋 5건 반영 후 SonarCloud 스캔 결과 확인
-2. **Phase 10 잔여** — S107 (12건) + S1820 (1건) 구조체 리팩토링
-3. **Phase 11** — MINOR 132건
-4. **MEDIUM** — 코드 분석 발견 이슈 9건
+1. **CRITICAL 2건** — mpris.c:231, 653 중첩 깊이 수정
+2. **MAJOR 잔여** — lrclib_provider.c S924 (1건) + S107 구조체 리팩토링 (12건) + S1820 (1건)
+3. **Security Hotspot** — parser_utils.c S5813 수동 리뷰
+4. **Phase 11** — MINOR 137건
+5. **MEDIUM** — 코드 분석 발견 이슈 9건
 
 ---
 
@@ -166,9 +183,9 @@
 
 ## 상태
 
-- **최종 업데이트**: 2026-02-24 (Phase 10-A/B/C 일부 완료)
-- **현재 Phase**: 푸시 대기 → Phase 10 잔여 (구조체) → Phase 11
-- **완료**: Phase 1-10 (BLOCKER/CRITICAL 전부, MAJOR 대부분)
-- **남은 이슈**: 예상 ~145건 (MAJOR 13 + MINOR 132)
+- **최종 업데이트**: 2026-02-24 (SonarCloud 스캔 반영 후)
+- **현재 Phase**: CRITICAL 2건 → MAJOR 잔여 → Phase 11
+- **완료**: Phase 1-10 (BLOCKER 0, MAJOR 대부분)
+- **남은 이슈**: 153건 (CRITICAL 2 + MAJOR 14 + MINOR 137)
 - **목표**: A등급 유지, Quality Gate GREEN 유지, BLOCKER/CRITICAL 0개
 - **참고**: Coverity CID 643610 수정 완료 (b3a410a)

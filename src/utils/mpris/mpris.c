@@ -179,6 +179,18 @@ static struct track_metadata* parse_metadata_from_dict(GVariant *metadata_dict, 
     return metadata;
 }
 
+// Grow dynamic player array; returns new pointer or NULL on failure (original freed)
+static char** grow_players_array(char **players, int count, int *capacity) {
+    *capacity = *capacity == 0 ? 4 : *capacity * 2;
+    char **new_players = realloc(players, (size_t)*capacity * sizeof(char*));
+    if (!new_players) {
+        for (int i = 0; i < count; i++) free(players[i]);
+        free(players);
+        return NULL;
+    }
+    return new_players;
+}
+
 // Helper: List all MPRIS2 players on D-Bus
 static char** list_mpris_players(int *count) {
     *count = 0;
@@ -225,17 +237,13 @@ static char** list_mpris_players(int *count) {
 
         // Expand array if needed
         if (*count >= capacity) {
-            capacity = capacity == 0 ? 4 : capacity * 2;
-            char **new_players = realloc(players, capacity * sizeof(char*));
-            if (!new_players) {
-                for (int i = 0; i < *count; i++) free(players[i]);
-                free(players);
+            players = grow_players_array(players, *count, &capacity);
+            if (!players) {
                 *count = 0;
                 g_variant_unref(names_variant);
                 g_variant_unref(result);
                 return NULL;
             }
-            players = new_players;
         }
 
         players[*count] = strdup(player_name);
@@ -648,16 +656,17 @@ static bool should_switch_to_player(const char *player_name) {
              preferred && !done;
              preferred = strtok_r(NULL, ",", &saveptr)) {
             preferred = trim_whitespace_inplace(preferred);
-            if (*preferred != '\0') {
-                // If new player matches preferred, switch
-                if (strcmp(player_name, preferred) == 0) {
-                    should_switch = true;
-                    log_info("Preferred player appeared, switching to: %s", player_name);
-                    done = true;
-                } else if (strcmp(mpris_state.current_player, preferred) == 0) {
-                    // Found current player first, don't switch
-                    done = true;
-                }
+            if (*preferred == '\0') {
+                continue;
+            }
+            // If new player matches preferred, switch
+            if (strcmp(player_name, preferred) == 0) {
+                should_switch = true;
+                log_info("Preferred player appeared, switching to: %s", player_name);
+                done = true;
+            } else if (strcmp(mpris_state.current_player, preferred) == 0) {
+                // Found current player first, don't switch
+                done = true;
             }
         }
         free(players_copy);
