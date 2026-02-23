@@ -134,11 +134,9 @@ struct pool_buffer *get_next_buffer(struct wl_shm *shm,
         destroy_buffer(buffer);
     }
 
-    if (!buffer->buffer) {
-        if (!create_buffer(shm, buffer, width, height,
-                    WL_SHM_FORMAT_ARGB8888)) {
-            return NULL;
-        }
+    if (!buffer->buffer &&
+        !create_buffer(shm, buffer, width, height, WL_SHM_FORMAT_ARGB8888)) {
+        return NULL;
     }
     buffer->busy = true;
     return buffer;

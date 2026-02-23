@@ -166,7 +166,7 @@ bool lrc_parse_string(const char *content, struct lyrics_data *data) {
 }
 
 bool lrc_parse_file(const char *filename, struct lyrics_data *data) {
-    bool success = parse_file_generic(filename, "LRC", data, lrc_parse_string);
+    bool success = parse_file_generic(filename, data, lrc_parse_string);
 
     if (success) {
         warn_missing_metadata(data, "LRC");

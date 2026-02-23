@@ -17,8 +17,7 @@ bool parse_lrc_metadata_tag(const char *line, struct lyrics_metadata *metadata);
 
 // Read entire file into string, then call parser function
 // parser_func should parse the string and populate data
-bool parse_file_generic(const char *filename, const char *format_name,
-                        struct lyrics_data *data,
+bool parse_file_generic(const char *filename, struct lyrics_data *data,
                         bool (*parser_func)(const char *, struct lyrics_data *));
 
 // Parse ruby text (furigana) from text

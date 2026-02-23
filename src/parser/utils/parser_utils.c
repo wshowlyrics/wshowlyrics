@@ -149,8 +149,7 @@ bool parse_lrc_metadata_tag(const char *line, struct lyrics_metadata *metadata) 
     return false;
 }
 
-bool parse_file_generic(const char *filename, const char *format_name,
-                        struct lyrics_data *data,
+bool parse_file_generic(const char *filename, struct lyrics_data *data,
                         bool (*parser_func)(const char *, struct lyrics_data *)) {
     FILE *fp = fopen(filename, "r");
     if (!fp) {
@@ -496,7 +495,7 @@ static bool create_and_append_segment(const char *text, size_t text_len,
 // Returns: closing brace position on success, NULL on malformed or allocation failure
 // Note: Caller is responsible for cleanup on failure
 static const char* handle_translation(const char *pos, struct ruby_segment ***next_seg,
-                                     int *count, struct ruby_segment *head) {
+                                     int *count) {
     const char *close_brace = strchr(pos, '}');
     if (!close_brace) {
         return NULL;  // Malformed
@@ -525,14 +524,12 @@ static const char* handle_translation(const char *pos, struct ruby_segment ***ne
 // Returns: true on success, false on allocation failure
 // Note: Caller is responsible for cleanup on failure
 static bool handle_newline(const char *seg_start, const char *pos,
-                          struct ruby_segment ***next_seg, int *count,
-                          struct ruby_segment *head) {
+                          struct ruby_segment ***next_seg, int *count) {
     // Create segment for text before newline (if any)
-    if (pos > seg_start) {
-        if (!create_and_append_segment(seg_start, pos - seg_start, NULL, NULL,
-                                       next_seg, count)) {
-            return false;
-        }
+    if (pos > seg_start &&
+        !create_and_append_segment(seg_start, pos - seg_start, NULL, NULL,
+                                   next_seg, count)) {
+        return false;
     }
 
     // Create newline segment
@@ -548,7 +545,7 @@ static bool handle_newline(const char *seg_start, const char *pos,
 // Note: Caller is responsible for cleanup on failure
 static const char* handle_ruby_annotation(const char *pos, const char *seg_start,
                                          const char *text_end, struct ruby_segment ***next_seg,
-                                         int *count, struct ruby_segment *head) {
+                                         int *count) {
     const char *close_brace = strchr(pos, '}');
     if (!close_brace) {
         return NULL;  // Malformed
@@ -563,12 +560,11 @@ static const char* handle_ruby_annotation(const char *pos, const char *seg_start
     const char *word_start = find_word_start(seg_start, word_end, text_end);
 
     // Create segment for text before the word (if any)
-    if (word_start > seg_start) {
-        if (!create_and_append_segment(seg_start, word_start - seg_start, NULL, NULL,
-                                       next_seg, count)) {
-            free(ruby);
-            return NULL;
-        }
+    if (word_start > seg_start &&
+        !create_and_append_segment(seg_start, word_start - seg_start, NULL, NULL,
+                                   next_seg, count)) {
+        free(ruby);
+        return NULL;
     }
 
     // Create segment for the word with ruby
@@ -651,7 +647,7 @@ static int parse_ruby_segments_loop(const char *text, const char *text_end,
     while (*pos) {
         if (*pos == '{' && pos == seg_start) {
             // Translation at line start
-            const char *new_pos = handle_translation(pos, next_seg, count, head);
+            const char *new_pos = handle_translation(pos, next_seg, count);
             if (!new_pos && !handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
                 return -1;
             }
@@ -662,7 +658,7 @@ static int parse_ruby_segments_loop(const char *text, const char *text_end,
             seg_start = pos;
         } else if (*pos == '\n') {
             // Newline
-            if (!handle_newline(seg_start, pos, next_seg, count, head)) {
+            if (!handle_newline(seg_start, pos, next_seg, count)) {
                 // Memory cleanup handled by caller
                 return -1;
             }
@@ -671,7 +667,7 @@ static int parse_ruby_segments_loop(const char *text, const char *text_end,
         } else if (*pos == '{') {
             // Ruby annotation
             const char *new_pos = handle_ruby_annotation(pos, seg_start, text_end,
-                                                         next_seg, count, head);
+                                                         next_seg, count);
             if (!new_pos && !handle_parsing_failure_and_continue(pos, &pos, &seg_start, head)) {
                 return -1;
             }

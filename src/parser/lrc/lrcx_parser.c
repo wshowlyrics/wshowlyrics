@@ -471,7 +471,7 @@ bool lrcx_parse_string(const char *content, struct lyrics_data *data) {
 }
 
 bool lrcx_parse_file(const char *filename, struct lyrics_data *data) {
-    bool success = parse_file_generic(filename, "LRCX", data, lrcx_parse_string);
+    bool success = parse_file_generic(filename, data, lrcx_parse_string);
 
     if (success) {
         warn_missing_metadata(data, "LRCX");

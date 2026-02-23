@@ -255,5 +255,5 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
 }
 
 bool srt_parse_file(const char *filename, struct lyrics_data *data) {
-    return parse_file_generic(filename, "SRT", data, srt_parse_string);
+    return parse_file_generic(filename, data, srt_parse_string);
 }
