@@ -428,6 +428,73 @@ static bool is_track_ignored(const char *music_file_dir) {
     return false;
 }
 
+// Parse user-defined search directories from config
+// Returns number of directories added
+static int build_custom_search_dirs(const char **search_dirs, int max_dirs,
+                                    const char *current_dir,
+                                    char **allocated_dirs, int *alloc_count) {
+    int dir_count = 0;
+    char *dirs_copy = strdup(g_config.lyrics.search_dirs);
+    if (!dirs_copy) return 0;
+
+    char *saveptr;
+    char *token = strtok_r(dirs_copy, ":", &saveptr);
+
+    while (token && dir_count < max_dirs) {
+        char *trimmed = config_trim_whitespace(token);
+        char *expanded = expand_path_token(trimmed, current_dir);
+
+        if (expanded && expanded[0] != '\0') {
+            allocated_dirs[*alloc_count] = expanded;
+            search_dirs[dir_count++] = expanded;
+            (*alloc_count)++;
+        } else {
+            free(expanded);
+        }
+        token = strtok_r(NULL, ":", &saveptr);
+    }
+    free(dirs_copy);
+    return dir_count;
+}
+
+// Build default search directory list (hardcoded priority order)
+// Returns number of directories added
+static int build_default_search_dirs(const char **search_dirs, int max_dirs,
+                                     const char *current_dir,
+                                     char *lyrics_dir_buf, size_t buf_size) {
+    int dir_count = 0;
+
+    // Priority 1: Directory of currently playing file
+    if (current_dir && dir_count < max_dirs) {
+        search_dirs[dir_count++] = current_dir;
+    }
+
+    // Priority 2: Current directory (only for local builds)
+    if (is_local_build_executable() && dir_count < max_dirs) {
+        search_dirs[dir_count++] = ".";
+    }
+
+    // Priority 3: XDG_MUSIC_DIR
+    const char *xdg_music = getenv("XDG_MUSIC_DIR");
+    if (xdg_music && dir_count < max_dirs) {
+        search_dirs[dir_count++] = xdg_music;
+    }
+
+    // Priority 4: ~/.lyrics directory
+    const char *home = getenv("HOME");
+    if (home && dir_count < max_dirs &&
+        join_path_2(lyrics_dir_buf, buf_size, home, ".lyrics") >= 0) {
+        search_dirs[dir_count++] = lyrics_dir_buf;
+    }
+
+    // Priority 5: Home directory
+    if (home && dir_count < max_dirs) {
+        search_dirs[dir_count++] = home;
+    }
+
+    return dir_count;
+}
+
 // Build list of directories to search for lyrics files
 // allocated_dirs/alloc_count track dynamically allocated paths (from search_dirs config)
 // Caller must free allocated_dirs[0..alloc_count-1] after use
@@ -435,63 +502,15 @@ static bool is_track_ignored(const char *music_file_dir) {
 static int build_search_directories(const char **search_dirs, int max_dirs,
                                     const char *current_dir, char *lyrics_dir_buf, size_t buf_size,
                                     char **allocated_dirs, int *alloc_count) {
-    int dir_count = 0;
     *alloc_count = 0;
 
     if (g_config.lyrics.search_dirs && g_config.lyrics.search_dirs[0] != '\0') {
-        // User-defined search paths: replace default locations
-        char *dirs_copy = strdup(g_config.lyrics.search_dirs);
-        if (!dirs_copy) return 0;
-
-        char *saveptr;
-        char *token = strtok_r(dirs_copy, ":", &saveptr);
-
-        while (token && dir_count < max_dirs) {
-            char *trimmed = config_trim_whitespace(token);
-            char *expanded = expand_path_token(trimmed, current_dir);
-
-            if (expanded && expanded[0] != '\0') {
-                allocated_dirs[*alloc_count] = expanded;
-                search_dirs[dir_count++] = expanded;
-                (*alloc_count)++;
-            } else {
-                free(expanded);
-            }
-            token = strtok_r(NULL, ":", &saveptr);
-        }
-        free(dirs_copy);
-    } else {
-        // Default hardcoded search paths
-
-        // Priority 1: Directory of currently playing file
-        if (current_dir && dir_count < max_dirs) {
-            search_dirs[dir_count++] = current_dir;
-        }
-
-        // Priority 2: Current directory (only for local builds)
-        if (is_local_build_executable() && dir_count < max_dirs) {
-            search_dirs[dir_count++] = ".";
-        }
-
-        // Priority 3: XDG_MUSIC_DIR
-        const char *xdg_music = getenv("XDG_MUSIC_DIR");
-        if (xdg_music && dir_count < max_dirs) {
-            search_dirs[dir_count++] = xdg_music;
-        }
-
-        // Priority 4: ~/.lyrics directory
-        const char *home = getenv("HOME");
-        if (home && dir_count < max_dirs && join_path_2(lyrics_dir_buf, buf_size, home, ".lyrics") >= 0) {
-            search_dirs[dir_count++] = lyrics_dir_buf;
-        }
-
-        // Priority 5: Home directory
-        if (home && dir_count < max_dirs) {
-            search_dirs[dir_count++] = home;
-        }
+        return build_custom_search_dirs(search_dirs, max_dirs, current_dir,
+                                        allocated_dirs, alloc_count);
     }
 
-    return dir_count;
+    return build_default_search_dirs(search_dirs, max_dirs, current_dir,
+                                     lyrics_dir_buf, buf_size);
 }
 
 // Try to find lyrics using exact filename from URL

@@ -293,6 +293,111 @@ static bool mpris_send_command(const char *method) {
     return true;
 }
 
+// Handle PlaybackStatus changes from PropertiesChanged signal
+// Caller must hold mpris_state.mutex (may temporarily unlock for D-Bus calls)
+static void handle_playback_status(GVariant *changed_properties) {
+    GVariant *status_variant = g_variant_lookup_value(
+        changed_properties, "PlaybackStatus", G_VARIANT_TYPE_STRING);
+    if (!status_variant) return;
+
+    const char *status = g_variant_get_string(status_variant, NULL);
+    free(mpris_state.playback_status);
+    mpris_state.playback_status = strdup(status);
+    log_info("PlaybackStatus changed: %s", status);
+
+    // Make a copy for thread-safe use after mutex unlock
+    char *status_copy = strdup(status);
+    g_variant_unref(status_variant);
+
+    bool is_paused_or_stopped = (strcmp(status_copy, "Paused") == 0 ||
+                                 strcmp(status_copy, "Stopped") == 0);
+    bool is_playing = (strcmp(status_copy, "Playing") == 0);
+
+    // If playback started, force metadata check to catch track changes
+    // Some players (YouTube Music Desktop) don't emit Metadata PropertiesChanged
+    // when track changes, only PlaybackStatus changes (Paused -> Playing)
+    if (is_playing) {
+        mpris_state.metadata_changed = true;
+    }
+
+    // If current player paused/stopped, check for other playing players
+    if (is_paused_or_stopped) {
+        char *current = mpris_state.current_player ?
+                        strdup(mpris_state.current_player) : NULL;
+        g_mutex_unlock(&mpris_state.mutex);
+
+        char *new_player = find_best_player();
+        if (new_player && current && strcmp(new_player, current) != 0) {
+            log_info("Current player paused/stopped, switching to playing player: %s",
+                     new_player);
+            setup_player_subscription(new_player);
+            // Don't free new_player - ownership transferred to setup_player_subscription
+        } else {
+            free(new_player);
+        }
+
+        free(current);
+        g_mutex_lock(&mpris_state.mutex);
+    }
+
+    free(status_copy);
+}
+
+// Handle Metadata changes from PropertiesChanged signal
+// Caller must hold mpris_state.mutex
+static void handle_metadata_update(GVariant *changed_properties,
+                                   const char *saved_player) {
+    GVariant *metadata_variant = g_variant_lookup_value(
+        changed_properties, "Metadata", NULL);
+    if (!metadata_variant) return;
+
+    // Only treat as track change if currently playing or stopped
+    // Ignore metadata signals during pause/resume (some players send spurious signals)
+    bool should_handle = mpris_state.playback_status &&
+        (strcmp(mpris_state.playback_status, "Playing") == 0 ||
+         strcmp(mpris_state.playback_status, "Stopped") == 0);
+
+    if (should_handle) {
+        log_info("Track metadata changed - new track detected");
+        mpris_state.position_us = 0;
+        mpris_state.position_timestamp_us = get_monotonic_time_us();
+        mpris_state.metadata_changed = true;
+
+        // Parse and cache metadata from signal to avoid stale data race condition
+        if (mpris_state.cached_metadata) {
+            mpris_free_metadata(mpris_state.cached_metadata);
+            free(mpris_state.cached_metadata);
+            mpris_state.cached_metadata = NULL;
+        }
+
+        // metadata_variant may be variant(dict) or dict directly depending on player
+        GVariant *metadata_dict = NULL;
+        if (g_variant_is_of_type(metadata_variant, G_VARIANT_TYPE_VARIANT)) {
+            metadata_dict = g_variant_get_variant(metadata_variant);
+        } else {
+            metadata_dict = g_variant_ref(metadata_variant);
+        }
+        if (metadata_dict) {
+            mpris_state.cached_metadata = parse_metadata_from_dict(
+                metadata_dict, saved_player);
+            g_variant_unref(metadata_dict);
+        }
+
+        // Spotify position drift fix: Mark that position fix is needed
+        // Actual fix will be applied after lyrics load for better timing
+        bool is_spotify = saved_player &&
+                         strcasecmp(saved_player, "spotify") == 0;
+
+        struct config *cfg = config_get();
+        if (is_spotify && cfg->spotify.auto_position_fix) {
+            mpris_state.position_fix_needed = true;
+            log_info("Spotify auto track change detected - "
+                     "position fix will be applied after lyrics load");
+        }
+    }
+    g_variant_unref(metadata_variant);
+}
+
 // Callback: Handle PropertiesChanged signal
 static void on_properties_changed(
     G_GNUC_UNUSED GDBusConnection *connection,
@@ -303,118 +408,25 @@ static void on_properties_changed(
     GVariant *parameters,
     G_GNUC_UNUSED gpointer user_data)
 {
-
-    // Parse PropertiesChanged signal: (interface, changed_properties, invalidated_properties)
     const gchar *iface;
     GVariant *changed_properties;
     GVariant *invalidated_properties;
 
-    g_variant_get(parameters, "(&s@a{sv}@as)", &iface, &changed_properties, &invalidated_properties);
+    g_variant_get(parameters, "(&s@a{sv}@as)", &iface,
+                  &changed_properties, &invalidated_properties);
 
     g_mutex_lock(&mpris_state.mutex);
 
     // Save player identity for safe use across unlock/relock gap (TOCTOU prevention)
-    // Another signal handler could change current_player during the unlock period
-    char *saved_player = mpris_state.current_player ? strdup(mpris_state.current_player) : NULL;
+    char *saved_player = mpris_state.current_player ?
+                         strdup(mpris_state.current_player) : NULL;
 
-    // Check for PlaybackStatus change
-    GVariant *status_variant = g_variant_lookup_value(changed_properties, "PlaybackStatus", G_VARIANT_TYPE_STRING);
-    if (status_variant) {
-        const char *status = g_variant_get_string(status_variant, NULL);
-        free(mpris_state.playback_status);
-        mpris_state.playback_status = strdup(status);
-        log_info("PlaybackStatus changed: %s", status);
-
-        // Make a copy for thread-safe use after mutex unlock
-        char *status_copy = strdup(status);
-        g_variant_unref(status_variant);  // Unref early since we copied the string
-
-        // Check status type for different actions
-        bool is_paused_or_stopped = (strcmp(status_copy, "Paused") == 0 || strcmp(status_copy, "Stopped") == 0);
-        bool is_playing = (strcmp(status_copy, "Playing") == 0);
-
-        // If playback started, force metadata check to catch track changes
-        // Some players (YouTube Music Desktop) don't emit Metadata PropertiesChanged
-        // when track changes, only PlaybackStatus changes (Paused -> Playing)
-        if (is_playing) {
-            mpris_state.metadata_changed = true;
-        }
-
-        // If current player paused/stopped, check for other playing players
-        if (is_paused_or_stopped) {
-            char *current = mpris_state.current_player ? strdup(mpris_state.current_player) : NULL;
-            g_mutex_unlock(&mpris_state.mutex);  // Unlock before D-Bus call
-
-            char *new_player = find_best_player();
-            if (new_player && current && strcmp(new_player, current) != 0) {
-                log_info("Current player paused/stopped, switching to playing player: %s", new_player);
-                setup_player_subscription(new_player);
-                // Don't free new_player - ownership transferred to setup_player_subscription
-            } else {
-                free(new_player);  // Only free if not used
-            }
-
-            free(current);
-            g_mutex_lock(&mpris_state.mutex);  // Re-lock for rest of function
-        }
-
-        free(status_copy);
-    }
-
-    // Check for Metadata change (track changed)
-    GVariant *metadata_variant = g_variant_lookup_value(changed_properties, "Metadata", NULL);
-    if (metadata_variant) {
-        // Only treat as track change if currently playing or stopped
-        // Ignore metadata signals during pause/resume (some players send spurious signals)
-        bool should_handle_metadata_change = mpris_state.playback_status &&
-                                            (strcmp(mpris_state.playback_status, "Playing") == 0 ||
-                                             strcmp(mpris_state.playback_status, "Stopped") == 0);
-
-        if (should_handle_metadata_change) {
-            log_info("Track metadata changed - new track detected");
-            // Reset position when track changes
-            mpris_state.position_us = 0;
-            mpris_state.position_timestamp_us = get_monotonic_time_us();
-            mpris_state.metadata_changed = true;  // Signal that metadata needs refresh
-
-            // Parse and cache metadata from signal to avoid stale data race condition
-            // When querying metadata later, the player might not have updated yet
-            if (mpris_state.cached_metadata) {
-                mpris_free_metadata(mpris_state.cached_metadata);
-                free(mpris_state.cached_metadata);
-                mpris_state.cached_metadata = NULL;
-            }
-            // metadata_variant may be variant(dict) or dict directly depending on player
-            GVariant *metadata_dict = NULL;
-            if (g_variant_is_of_type(metadata_variant, G_VARIANT_TYPE_VARIANT)) {
-                metadata_dict = g_variant_get_variant(metadata_variant);
-            } else {
-                metadata_dict = g_variant_ref(metadata_variant);
-            }
-            if (metadata_dict) {
-                mpris_state.cached_metadata = parse_metadata_from_dict(
-                    metadata_dict, saved_player);
-                g_variant_unref(metadata_dict);
-            }
-
-            // Spotify position drift fix: Mark that position fix is needed
-            // Actual fix will be applied after lyrics load for better timing
-            bool is_spotify = saved_player &&
-                             strcasecmp(saved_player, "spotify") == 0;
-
-            struct config *cfg = config_get();
-            if (is_spotify && cfg->spotify.auto_position_fix) {
-                mpris_state.position_fix_needed = true;
-                log_info("Spotify auto track change detected - position fix will be applied after lyrics load");
-            }
-        }
-        g_variant_unref(metadata_variant);
-    }
+    handle_playback_status(changed_properties);
+    handle_metadata_update(changed_properties, saved_player);
 
     g_mutex_unlock(&mpris_state.mutex);
 
     free(saved_player);
-
     g_variant_unref(changed_properties);
     g_variant_unref(invalidated_properties);
 }
