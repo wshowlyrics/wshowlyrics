@@ -212,32 +212,34 @@ static char** list_mpris_players(int *count) {
 
     g_variant_iter_init(&iter, names_variant);
     while (g_variant_iter_next(&iter, "&s", &name)) {
-        if (strncmp(name, "org.mpris.MediaPlayer2.", 23) == 0) {
-            const char *player_name = name + 23;
-
-            // Skip browsers and playerctld (MPRIS proxy)
-            if (is_browser_or_proxy(player_name)) {
-                continue;
-            }
-
-            // Expand array if needed
-            if (*count >= capacity) {
-                capacity = capacity == 0 ? 4 : capacity * 2;
-                char **new_players = realloc(players, capacity * sizeof(char*));
-                if (!new_players) {
-                    for (int i = 0; i < *count; i++) free(players[i]);
-                    free(players);
-                    *count = 0;
-                    g_variant_unref(names_variant);
-                    g_variant_unref(result);
-                    return NULL;
-                }
-                players = new_players;
-            }
-
-            players[*count] = strdup(player_name);
-            (*count)++;
+        if (strncmp(name, "org.mpris.MediaPlayer2.", 23) != 0) {
+            continue;
         }
+
+        const char *player_name = name + 23;
+
+        // Skip browsers and playerctld (MPRIS proxy)
+        if (is_browser_or_proxy(player_name)) {
+            continue;
+        }
+
+        // Expand array if needed
+        if (*count >= capacity) {
+            capacity = capacity == 0 ? 4 : capacity * 2;
+            char **new_players = realloc(players, capacity * sizeof(char*));
+            if (!new_players) {
+                for (int i = 0; i < *count; i++) free(players[i]);
+                free(players);
+                *count = 0;
+                g_variant_unref(names_variant);
+                g_variant_unref(result);
+                return NULL;
+            }
+            players = new_players;
+        }
+
+        players[*count] = strdup(player_name);
+        (*count)++;
     }
 
     g_variant_unref(names_variant);

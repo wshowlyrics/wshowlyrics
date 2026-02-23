@@ -376,6 +376,31 @@ char* config_get_path(void) {
     return config_get_user_path();
 }
 
+// Send desktop notification about insecure config file permissions
+static void send_insecure_permissions_notification(mode_t mode, const char *path) {
+    struct config *cfg = config_get();
+    if (!cfg->lyrics.enable_notifications) return;
+
+    char mode_str[8];
+    snprintf(mode_str, sizeof(mode_str), "%04o", mode);
+    char body[512];
+    snprintf(body, sizeof(body),
+        "Config file has insecure permissions (%s)\n\n"
+        "File: %s\n\n"
+        "Please run: chmod 600 %s",
+        mode_str, sanitize_path(path), sanitize_path(path));
+    char timeout_str[16];
+    snprintf(timeout_str, sizeof(timeout_str), "%d", cfg->lyrics.notification_timeout);
+    char *argv[] = {
+        "notify-send", "-a", "wshowlyrics", "-u", "critical",
+        "-t", timeout_str, "Security Warning", body, NULL
+    };
+    GError *error = NULL;
+    if (!g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error)) {
+        g_error_free(error);
+    }
+}
+
 // Check config file permissions and fix them if they're too permissive
 static void check_and_fix_config_permissions(const char *path) {
     // Use open() + fstat() + fchmod() to avoid TOCTOU race condition
@@ -424,27 +449,7 @@ static void check_and_fix_config_permissions(const char *path) {
             log_warn("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
             // Send error notification only on failure
-            struct config *cfg = config_get();
-            if (cfg->lyrics.enable_notifications) {
-                char mode_str[8];
-                snprintf(mode_str, sizeof(mode_str), "%04o", mode);
-                char body[512];
-                snprintf(body, sizeof(body),
-                    "Config file has insecure permissions (%s)\n\n"
-                    "File: %s\n\n"
-                    "Please run: chmod 600 %s",
-                    mode_str, sanitize_path(path), sanitize_path(path));
-                char timeout_str[16];
-                snprintf(timeout_str, sizeof(timeout_str), "%d", cfg->lyrics.notification_timeout);
-                char *argv[] = {
-                    "notify-send", "-a", "wshowlyrics", "-u", "critical",
-                    "-t", timeout_str, "Security Warning", body, NULL
-                };
-                GError *error = NULL;
-                if (!g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error)) {
-                    g_error_free(error);
-                }
-            }
+            send_insecure_permissions_notification(mode, path);
             close(fd);
         }
     } else {

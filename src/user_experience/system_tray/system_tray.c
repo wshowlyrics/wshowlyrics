@@ -343,12 +343,21 @@ static void on_edit_settings(GtkMenuItem *item, gpointer user_data) {
     log_info("Menu: Opening settings with: %s -e %s \"%s\"",
              terminal, editor, sanitize_path(config_path));
 
-    char *argv[] = { (char *)terminal, "-e", (char *)editor, config_path, NULL };
+    char *term_arg = strdup(terminal);
+    char *editor_arg = strdup(editor);
+    if (!term_arg || !editor_arg) {
+        free(term_arg);
+        free(editor_arg);
+        return;
+    }
+    char *argv[] = { term_arg, "-e", editor_arg, config_path, NULL };
     GError *error = NULL;
     if (!g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error)) {
         log_warn("Menu: Failed to open editor: %s", error->message);
         g_error_free(error);
     }
+    free(term_arg);
+    free(editor_arg);
 }
 
 static void on_quit(GtkMenuItem *item, gpointer user_data) {
@@ -692,9 +701,11 @@ void system_tray_send_notification(const struct notification_info *info) {
     // Execute notify-send via g_spawn_async (no shell interpretation)
     char timeout_str[16];
     snprintf(timeout_str, sizeof(timeout_str), "%d", g_config.lyrics.notification_timeout);
+    char *icon_arg = strdup(icon_path);
+    if (!icon_arg) return;
     char *argv[] = {
         "notify-send", "-a", "wshowlyrics",
-        "-i", (char *)icon_path,
+        "-i", icon_arg,
         "-e", "-t", timeout_str,
         notification_title, body, NULL
     };
@@ -703,6 +714,7 @@ void system_tray_send_notification(const struct notification_info *info) {
         log_warn("notify-send failed: %s", error->message);
         g_error_free(error);
     }
+    free(icon_arg);
 }
 
 // Cache current artwork from g_icon_path to cache_path
