@@ -11,7 +11,6 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <time.h>
-#include <utime.h>
 #include <fcntl.h>
 
 // Static cache for directory paths (initialized on first use)
@@ -688,7 +687,7 @@ bool touch_cache_file(const char *filepath) {
     }
 
     // Update access and modification time to current time
-    if (utime(filepath, NULL) == 0) {
+    if (utimensat(AT_FDCWD, filepath, NULL, 0) == 0) {
         return true;
     }
 

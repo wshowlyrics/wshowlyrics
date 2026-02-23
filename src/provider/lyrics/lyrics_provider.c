@@ -543,7 +543,7 @@ static bool try_title_patterns(const char *dir, const char *title_safe,
     for (int ext_idx = 0; extensions[ext_idx]; ext_idx++) {
         const char *ext = extensions[ext_idx];
 
-        // Pattern 1: Title.ext
+        // Search: <title>.<extension>
         if (build_path_with_ext(path, sizeof(path), dir, title_safe, ext) >= 0) {
             log_info("Trying: %s", sanitize_path(path));
             if (try_load_lyrics_file(path, data)) {
@@ -552,13 +552,13 @@ static bool try_title_patterns(const char *dir, const char *title_safe,
         }
 
         if (artist_safe) {
-            // Pattern 2: Artist - Title.ext
+            // Search: <artist> - <title>.<extension>
             if (build_path_artist_title(path, sizeof(path), dir, artist_safe, title_safe, ext) >= 0 &&
                 try_load_lyrics_file(path, data)) {
                 return true;
             }
 
-            // Pattern 3: Artist/Title.ext
+            // Search: <artist>/<title>.<extension>
             if (build_path_with_subdir_ext(path, sizeof(path), dir, artist_safe, title_safe, ext) >= 0 &&
                 try_load_lyrics_file(path, data)) {
                 return true;

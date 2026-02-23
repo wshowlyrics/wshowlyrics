@@ -6,11 +6,13 @@
 #include <strings.h>
 #include <stdlib.h>
 
+#ifdef HAVE_LIBEXTTEXTCAT
+#include <libexttextcat/textcat.h>
+#endif
+
 static bool detection_available = false;
 
 #ifdef HAVE_LIBEXTTEXTCAT
-#include <libexttextcat/textcat.h>
-
 static void *textcat_handle = NULL;
 
 /**
