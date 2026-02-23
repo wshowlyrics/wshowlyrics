@@ -637,6 +637,15 @@ void* translator_async_worker(void *arg) {
     struct translator_thread_args *args = (struct translator_thread_args *)arg;
     struct lyrics_data *data = args->data;
 
+    if (!data) {
+        free(args->target_lang);
+        free(args->api_key);
+        free(args->model_name);
+        free(args->cache_path);
+        free(args);
+        return NULL;
+    }
+
     // Count translatable lines
     int translatable_count = translator_count_translatable_lines(data);
     data->translation_total = translatable_count;
