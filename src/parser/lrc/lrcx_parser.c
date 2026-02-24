@@ -8,6 +8,15 @@
 #include <string.h>
 #include <ctype.h>
 
+// Context for building LRCX line segments and accumulating full text
+struct lrcx_line_builder {
+	struct lyrics_line *line;
+	struct word_segment **next_segment;  // pointer to next segment slot
+	char *full_text;
+	size_t full_text_len;
+	size_t full_text_capacity;
+};
+
 // Helper: Find text range after line timestamp (before next '[')
 // Returns: end pointer if text found, NULL otherwise
 static const char* find_first_text_range(const char *pos, const char **start_out) {
@@ -44,8 +53,7 @@ static const char* find_first_text_range(const char *pos, const char **start_out
 // Helper: Build full_text buffer from word segments (base text only, no ruby)
 // Returns: false on allocation failure
 static bool build_full_text_from_segments(struct word_segment *segments,
-                                          char **full_text, size_t *full_text_len,
-                                          size_t *full_text_capacity) {
+                                          struct lrcx_line_builder *builder) {
     // Calculate required buffer size
     size_t estimated_len = 0;
     struct word_segment *seg = segments;
@@ -57,9 +65,9 @@ static bool build_full_text_from_segments(struct word_segment *segments,
     }
 
     // Allocate buffer
-    *full_text_capacity = estimated_len + 1;
-    *full_text = malloc(*full_text_capacity);
-    if (!*full_text) {
+    builder->full_text_capacity = estimated_len + 1;
+    builder->full_text = malloc(builder->full_text_capacity);
+    if (!builder->full_text) {
         return false;
     }
 
@@ -68,23 +76,21 @@ static bool build_full_text_from_segments(struct word_segment *segments,
     while (seg) {
         if (seg->text && seg->text[0] != '\n') {
             size_t seg_len = strlen(seg->text);
-            memcpy(*full_text + *full_text_len, seg->text, seg_len);
-            *full_text_len += seg_len;
+            memcpy(builder->full_text + builder->full_text_len, seg->text, seg_len);
+            builder->full_text_len += seg_len;
         }
         seg = seg->next;
     }
-    (*full_text)[*full_text_len] = '\0';
+    builder->full_text[builder->full_text_len] = '\0';
 
     return true;
 }
 
 // Parse first text segment (text immediately after line timestamp, before first word timestamp)
-// Returns updated position and whether full_text was allocated
+// Returns updated position, or NULL on error
 static const char* parse_first_text_segment(const char *pos, int64_t line_timestamp_us,
-                                             const struct lyrics_data *data, struct lyrics_line *new_line,
-                                             struct word_segment ***next_segment_ptr,
-                                             char **full_text, size_t *full_text_len,
-                                             size_t *full_text_capacity) {
+                                             const struct lyrics_data *data,
+                                             struct lrcx_line_builder *builder) {
     // Find text range (handles: [00:01.00]今は[00:02.00]... where 今は is first segment)
     const char *text_start = NULL;
     const char *text_end = find_first_text_range(pos, &text_start);
@@ -106,14 +112,14 @@ static const char* parse_first_text_segment(const char *pos, int64_t line_timest
     // Add all segments to the line
     struct word_segment *seg = segments;
     while (seg) {
-        **next_segment_ptr = seg;
-        *next_segment_ptr = &seg->next;
-        new_line->segment_count++;
+        *builder->next_segment = seg;
+        builder->next_segment = &seg->next;
+        builder->line->segment_count++;
         seg = seg->next;
     }
 
     // Build full text buffer from segments
-    if (!build_full_text_from_segments(segments, full_text, full_text_len, full_text_capacity)) {
+    if (!build_full_text_from_segments(segments, builder)) {
         return NULL;  // Allocation error
     }
 
@@ -122,36 +128,35 @@ static const char* parse_first_text_segment(const char *pos, int64_t line_timest
 
 // Ensure full_text buffer has enough capacity and append text with optional space
 // Returns false on allocation failure
-static bool ensure_and_append_to_full_text(char **full_text, size_t *full_text_len,
-                                            size_t *full_text_capacity, const char *text,
-                                            bool prepend_space) {
+static bool ensure_and_append_to_full_text(struct lrcx_line_builder *builder,
+                                            const char *text, bool prepend_space) {
     if (!text || text[0] == '\0') {
         return true;
     }
 
     size_t text_len = strlen(text);
-    size_t space_len = (prepend_space && *full_text_len > 0) ? 1 : 0;
-    size_t required_capacity = *full_text_len + text_len + space_len + 1;
+    size_t space_len = (prepend_space && builder->full_text_len > 0) ? 1 : 0;
+    size_t required_capacity = builder->full_text_len + text_len + space_len + 1;
 
     // Expand buffer if needed
-    if (required_capacity > *full_text_capacity) {
-        *full_text_capacity = required_capacity * 2;
-        char *new_full_text = realloc(*full_text, *full_text_capacity);
+    if (required_capacity > builder->full_text_capacity) {
+        builder->full_text_capacity = required_capacity * 2;
+        char *new_full_text = realloc(builder->full_text, builder->full_text_capacity);
         if (!new_full_text) {
             return false;
         }
-        *full_text = new_full_text;
+        builder->full_text = new_full_text;
     }
 
     // Add space if needed
     if (space_len > 0) {
-        (*full_text)[(*full_text_len)++] = ' ';
+        builder->full_text[builder->full_text_len++] = ' ';
     }
 
     // Copy text
-    memcpy(*full_text + *full_text_len, text, text_len);
-    *full_text_len += text_len;
-    (*full_text)[*full_text_len] = '\0';
+    memcpy(builder->full_text + builder->full_text_len, text, text_len);
+    builder->full_text_len += text_len;
+    builder->full_text[builder->full_text_len] = '\0';
 
     return true;
 }
@@ -159,21 +164,17 @@ static bool ensure_and_append_to_full_text(char **full_text, size_t *full_text_l
 // Add parsed word segments to line and update full_text
 // Returns false on error
 static bool add_parsed_word_segments(struct word_segment *word_segments, bool is_unfill,
-                                      struct lyrics_line *new_line,
-                                      struct word_segment ***next_segment_ptr,
-                                      char **full_text, size_t *full_text_len,
-                                      size_t *full_text_capacity) {
+                                      struct lrcx_line_builder *builder) {
     struct word_segment *ws = word_segments;
     while (ws) {
         ws->is_unfill = is_unfill;
-        **next_segment_ptr = ws;
-        *next_segment_ptr = &ws->next;
-        new_line->segment_count++;
+        *builder->next_segment = ws;
+        builder->next_segment = &ws->next;
+        builder->line->segment_count++;
 
         // Add to full text (base text only)
         if (ws->text && ws->text[0] != '\0' &&
-            !ensure_and_append_to_full_text(full_text, full_text_len, full_text_capacity,
-                                             ws->text, true)) {
+            !ensure_and_append_to_full_text(builder, ws->text, true)) {
             return false;
         }
 
@@ -186,17 +187,13 @@ static bool add_parsed_word_segments(struct word_segment *word_segments, bool is
 // Add raw text segment to line and update full_text
 // Returns false on error
 static bool add_raw_text_segment(struct word_segment *segment,
-                                  struct lyrics_line *new_line,
-                                  struct word_segment ***next_segment_ptr,
-                                  char **full_text, size_t *full_text_len,
-                                  size_t *full_text_capacity) {
-    **next_segment_ptr = segment;
-    *next_segment_ptr = &segment->next;
-    new_line->segment_count++;
+                                  struct lrcx_line_builder *builder) {
+    *builder->next_segment = segment;
+    builder->next_segment = &segment->next;
+    builder->line->segment_count++;
 
     // Add to full text
-    if (!ensure_and_append_to_full_text(full_text, full_text_len, full_text_capacity,
-                                         segment->text, true)) {
+    if (!ensure_and_append_to_full_text(builder, segment->text, true)) {
         return false;
     }
 
@@ -206,10 +203,7 @@ static bool add_raw_text_segment(struct word_segment *segment,
 // Parse a single word segment with timestamp
 // Returns updated position, or NULL on error
 static const char* parse_word_timestamp_segment(const char *pos, const struct lyrics_data *data,
-                                                 struct lyrics_line *new_line,
-                                                 struct word_segment ***next_segment_ptr,
-                                                 char **full_text, size_t *full_text_len,
-                                                 size_t *full_text_capacity,
+                                                 struct lrcx_line_builder *builder,
                                                  int64_t *last_timestamp_us) {
     int64_t segment_timestamp_us;
     const char *after_timestamp = NULL;
@@ -263,8 +257,7 @@ static const char* parse_word_timestamp_segment(const char *pos, const struct ly
             free(segment);
 
             // Add all parsed segments using helper
-            if (!add_parsed_word_segments(word_segments, is_unfill, new_line, next_segment_ptr,
-                                           full_text, full_text_len, full_text_capacity)) {
+            if (!add_parsed_word_segments(word_segments, is_unfill, builder)) {
                 return NULL;  // Signal error
             }
         } else {
@@ -273,17 +266,16 @@ static const char* parse_word_timestamp_segment(const char *pos, const struct ly
             segment->ruby = NULL;
 
             // Add raw text segment using helper
-            if (!add_raw_text_segment(segment, new_line, next_segment_ptr,
-                                       full_text, full_text_len, full_text_capacity)) {
+            if (!add_raw_text_segment(segment, builder)) {
                 return NULL;  // Signal error
             }
         }
     } else {
         // Empty text for idle display
         segment->text = strdup("");
-        **next_segment_ptr = segment;
-        *next_segment_ptr = &segment->next;
-        new_line->segment_count++;
+        *builder->next_segment = segment;
+        builder->next_segment = &segment->next;
+        builder->line->segment_count++;
     }
 
     return word_end;
@@ -360,16 +352,19 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
     // Apply offset to line timestamp
     new_line->timestamp_us = apply_timestamp_offset(line_timestamp_us, data->metadata.offset_ms);
 
-    // Build full text and parse word segments
-    struct word_segment **next_segment = &new_line->segments;
-    char *full_text = NULL;
-    size_t full_text_len = 0;
-    size_t full_text_capacity = 0;
+    // Initialize line builder context
+    struct lrcx_line_builder builder = {
+        .line = new_line,
+        .next_segment = &new_line->segments,
+        .full_text = NULL,
+        .full_text_len = 0,
+        .full_text_capacity = 0,
+    };
+
     int64_t last_timestamp_us = line_timestamp_us; // Track last timestamp for end_timestamp_us
 
     // Parse first text segment (text immediately after line timestamp)
-    pos = parse_first_text_segment(pos, line_timestamp_us, data, new_line,
-                                     &next_segment, &full_text, &full_text_len, &full_text_capacity);
+    pos = parse_first_text_segment(pos, line_timestamp_us, data, &builder);
     if (!pos) {
         // Error during first segment parsing
         free(new_line);
@@ -389,12 +384,10 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
 
         // Check for timestamp
         if (*pos == '[') {
-            pos = parse_word_timestamp_segment(pos, data, new_line, &next_segment,
-                                               &full_text, &full_text_len, &full_text_capacity,
-                                               &last_timestamp_us);
+            pos = parse_word_timestamp_segment(pos, data, &builder, &last_timestamp_us);
             if (!pos) {
                 // Error during word segment parsing
-                free(full_text);
+                free(builder.full_text);
                 free(new_line);
                 return false;
             }
@@ -405,7 +398,7 @@ static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct l
     }
 
     // Finalize line: normalize segments, set text, calculate end timestamps
-    if (!finalize_line_segments(new_line, full_text, line_timestamp_us,
+    if (!finalize_line_segments(new_line, builder.full_text, line_timestamp_us,
                                  apply_timestamp_offset(last_timestamp_us, data->metadata.offset_ms))) {
         free(new_line);
         return false;
