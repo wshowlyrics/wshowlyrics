@@ -352,14 +352,18 @@ static bool parse_lrcx_line(const char *line, const struct lyrics_data *data, st
     // Apply offset to line timestamp
     new_line->timestamp_us = apply_timestamp_offset(line_timestamp_us, data->metadata.offset_ms);
 
-    // Initialize line builder context
+    // Initialize line builder context (full_text must be non-NULL for realloc safety)
     struct lrcx_line_builder builder = {
         .line = new_line,
         .next_segment = &new_line->segments,
-        .full_text = NULL,
+        .full_text = calloc(1, 1),
         .full_text_len = 0,
-        .full_text_capacity = 0,
+        .full_text_capacity = 1,
     };
+    if (!builder.full_text) {
+        free(new_line);
+        return false;
+    }
 
     int64_t last_timestamp_us = line_timestamp_us; // Track last timestamp for end_timestamp_us
 
