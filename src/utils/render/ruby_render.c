@@ -6,6 +6,16 @@
 #include "../../user_experience/config/config.h"
 #include <string.h>
 
+// Context for ruby segment rendering with shared layout dimensions
+struct ruby_render_context {
+    cairo_t *cairo;
+    const char *font;
+    int scale;
+    uint32_t foreground;
+    int max_ruby_height;
+    int base_text_h;
+};
+
 int calculate_max_ruby_height_ruby(cairo_t *cairo, const char *font,
                                     struct ruby_segment *segments, int scale) {
     int max_ruby_height = 0;
@@ -200,9 +210,9 @@ bool has_segment_translation(struct ruby_segment *segments) {
 
 // Helper: Render original text segments and return dimensions
 // Returns: total_width, updates y_offset and line_count via pointers
-static int render_original_text(cairo_t *cairo, const char *font, int scale,
-                                struct ruby_segment *segments, int max_ruby_height,
-                                int base_text_h, int *y_offset_out, int *line_count_out) {
+static int render_original_text(const struct ruby_render_context *ctx,
+                                struct ruby_segment *segments,
+                                int *y_offset_out, int *line_count_out) {
     int x_offset = 0;
     int y_offset = *y_offset_out;
     int total_width = 0;
@@ -216,7 +226,7 @@ static int render_original_text(cairo_t *cairo, const char *font, int scale,
             if (line_width > total_width) {
                 total_width = line_width;
             }
-            y_offset += base_text_h + max_ruby_height;
+            y_offset += ctx->base_text_h + ctx->max_ruby_height;
             x_offset = 0;
             line_width = 0;
             line_count++;
@@ -228,14 +238,16 @@ static int render_original_text(cairo_t *cairo, const char *font, int scale,
         int seg_w;
         int seg_h;
         if (seg->ruby) {
-            get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg->text, seg->ruby);
+            get_ruby_text_size(ctx->cairo, ctx->font, &seg_w, &seg_h,
+                              ctx->scale, seg->text, seg->ruby);
         } else {
-            get_text_size(cairo, font, &seg_w, &seg_h, NULL, scale, seg->text);
+            get_text_size(ctx->cairo, ctx->font, &seg_w, &seg_h,
+                         NULL, ctx->scale, seg->text);
         }
 
         // Render segment
-        cairo_move_to(cairo, x_offset, y_offset + max_ruby_height);
-        pango_printf_ruby(cairo, font, scale, seg->text, seg->ruby);
+        cairo_move_to(ctx->cairo, x_offset, y_offset + ctx->max_ruby_height);
+        pango_printf_ruby(ctx->cairo, ctx->font, ctx->scale, seg->text, seg->ruby);
 
         x_offset += seg_w;
         line_width += seg_w;
@@ -253,22 +265,24 @@ static int render_original_text(cairo_t *cairo, const char *font, int scale,
 }
 
 // Helper: Render translation text and return width
-static int render_translation_text(cairo_t *cairo, const char *font, uint32_t foreground,
+static int render_translation_text(const struct ruby_render_context *ctx,
                                    const char *translation, double translation_scale,
-                                   int y_offset, int base_text_h, int max_ruby_height) {
+                                   int y_offset) {
     // Use custom opacity from config
     const struct config *cfg = config_get();
-    uint32_t dimmed = create_color_with_opacity(foreground, cfg->translation.translation_opacity);
-    cairo_set_source_u32(cairo, dimmed);
+    uint32_t dimmed = create_color_with_opacity(ctx->foreground,
+                                                cfg->translation.translation_opacity);
+    cairo_set_source_u32(ctx->cairo, dimmed);
 
     int trans_w;
     int trans_h;
-    get_text_size(cairo, font, &trans_w, &trans_h, NULL, translation_scale, translation);
+    get_text_size(ctx->cairo, ctx->font, &trans_w, &trans_h,
+                 NULL, translation_scale, translation);
 
     // Place translation below main text (adjust spacing based on ruby presence)
-    double spacing_factor = (max_ruby_height > 0) ? 1.5 : 1.0;
-    cairo_move_to(cairo, 0, y_offset + (base_text_h * spacing_factor));
-    pango_printf(cairo, font, translation_scale, translation);
+    double spacing_factor = (ctx->max_ruby_height > 0) ? 1.5 : 1.0;
+    cairo_move_to(ctx->cairo, 0, y_offset + (ctx->base_text_h * spacing_factor));
+    pango_printf(ctx->cairo, ctx->font, translation_scale, translation);
 
     return trans_w;
 }
@@ -324,6 +338,16 @@ void render_ruby_segments_with_translation(const struct translation_params *para
         get_text_size(cairo, font, NULL, &translation_h, NULL, translation_scale, "A");
     }
 
+    // Build render context
+    struct ruby_render_context ctx = {
+        .cairo = cairo,
+        .font = font,
+        .scale = scale,
+        .foreground = foreground,
+        .max_ruby_height = max_ruby_height,
+        .base_text_h = base_text_h,
+    };
+
     // Render and calculate dimensions
     int total_width = 0;
     int y_offset = 0;
@@ -331,16 +355,13 @@ void render_ruby_segments_with_translation(const struct translation_params *para
 
     // Render original text if needed
     if (show_original) {
-        total_width = render_original_text(cairo, font, scale, segments,
-                                          max_ruby_height, base_text_h,
-                                          &y_offset, &line_count);
+        total_width = render_original_text(&ctx, segments, &y_offset, &line_count);
     }
 
     // Render translation text if needed
     if (show_translation) {
-        int trans_w = render_translation_text(cairo, font, foreground, translation,
-                                             translation_scale, y_offset,
-                                             base_text_h, max_ruby_height);
+        int trans_w = render_translation_text(&ctx, translation,
+                                             translation_scale, y_offset);
         if (trans_w > total_width) {
             total_width = trans_w;
         }

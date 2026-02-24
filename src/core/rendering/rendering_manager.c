@@ -12,6 +12,19 @@
 #include <stdlib.h>
 #include <strings.h>
 
+// Context for offset bar rendering (geometry, offsets, and colors)
+struct offset_bar_context {
+    cairo_t *cairo;
+    int center_x;
+    int bar_y;
+    int bar_height;
+    int global_offset_ms;
+    int session_offset_ms;
+    int total_offset;
+    uint32_t yellow;
+    uint32_t white;
+};
+
 // Helper function to create render_base_params (reduces code duplication)
 static inline struct render_base_params make_render_base(
     cairo_t *cairo, const char *font, int scale,
@@ -45,63 +58,56 @@ static int offset_to_bar_width(int offset_ms, int max_offset, int max_bar_width)
 }
 
 // Helper: Render a single bar segment
-static void render_single_bar(cairo_t *cairo, uint32_t color, int center_x,
-                              int bar_y, int bar_height, int width, bool is_positive,
-                              int position_offset) {
+static void render_single_bar(const struct offset_bar_context *ctx, uint32_t color,
+                              int width, bool is_positive, int position_offset) {
     if (width <= 0) {
         return;
     }
 
-    cairo_set_source_u32(cairo, color);
+    cairo_set_source_u32(ctx->cairo, color);
     if (is_positive) {
-        cairo_rectangle(cairo, center_x + position_offset, bar_y, width, bar_height);
+        cairo_rectangle(ctx->cairo, ctx->center_x + position_offset,
+                       ctx->bar_y, width, ctx->bar_height);
     } else {
-        cairo_rectangle(cairo, center_x - position_offset - width, bar_y, width, bar_height);
+        cairo_rectangle(ctx->cairo, ctx->center_x - position_offset - width,
+                       ctx->bar_y, width, ctx->bar_height);
     }
-    cairo_fill(cairo);
+    cairo_fill(ctx->cairo);
 }
 
 // Helper: Render bars when both offsets have the same sign
-static void render_same_sign_bars(cairo_t *cairo, int center_x, int bar_y, int bar_height,
-                                  int global_offset_ms, int session_offset_ms,
-                                  int global_width, int session_width,
-                                  int total_offset, uint32_t yellow, uint32_t white) {
-    bool is_positive = (total_offset >= 0);
+static void render_same_sign_bars(const struct offset_bar_context *ctx,
+                                  int global_width, int session_width) {
+    bool is_positive = (ctx->total_offset >= 0);
 
     if (is_positive) {
         // Positive: center → right (global then session)
-        if (global_offset_ms > 0) {
-            render_single_bar(cairo, yellow, center_x, bar_y, bar_height,
-                            global_width, true, 0);
+        if (ctx->global_offset_ms > 0) {
+            render_single_bar(ctx, ctx->yellow, global_width, true, 0);
         }
-        if (session_offset_ms > 0) {
-            render_single_bar(cairo, white, center_x, bar_y, bar_height,
-                            session_width, true, global_width);
+        if (ctx->session_offset_ms > 0) {
+            render_single_bar(ctx, ctx->white, session_width, true, global_width);
         }
     } else {
         // Negative: center ← left (session then global)
-        if (session_offset_ms < 0) {
-            render_single_bar(cairo, white, center_x, bar_y, bar_height,
-                            session_width, false, global_width);
+        if (ctx->session_offset_ms < 0) {
+            render_single_bar(ctx, ctx->white, session_width, false, global_width);
         }
-        if (global_offset_ms < 0) {
-            render_single_bar(cairo, yellow, center_x, bar_y, bar_height,
-                            global_width, false, 0);
+        if (ctx->global_offset_ms < 0) {
+            render_single_bar(ctx, ctx->yellow, global_width, false, 0);
         }
     }
 }
 
 // Helper: Render bar when offsets have opposite signs
-static void render_opposite_sign_bar(cairo_t *cairo, int center_x, int bar_y, int bar_height,
-                                     int global_offset_ms, int session_offset_ms,
-                                     int total_offset, int result_width,
-                                     uint32_t yellow, uint32_t white) {
+static void render_opposite_sign_bar(const struct offset_bar_context *ctx,
+                                     int result_width) {
     // Use color of the larger offset
-    uint32_t color = (abs(global_offset_ms) > abs(session_offset_ms)) ? yellow : white;
-    bool is_positive = (total_offset >= 0);
+    uint32_t color = (abs(ctx->global_offset_ms) > abs(ctx->session_offset_ms))
+                     ? ctx->yellow : ctx->white;
+    bool is_positive = (ctx->total_offset >= 0);
 
-    render_single_bar(cairo, color, center_x, bar_y, bar_height,
-                     result_width, is_positive, 0);
+    render_single_bar(ctx, color, result_width, is_positive, 0);
 }
 
 // Helper: Render karaoke-style content (multiline or single-line)
@@ -203,8 +209,19 @@ static void render_offset_bar(cairo_t *cairo, int global_offset_ms, int session_
 
     // Prepare colors with foreground alpha
     uint32_t alpha = foreground & 0xFF;
-    uint32_t yellow = (0xFFFF00 << 8) | alpha; // Global offset color
-    uint32_t white = (0xFFFFFF << 8) | alpha;  // Session offset color
+
+    // Build offset bar context
+    struct offset_bar_context ctx = {
+        .cairo = cairo,
+        .center_x = center_x,
+        .bar_y = bar_y,
+        .bar_height = bar_height,
+        .global_offset_ms = global_offset_ms,
+        .session_offset_ms = session_offset_ms,
+        .total_offset = total_offset,
+        .yellow = (0xFFFF00 << 8) | alpha,  // Global offset color
+        .white = (0xFFFFFF << 8) | alpha,   // Session offset color
+    };
 
     // Render bars based on offset signs
     bool same_sign = ((global_offset_ms >= 0 && session_offset_ms >= 0) ||
@@ -214,19 +231,11 @@ static void render_offset_bar(cairo_t *cairo, int global_offset_ms, int session_
         // Same sign: render sequentially (global then session)
         int global_width = offset_to_bar_width(global_offset_ms, max_offset, max_bar_width);
         int session_width = offset_to_bar_width(session_offset_ms, max_offset, max_bar_width);
-
-        render_same_sign_bars(cairo, center_x, bar_y, bar_height,
-                             global_offset_ms, session_offset_ms,
-                             global_width, session_width,
-                             total_offset, yellow, white);
+        render_same_sign_bars(&ctx, global_width, session_width);
     } else {
         // Opposite signs: render only the net result
         int result_width = offset_to_bar_width(total_offset, max_offset, max_bar_width);
-
-        render_opposite_sign_bar(cairo, center_x, bar_y, bar_height,
-                                global_offset_ms, session_offset_ms,
-                                total_offset, result_width,
-                                yellow, white);
+        render_opposite_sign_bar(&ctx, result_width);
     }
 }
 

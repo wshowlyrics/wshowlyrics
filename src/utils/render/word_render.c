@@ -5,6 +5,14 @@
 #include "../../constants.h"
 #include <string.h>
 
+// Shared render context for word segment rendering functions
+struct word_render_context {
+    cairo_t *cairo;
+    const char *font;
+    int scale;
+    uint32_t foreground;
+};
+
 // Find active unfill segment at current playback position
 // Returns the unfill segment if active, NULL otherwise
 static struct word_segment* find_active_unfill_segment(struct word_segment *start, int64_t position_us) {
@@ -168,8 +176,8 @@ static double calculate_segment_fill_ratio(const struct word_segment *segment,
 }
 
 // Render single segment with fill effect
-static void render_segment_with_fill(cairo_t *cairo, const char *font, int scale,
-                                    struct word_segment *segment, uint32_t foreground,
+static void render_segment_with_fill(const struct word_render_context *ctx,
+                                    struct word_segment *segment,
                                     int x_offset, int max_ruby_height,
                                     double fill_ratio) {
     if (fill_ratio <= 0.0) {
@@ -178,26 +186,26 @@ static void render_segment_with_fill(cairo_t *cairo, const char *font, int scale
 
     int seg_w;
     int seg_h;
-    calculate_segment_size(cairo, font, scale, segment, &seg_w, &seg_h);
+    calculate_segment_size(ctx->cairo, ctx->font, ctx->scale, segment, &seg_w, &seg_h);
 
-    cairo_save(cairo);
+    cairo_save(ctx->cairo);
 
     double fill_width = seg_w * fill_ratio;
     int clip_height = segment->ruby ? seg_h : (seg_h + max_ruby_height);
 
-    cairo_rectangle(cairo, x_offset, 0, fill_width, clip_height);
-    cairo_clip(cairo);
+    cairo_rectangle(ctx->cairo, x_offset, 0, fill_width, clip_height);
+    cairo_clip(ctx->cairo);
 
-    cairo_set_source_u32(cairo, foreground);
-    cairo_move_to(cairo, x_offset, max_ruby_height);
-    pango_printf_ruby(cairo, font, scale, segment->text, segment->ruby);
+    cairo_set_source_u32(ctx->cairo, ctx->foreground);
+    cairo_move_to(ctx->cairo, x_offset, max_ruby_height);
+    pango_printf_ruby(ctx->cairo, ctx->font, ctx->scale, segment->text, segment->ruby);
 
-    cairo_restore(cairo);
+    cairo_restore(ctx->cairo);
 }
 
 // Render filled portions with clipping (second pass)
-static void render_filled_pass(cairo_t *cairo, const char *font, int scale,
-                              struct word_segment *segments, uint32_t foreground,
+static void render_filled_pass(const struct word_render_context *ctx,
+                              struct word_segment *segments,
                               int64_t position_us, int max_ruby_height) {
     int x_offset = 0;
     struct word_segment *segment = segments;
@@ -226,20 +234,19 @@ static void render_filled_pass(cairo_t *cairo, const char *font, int scale,
                                                          has_active_unfill, unfill_override_ratio);
 
         // Render segment with fill
-        render_segment_with_fill(cairo, font, scale, segment, foreground,
-                                x_offset, max_ruby_height, fill_ratio);
+        render_segment_with_fill(ctx, segment, x_offset, max_ruby_height, fill_ratio);
 
         // Update x_offset
         if (segment->text && segment->text[0] != '\0') {
             int seg_w;
             int seg_h;
-            calculate_segment_size(cairo, font, scale, segment, &seg_w, &seg_h);
+            calculate_segment_size(ctx->cairo, ctx->font, ctx->scale, segment, &seg_w, &seg_h);
             x_offset += seg_w;
 
             if (segment->next) {
                 int space_w;
                 int space_h;
-                get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
+                get_text_size(ctx->cairo, ctx->font, &space_w, &space_h, NULL, ctx->scale, " ");
                 x_offset += space_w;
             }
         }
@@ -298,6 +305,14 @@ void render_karaoke_segments(const struct karaoke_params *params) {
     uint32_t foreground = params->base.foreground;
     int64_t position_us = params->position_us;
 
+    // Build render context
+    struct word_render_context ctx = {
+        .cairo = cairo,
+        .font = font,
+        .scale = scale,
+        .foreground = foreground,
+    };
+
     // Calculate maximum ruby height
     int max_ruby_height = calculate_max_ruby_height_word(cairo, font, segments, scale);
 
@@ -306,7 +321,7 @@ void render_karaoke_segments(const struct karaoke_params *params) {
     render_dimmed_pass(cairo, font, scale, segments, dimmed, max_ruby_height);
 
     // Second pass: draw filled portions with clipping
-    render_filled_pass(cairo, font, scale, segments, foreground, position_us, max_ruby_height);
+    render_filled_pass(&ctx, segments, position_us, max_ruby_height);
 
     // Calculate total width and height
     int total_w;
@@ -337,9 +352,9 @@ void render_word_segments_static(const struct word_static_params *params) {
 
 // Helper: Render a context line (prev or next) with dimmed color
 // Returns: line height (0 if line not rendered)
-static int render_context_line(cairo_t *cairo, const char *font, int scale,
-                               uint32_t foreground, double context_scale,
-                               double opacity, const struct lyrics_line *line,
+static int render_context_line(const struct word_render_context *ctx,
+                               double context_scale, double opacity,
+                               const struct lyrics_line *line,
                                int y_offset, int *total_width) {
     if (!line || !line->text || line->text[0] == '\0') {
         return 0;
@@ -352,18 +367,19 @@ static int render_context_line(cairo_t *cairo, const char *font, int scale,
     }
 
     // Render with dimmed color
-    uint32_t dimmed = create_color_with_opacity(foreground, opacity);
-    cairo_set_source_u32(cairo, dimmed);
+    uint32_t dimmed = create_color_with_opacity(ctx->foreground, opacity);
+    cairo_set_source_u32(ctx->cairo, dimmed);
 
     int w;
     int h;
-    get_text_size(cairo, font, &w, &h, NULL, scale * context_scale, stripped);
+    get_text_size(ctx->cairo, ctx->font, &w, &h, NULL,
+                 ctx->scale * context_scale, stripped);
 
-    cairo_save(cairo);
-    cairo_translate(cairo, 0, y_offset);
-    cairo_move_to(cairo, 0, 0);
-    pango_printf(cairo, font, scale * context_scale, stripped);
-    cairo_restore(cairo);
+    cairo_save(ctx->cairo);
+    cairo_translate(ctx->cairo, 0, y_offset);
+    cairo_move_to(ctx->cairo, 0, 0);
+    pango_printf(ctx->cairo, ctx->font, ctx->scale * context_scale, stripped);
+    cairo_restore(ctx->cairo);
 
     if (w > *total_width) *total_width = w;
     free(stripped);
@@ -372,25 +388,24 @@ static int render_context_line(cairo_t *cairo, const char *font, int scale,
 
 // Helper: Render main karaoke line
 // Returns: line height (0 if line not rendered)
-static int render_main_karaoke_line(cairo_t *cairo, const char *font, int scale,
-                                   uint32_t foreground, int64_t position_us,
-                                   struct lyrics_line *line, int y_offset,
-                                   int *total_width) {
+static int render_main_karaoke_line(const struct word_render_context *ctx,
+                                   int64_t position_us, struct lyrics_line *line,
+                                   int y_offset, int *total_width) {
     if (!line || !line->segments) {
         return 0;
     }
 
     int w;
     int h;
-    cairo_save(cairo);
-    cairo_translate(cairo, 0, y_offset);
+    cairo_save(ctx->cairo);
+    cairo_translate(ctx->cairo, 0, y_offset);
 
     struct karaoke_params seg_params = {
         .base = {
-            .cairo = cairo,
-            .font = font,
-            .scale = scale,
-            .foreground = foreground,
+            .cairo = ctx->cairo,
+            .font = ctx->font,
+            .scale = ctx->scale,
+            .foreground = ctx->foreground,
             .width = &w,
             .height = &h
         },
@@ -399,7 +414,7 @@ static int render_main_karaoke_line(cairo_t *cairo, const char *font, int scale,
     };
     render_karaoke_segments(&seg_params);
 
-    cairo_restore(cairo);
+    cairo_restore(ctx->cairo);
 
     if (w > *total_width) *total_width = w;
     return h;
@@ -415,6 +430,14 @@ void render_karaoke_multiline(const struct multiline_params *params) {
         return;
     }
 
+    // Build render context from params
+    struct word_render_context ctx = {
+        .cairo = params->base.cairo,
+        .font = params->base.font,
+        .scale = params->base.scale,
+        .foreground = params->base.foreground,
+    };
+
     // Extract parameters
     const double context_scale = 0.7;  // 70% for prev/next
     const int context_spacing = 2;     // Minimal spacing for context lines
@@ -425,19 +448,16 @@ void render_karaoke_multiline(const struct multiline_params *params) {
     int y_offset = 0;
 
     // Render previous line (75% opacity)
-    int prev_h = render_context_line(params->base.cairo, params->base.font,
-                                     params->base.scale, params->base.foreground,
-                                     context_scale, 0.75, params->prev_line,
-                                     y_offset, &total_width);
+    int prev_h = render_context_line(&ctx, context_scale, 0.75,
+                                     params->prev_line, y_offset, &total_width);
     if (prev_h > 0) {
         total_height += prev_h;
         y_offset += prev_h + main_spacing;
     }
 
     // Render current line (full karaoke)
-    int main_h = render_main_karaoke_line(params->base.cairo, params->base.font,
-                                         params->base.scale, params->base.foreground,
-                                         params->position_us, params->current_line,
+    int main_h = render_main_karaoke_line(&ctx, params->position_us,
+                                         params->current_line,
                                          y_offset, &total_width);
     if (main_h > 0) {
         total_height += main_h;
@@ -445,10 +465,8 @@ void render_karaoke_multiline(const struct multiline_params *params) {
     }
 
     // Render next line (50% opacity)
-    int next_h = render_context_line(params->base.cairo, params->base.font,
-                                     params->base.scale, params->base.foreground,
-                                     context_scale, 0.5, params->next_line,
-                                     y_offset, &total_width);
+    int next_h = render_context_line(&ctx, context_scale, 0.5,
+                                     params->next_line, y_offset, &total_width);
     if (next_h > 0) {
         total_height += next_h;
     }
