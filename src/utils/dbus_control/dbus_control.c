@@ -64,7 +64,7 @@ static const gchar introspection_xml[] =
 
 // Method call handler
 static void handle_method_call(
-    GDBusConnection *connection,
+    GDBusConnection *const connection,
     const gchar *sender,
     const gchar *object_path,
     const gchar *interface_name,
@@ -195,14 +195,14 @@ static void on_bus_acquired(GDBusConnection *connection, const gchar *name, gpoi
 }
 
 // Name acquired callback
-static void on_name_acquired(GDBusConnection *connection, const gchar *name, gpointer user_data) {
+static void on_name_acquired(GDBusConnection *const connection, const gchar *name, gpointer user_data) {
     (void)connection;  // Required by GDBus callback signature
     (void)user_data;   // Required by GDBus callback signature
     log_info("D-Bus name acquired: %s", name);
 }
 
 // Name lost callback
-static void on_name_lost(GDBusConnection *connection, const gchar *name, gpointer user_data) {
+static void on_name_lost(GDBusConnection *const connection, const gchar *name, gpointer user_data) {
     (void)user_data;  // Required by GDBus callback signature
     if (connection == NULL) {
         log_error("Failed to connect to D-Bus session bus");

@@ -40,7 +40,8 @@ void get_text_size(cairo_t *cairo, const char *font, int *width, int *height,
     pango_cairo_update_layout(cairo, layout);
 
     // Get both ink and logical extents
-    PangoRectangle ink_rect, logical_rect;
+    PangoRectangle ink_rect;
+    PangoRectangle logical_rect;
     pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
 
     // Use logical width
@@ -82,11 +83,13 @@ void get_ruby_text_size(cairo_t *cairo, const char *font, int *width, int *heigh
     }
 
     // Get base text size
-    int base_w, base_h;
+    int base_w;
+    int base_h;
     get_text_size(cairo, font, &base_w, &base_h, NULL, scale, base_text);
 
     // Get ruby text size (smaller font)
-    int ruby_w = 0, ruby_h = 0;
+    int ruby_w = 0;
+    int ruby_h = 0;
     if (ruby_text && ruby_text[0] != '\0') {
         get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, ruby_text);
     }
@@ -107,7 +110,10 @@ int pango_printf_ruby(cairo_t *cairo, const char *font, double scale,
     }
 
     // Calculate sizes
-    int base_w, base_h, ruby_w = 0, ruby_h = 0;
+    int base_w;
+    int base_h;
+    int ruby_w = 0;
+    int ruby_h = 0;
     get_text_size(cairo, font, &base_w, &base_h, NULL, scale, base_text);
 
     if (ruby_text && ruby_text[0] != '\0') {
@@ -115,7 +121,8 @@ int pango_printf_ruby(cairo_t *cairo, const char *font, double scale,
     }
 
     // Save current position
-    double x, y;
+    double x;
+    double y;
     cairo_get_current_point(cairo, &x, &y);
 
     // Calculate spacing

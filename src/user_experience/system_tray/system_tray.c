@@ -91,7 +91,7 @@ static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
 
 // Check if image is approximately square (allow small aspect ratio differences)
 // Most people cannot perceive aspect ratio differences below ~5%
-static bool is_square_image(GdkPixbuf *pixbuf) {
+static bool is_square_image(GdkPixbuf *const pixbuf) {
     if (!pixbuf) {
         return false;
     }
@@ -216,7 +216,7 @@ static GdkPixbuf* load_image_from_url(const char *url) {
 }
 
 // Apply circular mask to a pixbuf (CD-like appearance)
-static GdkPixbuf* apply_circular_mask(GdkPixbuf *pixbuf) {
+static GdkPixbuf* apply_circular_mask(GdkPixbuf *const pixbuf) {
     if (!pixbuf) {
         return NULL;
     }
@@ -281,7 +281,7 @@ static char* truncate_utf8(const char *str, int max_chars) {
 }
 
 // Menu callbacks
-static void on_overlay_toggled(GtkCheckMenuItem *item, gpointer user_data) {
+static void on_overlay_toggled(GtkCheckMenuItem *const item, gpointer user_data) {
     (void)item;
     (void)user_data;
 
@@ -296,7 +296,7 @@ static void on_overlay_toggled(GtkCheckMenuItem *item, gpointer user_data) {
     log_info("Menu: Overlay %s", g_tray_state->overlay_enabled ? "enabled" : "disabled");
 }
 
-static void on_timing_adjust(GtkMenuItem *item, gpointer user_data) {
+static void on_timing_adjust(GtkMenuItem *const item, gpointer user_data) {
     (void)item;
     int delta = GPOINTER_TO_INT(user_data);
 
@@ -319,7 +319,7 @@ static void on_timing_adjust(GtkMenuItem *item, gpointer user_data) {
     rendering_manager_set_dirty(g_tray_state);
 }
 
-static void on_edit_settings(GtkMenuItem *item, gpointer user_data) {
+static void on_edit_settings(GtkMenuItem *const item, gpointer user_data) {
     (void)item;
     (void)user_data;
 
@@ -358,7 +358,7 @@ static void on_edit_settings(GtkMenuItem *item, gpointer user_data) {
     free(editor_arg);
 }
 
-static void on_quit(GtkMenuItem *item, gpointer user_data) {
+static void on_quit(GtkMenuItem *const item, gpointer user_data) {
     (void)item;
     (void)user_data;
 

@@ -27,7 +27,7 @@ static struct word_segment* find_active_unfill_segment(struct word_segment *star
 
 // Calculate unfill ratio (opacity reduction) based on elapsed time
 // Returns value between 0.0 and 0.5 for oscillating effect
-static double calculate_unfill_ratio(struct word_segment *unfill_seg, int64_t position_us) {
+static double calculate_unfill_ratio(const struct word_segment *unfill_seg, int64_t position_us) {
     int64_t unfill_end;
     if (unfill_seg->end_timestamp_us) {
         unfill_end = unfill_seg->end_timestamp_us;
@@ -55,7 +55,8 @@ int calculate_max_ruby_height_word(cairo_t *cairo, const char *font,
 
     while (seg) {
         if (seg->ruby) {
-            int ruby_w, ruby_h;
+            int ruby_w;
+            int ruby_h;
             get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, seg->ruby);
             if (ruby_h > max_ruby_height) {
                 max_ruby_height = ruby_h;
@@ -85,7 +86,7 @@ double calculate_fill_progress(int64_t current_time, int64_t start_time,
 
 // Calculate segment dimensions (width and height)
 static void calculate_segment_size(cairo_t *cairo, const char *font, int scale,
-                                   struct word_segment *segment,
+                                   const struct word_segment *segment,
                                    int *width, int *height) {
     if (segment->ruby) {
         get_ruby_text_size(cairo, font, width, height, scale, segment->text, segment->ruby);
@@ -107,7 +108,8 @@ static int render_dimmed_pass(cairo_t *cairo, const char *font, int scale,
         bool is_empty_seg = (!seg_iter->text || seg_iter->text[0] == '\0');
 
         if (!is_empty_seg) {
-            int seg_w, seg_h;
+            int seg_w;
+            int seg_h;
             calculate_segment_size(cairo, font, scale, seg_iter, &seg_w, &seg_h);
 
             cairo_move_to(cairo, x_iter, max_ruby_height);
@@ -115,7 +117,8 @@ static int render_dimmed_pass(cairo_t *cairo, const char *font, int scale,
 
             x_iter += seg_w;
             if (seg_iter->next) {
-                int space_w, space_h;
+                int space_w;
+                int space_h;
                 get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
                 x_iter += space_w;
             }
@@ -127,7 +130,7 @@ static int render_dimmed_pass(cairo_t *cairo, const char *font, int scale,
 }
 
 // Calculate fill ratio for a segment
-static double calculate_segment_fill_ratio(struct word_segment *segment,
+static double calculate_segment_fill_ratio(const struct word_segment *segment,
                                            int64_t position_us,
                                            bool has_active_unfill,
                                            double unfill_override_ratio) {
@@ -173,7 +176,8 @@ static void render_segment_with_fill(cairo_t *cairo, const char *font, int scale
         return;
     }
 
-    int seg_w, seg_h;
+    int seg_w;
+    int seg_h;
     calculate_segment_size(cairo, font, scale, segment, &seg_w, &seg_h);
 
     cairo_save(cairo);
@@ -227,12 +231,14 @@ static void render_filled_pass(cairo_t *cairo, const char *font, int scale,
 
         // Update x_offset
         if (segment->text && segment->text[0] != '\0') {
-            int seg_w, seg_h;
+            int seg_w;
+            int seg_h;
             calculate_segment_size(cairo, font, scale, segment, &seg_w, &seg_h);
             x_offset += seg_w;
 
             if (segment->next) {
-                int space_w, space_h;
+                int space_w;
+                int space_h;
                 get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
                 x_offset += space_w;
             }
@@ -251,7 +257,8 @@ static void calculate_total_dimensions(cairo_t *cairo, const char *font, int sca
 
     struct word_segment *size_iter = segments;
     while (size_iter) {
-        int seg_w, seg_h;
+        int seg_w;
+        int seg_h;
         calculate_segment_size(cairo, font, scale, size_iter, &seg_w, &seg_h);
 
         if (!size_iter->ruby) {
@@ -264,7 +271,8 @@ static void calculate_total_dimensions(cairo_t *cairo, const char *font, int sca
         }
 
         if (size_iter->next) {
-            int space_w, space_h;
+            int space_w;
+            int space_h;
             get_text_size(cairo, font, &space_w, &space_h, NULL, scale, " ");
             *total_width += space_w;
         }
@@ -301,7 +309,8 @@ void render_karaoke_segments(const struct karaoke_params *params) {
     render_filled_pass(cairo, font, scale, segments, foreground, position_us, max_ruby_height);
 
     // Calculate total width and height
-    int total_w, total_h;
+    int total_w;
+    int total_h;
     calculate_total_dimensions(cairo, font, scale, segments, max_ruby_height, &total_w, &total_h);
 
     *params->base.width = total_w;
@@ -330,7 +339,7 @@ void render_word_segments_static(const struct word_static_params *params) {
 // Returns: line height (0 if line not rendered)
 static int render_context_line(cairo_t *cairo, const char *font, int scale,
                                uint32_t foreground, double context_scale,
-                               double opacity, struct lyrics_line *line,
+                               double opacity, const struct lyrics_line *line,
                                int y_offset, int *total_width) {
     if (!line || !line->text || line->text[0] == '\0') {
         return 0;
@@ -346,7 +355,8 @@ static int render_context_line(cairo_t *cairo, const char *font, int scale,
     uint32_t dimmed = create_color_with_opacity(foreground, opacity);
     cairo_set_source_u32(cairo, dimmed);
 
-    int w, h;
+    int w;
+    int h;
     get_text_size(cairo, font, &w, &h, NULL, scale * context_scale, stripped);
 
     cairo_save(cairo);
@@ -370,7 +380,8 @@ static int render_main_karaoke_line(cairo_t *cairo, const char *font, int scale,
         return 0;
     }
 
-    int w, h;
+    int w;
+    int h;
     cairo_save(cairo);
     cairo_translate(cairo, 0, y_offset);
 

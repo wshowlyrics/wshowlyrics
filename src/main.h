@@ -43,13 +43,16 @@ struct wayland_connection;
 
 struct lyrics_output {
     struct wl_output *output;
-    int scale, width, height;
+    int scale;
+    int width;
+    int height;
     enum wl_output_subpixel subpixel;
     struct lyrics_output *next;
 };
 
 struct lyrics_state {
-    uint32_t foreground, background;
+    uint32_t foreground;
+    uint32_t background;
     const char *font;
 
     struct wl_display *display;
@@ -60,12 +63,15 @@ struct lyrics_state {
 
     struct wl_surface *surface;
     struct zwlr_layer_surface_v1 *layer_surface;
-    uint32_t width, height;
-    bool frame_scheduled, dirty;
+    uint32_t width;
+    uint32_t height;
+    bool frame_scheduled;
+    bool dirty;
     struct wl_callback *frame_callback;
     struct pool_buffer buffers[2];
     struct pool_buffer *current_buffer;
-    struct lyrics_output *output, *outputs;
+    struct lyrics_output *output;
+    struct lyrics_output *outputs;
 
     struct lyrics_data lyrics;
     struct track_metadata current_track;

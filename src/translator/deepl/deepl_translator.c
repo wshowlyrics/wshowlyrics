@@ -135,7 +135,7 @@ static bool setup_deepl_curl_request(CURL **curl_out,
 // Handle DeepL API response and errors
 // Returns: 0 = success, 1 = retry, -1 = fatal error (no retry)
 static int handle_deepl_response(CURLcode res, long http_code,
-                                  struct curl_memory_buffer *response,
+                                  const struct curl_memory_buffer *response,
                                   char **translation_out,
                                   int attempt, int max_retries) {
     if (res == CURLE_OK && http_code == HTTP_OK && response->data) {
@@ -179,7 +179,7 @@ static char* translate_single_line(const char *text, const char *target_lang,
         return NULL;
     }
 
-    struct config *cfg = config_get();
+    const struct config *cfg = config_get();
     const int max_retries = cfg->translation.max_retries;
 
     char *translation = NULL;
@@ -254,7 +254,7 @@ void deepl_translator_cleanup(void) {
 
 // Main translation function
 bool deepl_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
-    struct config *cfg = config_get();
+    const struct config *cfg = config_get();
 
     // Check if API key is configured
     if (!cfg->translation.api_key || cfg->translation.api_key[0] == '\0') {

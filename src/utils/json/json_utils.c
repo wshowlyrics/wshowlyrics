@@ -13,11 +13,11 @@ char* json_extract_string_from(const char *json, const char *key, const char *se
     snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
 
     const char *start_pos = search_start ? search_start : json;
-    char *start = strstr(start_pos, pattern);
+    const char *start = strstr(start_pos, pattern);
     if (!start) return NULL;
 
     start += strlen(pattern);
-    char *end = start;
+    const char *end = start;
 
     // Find the closing quote, handling escaped characters
     while (*end) {
@@ -43,7 +43,8 @@ char* json_extract_string_from(const char *json, const char *key, const char *se
         return NULL;
     }
 
-    size_t i = 0, j = 0;
+    size_t i = 0;
+    size_t j = 0;
     while (i < len) {
         if (escaped[i] == '\\' && i + 1 < len) {
             if (escaped[i + 1] == 'n') {
@@ -88,7 +89,7 @@ int64_t json_extract_int_from(const char *json, const char *key, const char *sea
     snprintf(pattern, sizeof(pattern), "\"%s\":", key);
 
     const char *start_pos = search_start ? search_start : json;
-    char *start = strstr(start_pos, pattern);
+    const char *start = strstr(start_pos, pattern);
     if (!start) return -1;
 
     start += strlen(pattern);

@@ -75,7 +75,7 @@ static char *parse_line_text(char *text_start, struct ruby_segment **segments, i
     }
 
     // No segments created (error case) - use original text, trimmed
-    char *trimmed = trim_whitespace(text_start);
+    const char *trimmed = trim_whitespace(text_start);
     return strdup(trimmed ? trimmed : "");
 }
 

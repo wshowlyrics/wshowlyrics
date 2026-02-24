@@ -108,7 +108,8 @@ static void render_opposite_sign_bar(cairo_t *cairo, int center_x, int bar_y, in
 static void render_karaoke_content(cairo_t *cairo, struct lyrics_state *state,
                                    int scale, int *width, int *height) {
     int64_t position_us = mpris_get_position();
-    int w, h;
+    int w;
+    int h;
 
     // Use multi-line rendering if enabled and context lines are available
     if (g_config.display.enable_multiline_lrcx &&
@@ -152,7 +153,8 @@ static void render_normal_content(cairo_t *cairo, struct lyrics_state *state,
     bool has_ruby_segments = (has_lyrics && state->current_line->ruby_segments &&
                              state->current_line->segment_count > 0);
 
-    int w, h;
+    int w;
+    int h;
 
     if (has_ruby_segments && !has_word_segments) {
         // Render LRC/SRT with ruby_segment (furigana only, no karaoke)
@@ -246,7 +248,7 @@ cairo_subpixel_order_t rendering_manager_to_cairo_subpixel(enum wl_output_subpix
 
 // Helper: Build translation progress text with icons
 static void build_translation_progress_text(char *buffer, size_t buffer_size,
-                                            struct lyrics_state *state,
+                                            const struct lyrics_state *state,
                                             int current_line_index) {
     int T = state->lyrics.translation_current;
     int C = current_line_index + 1; // 1-based current line
@@ -267,7 +269,7 @@ static void build_translation_progress_text(char *buffer, size_t buffer_size,
 
 // Helper: Build translation display text with icons
 static void build_translation_display_text(char *buffer, size_t buffer_size,
-                                          struct lyrics_state *state,
+                                          const struct lyrics_state *state,
                                           const char *translation) {
     if (!state->lyrics.translation_in_progress) {
         snprintf(buffer, buffer_size, "%s", translation);
@@ -405,7 +407,8 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
     cairo_paint(cairo);
 
     // Render lyrics content using appropriate mode
-    int w, h;
+    int w;
+    int h;
     if (is_karaoke) {
         render_karaoke_content(cairo, state, scale, &w, &h);
     } else {
@@ -483,7 +486,8 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
     cairo_restore(cairo);
 
     const int scale = state->output ? state->output->scale : 1;
-    uint32_t width = 0, height = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
     rendering_manager_render_to_cairo(cairo, state, scale, &width, &height);
 
     if (height / scale != state->height

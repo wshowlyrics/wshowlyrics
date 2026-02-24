@@ -57,11 +57,11 @@ void normalize_word_segments(struct word_segment *segments);
 
 // Validate timestamp order and warn if going backwards
 // Returns true if timestamps are in order, false if they go backwards
-bool validate_timestamp_order(int64_t current_us, int64_t *last_us, const char *format_name);
+bool validate_timestamp_order(int64_t current_us, const int64_t *last_us, const char *format_name);
 
 // Warn if critical metadata is missing (artist, album)
 // Used by LRC and LRCX parsers after successful parsing
-void warn_missing_metadata(struct lyrics_data *data, const char *format_name);
+void warn_missing_metadata(const struct lyrics_data *data, const char *format_name);
 
 // Free all ruby segments in a linked list
 void free_ruby_segments(struct ruby_segment *segments);

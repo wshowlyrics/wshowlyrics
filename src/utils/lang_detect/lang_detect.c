@@ -207,8 +207,8 @@ bool is_same_language(const char *text1, const char *text2) {
 	}
 
 	// Detect languages
-	char *lang1 = detect_language(text1, -1);
-	char *lang2 = detect_language(text2, -1);
+	const char *lang1 = detect_language(text1, -1);
+	const char *lang2 = detect_language(text2, -1);
 
 	// If detection failed for either text, assume different languages (skip validation)
 	// This is normal for short texts, numbers, or special characters
@@ -281,7 +281,7 @@ bool is_already_in_language(const char *text, const char *target_lang) {
 	}
 
 	// Detect language of text
-	char *detected = detect_language(text, -1);
+	const char *detected = detect_language(text, -1);
 	if (!detected) {
 		// Detection failed (short text, etc.), cannot skip
 		return false;

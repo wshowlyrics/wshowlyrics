@@ -378,7 +378,7 @@ char* config_get_path(void) {
 
 // Send desktop notification about insecure config file permissions
 static void send_insecure_permissions_notification(mode_t mode, const char *path) {
-    struct config *cfg = config_get();
+    const struct config *cfg = config_get();
     if (!cfg->lyrics.enable_notifications) return;
 
     char mode_str[8];
@@ -497,7 +497,7 @@ bool config_load(struct config *cfg, const char *path) {
         if (!equals) continue;
 
         *equals = '\0';
-        char *key = config_trim_whitespace(trimmed);
+        const char *key = config_trim_whitespace(trimmed);
         char *value = config_trim_whitespace(equals + 1);
 
         // Remove inline comments (# after value)
@@ -545,7 +545,7 @@ bool config_is_extension_enabled(const char *ext) {
     char *saveptr;
     char *token = strtok_r(exts, ",", &saveptr);
     while (token) {
-        char *trimmed = config_trim_whitespace(token);
+        const char *trimmed = config_trim_whitespace(token);
         if (strcasecmp(trimmed, ext) == 0) {
             found = true;
             break;
@@ -675,7 +675,7 @@ static bool key_exists_in_file(const char *user_path, const char *section, const
         if (!equals) continue;
 
         *equals = '\0';
-        char *file_key = config_trim_whitespace(trimmed);
+        const char *file_key = config_trim_whitespace(trimmed);
 
         if (strcmp(current_section, section) == 0 && strcmp(file_key, key) == 0) {
             found = true;
@@ -856,7 +856,7 @@ static struct section_list* parse_user_config_sections(const char *user_path) {
         }
 
         // Try to parse section header and add if not duplicate
-        char *section_name = try_parse_section_header(trimmed);
+        const char *section_name = try_parse_section_header(trimmed);
         if (section_name && !section_exists_in_list(head, section_name)) {
             add_section_node(&head, &tail, section_name);
         }

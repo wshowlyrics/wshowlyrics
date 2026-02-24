@@ -99,7 +99,7 @@ static bool perform_lrclib_request(CURL *curl, const char *url, struct curl_memo
 // Structure to hold best match search results
 struct best_match_result {
     char *synced_lyrics;
-    char *obj_start;  // JSON object start for metadata extraction
+    const char *obj_start;  // JSON object start for metadata extraction
     int64_t duration_diff;
 };
 
@@ -110,12 +110,12 @@ static struct best_match_result find_best_match_in_results(
     struct best_match_result result = {NULL, NULL, INT64_MAX};
     const char *search_pos = response_data + 1; // Skip opening '['
 
-    for (char *obj_start = strchr(search_pos, '{');
+    for (const char *obj_start = strchr(search_pos, '{');
          obj_start;
          obj_start = strchr(search_pos, '{')) {
 
         // Find object end early for loop advancement
-        char *obj_end = strchr(obj_start, '}');
+        const char *obj_end = strchr(obj_start, '}');
         if (!obj_end) break;
         search_pos = obj_end + 1;
 
@@ -157,7 +157,7 @@ static struct best_match_result find_best_match_in_results(
 }
 
 // Extract and update metadata from matched result
-static void extract_metadata_from_result(char *obj_start, struct lyrics_data *data) {
+static void extract_metadata_from_result(const char *obj_start, struct lyrics_data *data) {
     if (!obj_start) return;
 
     char *artist_name = extract_json_string(obj_start, "artistName");

@@ -26,7 +26,7 @@ bool wayland_manager_init(struct wayland_connection *conn) {
     return true;
 }
 
-bool wayland_manager_is_connected(struct wayland_connection *conn) {
+bool wayland_manager_is_connected(const struct wayland_connection *conn) {
     return conn && conn->connected && conn->display != NULL;
 }
 
@@ -164,7 +164,7 @@ static void registry_global_handler(void *data, struct wl_registry *registry,
 }
 
 static void registry_global_remove_handler(void *data,
-        struct wl_registry *registry, uint32_t name) {
+        struct wl_registry *const registry, uint32_t name) {
     (void)data;
     (void)registry;
     (void)name;

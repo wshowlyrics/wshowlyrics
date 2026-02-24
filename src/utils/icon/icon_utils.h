@@ -42,6 +42,6 @@ GdkPixbuf* icon_utils_load_player_icon(const char *player_name, int size);
  * @param badge Badge image (e.g., player icon). If NULL, returns copy of base.
  * @return New GdkPixbuf with badge overlay, or NULL on failure. Caller must unref.
  */
-GdkPixbuf* icon_utils_add_badge(GdkPixbuf *base, GdkPixbuf *badge);
+GdkPixbuf* icon_utils_add_badge(const GdkPixbuf *base, const GdkPixbuf *badge);
 
 #endif // ICON_UTILS_H

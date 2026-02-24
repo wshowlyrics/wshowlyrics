@@ -46,7 +46,8 @@ int render_segment_with_ruby(const struct segment_params *params,
         return 0;
     }
 
-    int seg_w, seg_h;
+    int seg_w;
+    int seg_h;
     get_ruby_text_size(params->cairo, params->font, &seg_w, &seg_h,
                       params->scale, text, ruby);
 
@@ -61,7 +62,8 @@ int render_segment_plain(const struct segment_params *params, const char *text) 
         return 0;
     }
 
-    int seg_w, seg_h;
+    int seg_w;
+    int seg_h;
     get_text_size(params->cairo, params->font, &seg_w, &seg_h, NULL,
                  params->scale, text);
     // Bottom-align: position at same y as ruby text's base text would be
@@ -92,7 +94,8 @@ void render_plain_text(const struct render_base_params *params, const char *text
 
     cairo_set_source_u32(params->cairo, params->foreground);
 
-    int w, h;
+    int w;
+    int h;
     get_text_size(params->cairo, params->font, &w, &h, NULL, params->scale, text);
 
     cairo_move_to(params->cairo, 0, 0);

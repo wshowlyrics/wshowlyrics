@@ -50,7 +50,10 @@ static bool parse_timestamp_format(const char *str, int *minutes, int *seconds,
 }
 
 bool parse_lrc_timestamp_ex(const char *str, int64_t *timestamp_us, const char **end_ptr, bool *is_unfill) {
-    int minutes = 0, seconds = 0, centiseconds = 0, digit_len = 0;
+    int minutes = 0;
+    int seconds = 0;
+    int centiseconds = 0;
+    int digit_len = 0;
     bool unfill = (str[0] == '[' && str[1] == '<');
 
     // Prepare parse string (remove '<' for unfill timestamps)
@@ -582,7 +585,7 @@ static const char* handle_ruby_annotation(const char *pos, const char *seg_start
 // Returns: false if fatal error (allocation failure), true if should continue parsing
 // Output: continue_pos is set to next position to continue parsing
 static bool handle_annotation_failure(const char *pos, const char **continue_pos,
-                                      struct ruby_segment *head) {
+                                      const struct ruby_segment *head) {
     (void)head;  // Unused - caller handles cleanup
     if (strchr(pos, '}')) {
         // Failed with valid closing brace - allocation error
@@ -613,7 +616,7 @@ static bool handle_parsing_failure_and_continue(const char *pos,
 // Returns: true on success, false on failure (caller handles cleanup)
 static bool finalize_ruby_segments(const char *seg_start, const char *text_end,
                                    const char *text, struct ruby_segment ***next_seg,
-                                   int *count, struct ruby_segment *head) {
+                                   int *count, const struct ruby_segment *head) {
     (void)head;  // Unused - caller handles cleanup
     // Add remaining text as final segment
     if (seg_start < text_end &&
@@ -793,7 +796,7 @@ bool is_text_only_whitespace(const char *text) {
 void normalize_fullwidth_punctuation(char *text) {
     if (!text) return;
 
-    char *read = text;
+    const char *read = text;
     char *write = text;
 
     while (*read) {
@@ -848,7 +851,7 @@ void normalize_word_segments(struct word_segment *segments) {
 }
 
 
-bool validate_timestamp_order(int64_t current_us, int64_t *last_us, const char *format_name) {
+bool validate_timestamp_order(int64_t current_us, const int64_t *last_us, const char *format_name) {
     if (!last_us || *last_us < 0) {
         return true;  // No previous timestamp to compare
     }
@@ -871,7 +874,7 @@ bool validate_timestamp_order(int64_t current_us, int64_t *last_us, const char *
     return true;
 }
 
-void warn_missing_metadata(struct lyrics_data *data, const char *format_name) {
+void warn_missing_metadata(const struct lyrics_data *data, const char *format_name) {
     if (!data) {
         return;
     }

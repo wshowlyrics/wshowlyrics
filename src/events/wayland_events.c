@@ -8,15 +8,15 @@
 
 // Forward declarations for static functions
 static void layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1, uint32_t serial, uint32_t width, uint32_t height);
-static void layer_surface_closed(void *data, struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1);
-static void surface_enter(void *data, struct wl_surface *wl_surface, struct wl_output *output);
-static void surface_leave(void *data, struct wl_surface *wl_surface, struct wl_output *output);
-static void output_geometry(void *data, struct wl_output *wl_output, int32_t x, int32_t y, int32_t physical_width, int32_t physical_height, int32_t subpixel, const char *make, const char *model, int32_t transform);
-static void output_mode(void *data, struct wl_output *wl_output, uint32_t flags, int32_t width, int32_t height, int32_t refresh);
-static void output_done(void *data, struct wl_output *wl_output);
-static void output_scale(void *data, struct wl_output *wl_output, int32_t factor);
+static void layer_surface_closed(void *data, struct zwlr_layer_surface_v1 *const zwlr_layer_surface_v1);
+static void surface_enter(void *data, struct wl_surface *const wl_surface, struct wl_output *output);
+static void surface_leave(void *data, struct wl_surface *const wl_surface, struct wl_output *const output);
+static void output_geometry(void *data, struct wl_output *const wl_output, int32_t x, int32_t y, int32_t physical_width, int32_t physical_height, int32_t subpixel, const char *make, const char *model, int32_t transform);
+static void output_mode(void *data, struct wl_output *const wl_output, uint32_t flags, int32_t width, int32_t height, int32_t refresh);
+static void output_done(void *data, struct wl_output *const wl_output);
+static void output_scale(void *data, struct wl_output *const wl_output, int32_t factor);
 static void registry_global(void *data, struct wl_registry *wl_registry, uint32_t name, const char *interface, uint32_t version);
-static void registry_global_remove(void *data, struct wl_registry *wl_registry, uint32_t name);
+static void registry_global_remove(void *data, struct wl_registry *const wl_registry, uint32_t name);
 static void frame_callback_done(void *data, struct wl_callback *callback, uint32_t time);
 
 // Listener structures (defined early so they can be referenced by event handlers)
@@ -76,7 +76,7 @@ static void layer_surface_configure(void *data,
 }
 
 static void layer_surface_closed(void *data,
-        struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1) {
+        struct zwlr_layer_surface_v1 *const zwlr_layer_surface_v1) {
     (void)zwlr_layer_surface_v1;
     struct lyrics_state *state = data;
 
@@ -92,7 +92,7 @@ static void layer_surface_closed(void *data,
 }
 
 static void surface_enter(void *data,
-        struct wl_surface *wl_surface, struct wl_output *output) {
+        struct wl_surface *const wl_surface, struct wl_output *output) {
     (void)wl_surface;
     struct lyrics_state *state = data;
     struct lyrics_output *lyrics_output = state->outputs;
@@ -105,14 +105,14 @@ static void surface_enter(void *data,
 }
 
 static void surface_leave(void *data,
-        struct wl_surface *wl_surface, struct wl_output *output) {
+        struct wl_surface *const wl_surface, struct wl_output *const output) {
     (void)data;
     (void)wl_surface;
     (void)output;
     // Not needed for this application
 }
 
-static void output_geometry(void *data, struct wl_output *wl_output,
+static void output_geometry(void *data, struct wl_output *const wl_output,
         int32_t x, int32_t y, int32_t physical_width, int32_t physical_height,
         int32_t subpixel, const char *make, const char *model,
         int32_t transform) {
@@ -128,7 +128,7 @@ static void output_geometry(void *data, struct wl_output *wl_output,
     output->subpixel = subpixel;
 }
 
-static void output_mode(void *data, struct wl_output *wl_output,
+static void output_mode(void *data, struct wl_output *const wl_output,
         uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
     (void)wl_output;
     (void)flags;
@@ -139,14 +139,14 @@ static void output_mode(void *data, struct wl_output *wl_output,
     log_info("Screen resolution: %dx%d", width, height);
 }
 
-static void output_done(void *data, struct wl_output *wl_output) {
+static void output_done(void *data, struct wl_output *const wl_output) {
     (void)data;
     (void)wl_output;
     // Not needed
 }
 
 static void output_scale(void *data,
-        struct wl_output *wl_output, int32_t factor) {
+        struct wl_output *const wl_output, int32_t factor) {
     (void)wl_output;
     struct lyrics_output *output = data;
     output->scale = factor;
@@ -196,7 +196,7 @@ static void registry_global(void *data, struct wl_registry *wl_registry,
 }
 
 static void registry_global_remove(void *data,
-        struct wl_registry *wl_registry, uint32_t name) {
+        struct wl_registry *const wl_registry, uint32_t name) {
     (void)data;
     (void)wl_registry;
     (void)name;

@@ -81,7 +81,7 @@ static bool build_full_text_from_segments(struct word_segment *segments,
 // Parse first text segment (text immediately after line timestamp, before first word timestamp)
 // Returns updated position and whether full_text was allocated
 static const char* parse_first_text_segment(const char *pos, int64_t line_timestamp_us,
-                                             struct lyrics_data *data, struct lyrics_line *new_line,
+                                             const struct lyrics_data *data, struct lyrics_line *new_line,
                                              struct word_segment ***next_segment_ptr,
                                              char **full_text, size_t *full_text_len,
                                              size_t *full_text_capacity) {
@@ -205,7 +205,7 @@ static bool add_raw_text_segment(struct word_segment *segment,
 
 // Parse a single word segment with timestamp
 // Returns updated position, or NULL on error
-static const char* parse_word_timestamp_segment(const char *pos, struct lyrics_data *data,
+static const char* parse_word_timestamp_segment(const char *pos, const struct lyrics_data *data,
                                                  struct lyrics_line *new_line,
                                                  struct word_segment ***next_segment_ptr,
                                                  char **full_text, size_t *full_text_len,

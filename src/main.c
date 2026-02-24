@@ -87,8 +87,8 @@ static bool display_detailed_help(const char *program_name) {
     }
 
     // Replace %s with program name
-    char *pos = buffer.data;
-    char *end = buffer.data + buffer.size;
+    const char *pos = buffer.data;
+    const char *end = buffer.data + buffer.size;
     while (pos < end) {
         char *placeholder = strstr(pos, "%s");
         if (placeholder && placeholder < end) {

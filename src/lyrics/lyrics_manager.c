@@ -14,7 +14,7 @@
 #include <time.h>
 #include <unistd.h>
 
-bool lyrics_manager_is_format(struct lyrics_state *state, const char *extension) {
+bool lyrics_manager_is_format(const struct lyrics_state *state, const char *extension) {
     if (!state->lyrics.source_file_path) {
         return false;
     }
@@ -42,7 +42,7 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
     // Remove YouTube ID pattern [xxxxx]
     char *youtube_id = strrchr(dest, '[');
     if (youtube_id) {
-        char *bracket_end = strchr(youtube_id, ']');
+        const char *bracket_end = strchr(youtube_id, ']');
         if (bracket_end && bracket_end[1] == '\0') {
             if (youtube_id > dest && youtube_id[-1] == ' ') {
                 youtube_id--;
@@ -104,7 +104,7 @@ static void handle_no_player_found(struct lyrics_state *state) {
 }
 
 // Helper: Detect if track changed by comparing URL or trackid
-static bool detect_track_change(struct track_metadata *new_track, struct track_metadata *current_track) {
+static bool detect_track_change(const struct track_metadata *new_track, const struct track_metadata *current_track) {
     // Check URL first (most reliable for local files)
     // mpv and other local players reuse trackids (e.g., /9) across different files
     if (new_track->url && current_track->url) {
@@ -126,7 +126,7 @@ static bool detect_track_change(struct track_metadata *new_track, struct track_m
 }
 
 // Helper: Handle track changed - log metadata, cancel translation, update state
-static void handle_track_changed(struct lyrics_state *state, struct track_metadata *new_track) {
+static void handle_track_changed(struct lyrics_state *state, const struct track_metadata *new_track) {
     log_info("=== Track changed ===");
     log_info("Title: %s", new_track->title ? new_track->title : "Unknown");
     log_info("Artist: %s", new_track->artist ? new_track->artist : "Unknown");
@@ -146,7 +146,7 @@ static void handle_track_changed(struct lyrics_state *state, struct track_metada
     // Record when the track started
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-    state->track_start_time_us = (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
+    state->track_start_time_us = now.tv_sec * 1000000 + now.tv_nsec / 1000;
     state->track_start_time_us -= state->current_track.position_us;
 
     // Reset tray icon and update track info
@@ -296,13 +296,13 @@ static bool is_whitespace_only(const char *text) {
 }
 
 // Helper: Calculate line index in linked list
-static int calculate_line_index(struct lyrics_data *lyrics, struct lyrics_line *target) {
+static int calculate_line_index(const struct lyrics_data *lyrics, const struct lyrics_line *target) {
     if (!target) {
         return -1;
     }
 
     int index = 0;
-    struct lyrics_line *line = lyrics->lines;
+    const struct lyrics_line *line = lyrics->lines;
     while (line && line != target) {
         index++;
         line = line->next;

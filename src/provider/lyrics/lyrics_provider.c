@@ -167,7 +167,8 @@ static char* url_decode_string(const char *str) {
     char *decoded = malloc(len + 1);
     if (!decoded) return NULL;
 
-    size_t i = 0, j = 0;
+    size_t i = 0;
+    size_t j = 0;
     while (i < len) {
         if (str[i] == '%' && i + 2 < len) {
             // Decode %XX
@@ -228,7 +229,7 @@ static char** parse_custom_extensions(const char *extensions) {
 
     // Count extensions
     int count = 1;
-    for (char *p = exts_copy; *p; p++) {
+    for (const char *p = exts_copy; *p; p++) {
         if (*p == ',') count++;
     }
 
@@ -248,7 +249,7 @@ static char** parse_custom_extensions(const char *extensions) {
     char *saveptr;
     char *token = strtok_r(exts_copy, ",", &saveptr);
     while (token && idx < count) {
-        char *trimmed = config_trim_whitespace(token);
+        const char *trimmed = config_trim_whitespace(token);
         result[idx] = strdup(trimmed);
         if (!result[idx]) {
             cleanup_partial_extensions(result, idx);
@@ -336,8 +337,8 @@ static char* get_filename_from_url(const char *url) {
     if (!decoded) return NULL;
 
     // Get filename part
-    char *last_slash = strrchr(decoded, '/');
-    char *filename = last_slash ? (last_slash + 1) : decoded;
+    const char *last_slash = strrchr(decoded, '/');
+    const char *filename = last_slash ? (last_slash + 1) : decoded;
 
     // Remove extension
     char *result = remove_extension(filename);
@@ -398,7 +399,7 @@ static bool is_track_ignored(const char *music_file_dir) {
     char *token = strtok_r(ignore_copy, ":", &saveptr);
 
     while (token) {
-        char *trimmed = config_trim_whitespace(token);
+        const char *trimmed = config_trim_whitespace(token);
         char *expanded = expand_path_token(trimmed, music_file_dir);
         if (!expanded) {
             token = strtok_r(NULL, ":", &saveptr);
@@ -406,7 +407,8 @@ static bool is_track_ignored(const char *music_file_dir) {
         }
 
         // Compare using realpath to handle symlinks/relative paths
-        char resolved_dir[PATH_MAX], resolved_ignore[PATH_MAX];
+        char resolved_dir[PATH_MAX];
+        char resolved_ignore[PATH_MAX];
         bool match = false;
 
         if (realpath(music_file_dir, resolved_dir) && realpath(expanded, resolved_ignore)) {
@@ -441,7 +443,7 @@ static int build_custom_search_dirs(const char **search_dirs, int max_dirs,
     char *token = strtok_r(dirs_copy, ":", &saveptr);
 
     while (token && dir_count < max_dirs) {
-        char *trimmed = config_trim_whitespace(token);
+        const char *trimmed = config_trim_whitespace(token);
         char *expanded = expand_path_token(trimmed, current_dir);
 
         if (expanded && expanded[0] != '\0') {
@@ -729,7 +731,7 @@ static bool should_skip_provider(const struct lyrics_provider *provider) {
 }
 
 // Cache lrclib lyrics to file
-static void cache_lrclib_lyrics(struct track_metadata *track, struct lyrics_data *data,
+static void cache_lrclib_lyrics(const struct track_metadata *track, struct lyrics_data *data,
                                 const char *metadata_hash) {
     char cache_path[512];
     if (build_lyrics_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {

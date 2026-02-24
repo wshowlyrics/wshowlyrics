@@ -65,7 +65,14 @@ static struct lyrics_line* create_srt_line(int64_t start_us, int64_t end_us, con
 
 // Parse SRT/WEBVTT timestamp like 00:00:12,340 --> 00:00:15,120 or 00:00:12.340 --> 00:00:15.120
 static bool parse_srt_timestamp(const char *str, int64_t *start_us, int64_t *end_us) {
-    int h1 = 0, m1 = 0, s1 = 0, ms1 = 0, h2 = 0, m2 = 0, s2 = 0, ms2 = 0;
+    int h1 = 0;
+    int m1 = 0;
+    int s1 = 0;
+    int ms1 = 0;
+    int h2 = 0;
+    int m2 = 0;
+    int s2 = 0;
+    int ms2 = 0;
 
     // Try SRT format first (with comma)
     int matched = sscanf(str, "%d:%d:%d,%d --> %d:%d:%d,%d",

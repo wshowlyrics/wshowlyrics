@@ -26,7 +26,7 @@ bool wayland_manager_init(struct wayland_connection *conn);
 
 // Check if connection is healthy
 // Returns true if connected and working, false if error detected
-bool wayland_manager_is_connected(struct wayland_connection *conn);
+bool wayland_manager_is_connected(const struct wayland_connection *conn);
 
 // Attempt to reconnect to Wayland compositor
 // Waits 5 seconds before attempting reconnection

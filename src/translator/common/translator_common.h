@@ -3,6 +3,7 @@
 
 #include "../../lyrics_types.h"
 #include <stdbool.h>
+#include <curl/curl.h>
 
 /**
  * Extract the last non-empty line from text.
@@ -124,7 +125,7 @@ void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_
  * @param name Translator name for logging (e.g., "openai_translator")
  * @return true on success, false on failure
  */
-bool translator_init_curl_handle(void **handle, const char *name);
+bool translator_init_curl_handle(CURL **handle, const char *name);
 
 /**
  * Cleanup a CURL handle.
@@ -132,7 +133,7 @@ bool translator_init_curl_handle(void **handle, const char *name);
  *
  * @param handle Pointer to CURL handle pointer
  */
-void translator_cleanup_curl_handle(void **handle);
+void translator_cleanup_curl_handle(CURL **handle);
 
 /**
  * Common CURL response buffer structure.

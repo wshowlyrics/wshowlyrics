@@ -13,7 +13,8 @@ int calculate_max_ruby_height_ruby(cairo_t *cairo, const char *font,
 
     while (seg) {
         if (seg->ruby) {
-            int ruby_w, ruby_h;
+            int ruby_w;
+            int ruby_h;
             get_text_size(cairo, font, &ruby_w, &ruby_h, NULL, scale * 0.5, seg->ruby);
             if (ruby_h > max_ruby_height) {
                 max_ruby_height = ruby_h;
@@ -42,7 +43,7 @@ void render_ruby_segments_static(const struct ruby_static_params *params) {
 }
 
 // Helper: Check if segment is translation-only
-static bool is_translation_segment(struct ruby_segment *seg) {
+static bool is_translation_segment(const struct ruby_segment *seg) {
     return seg->text && seg->text[0] == '\0' &&
            seg->translation && seg->translation[0] != '\0';
 }
@@ -60,11 +61,12 @@ static int render_translation_segment(cairo_t *cairo, const char *font,
                                       uint32_t foreground, double translation_scale,
                                       const char *translation, int x_offset, int y_offset) {
     // Use dimmed color with opacity
-    struct config *cfg = config_get();
+    const struct config *cfg = config_get();
     uint32_t dimmed = create_color_with_opacity(foreground, cfg->translation.translation_opacity);
     cairo_set_source_u32(cairo, dimmed);
 
-    int trans_w, trans_h;
+    int trans_w;
+    int trans_h;
     get_text_size(cairo, font, &trans_w, &trans_h, NULL, translation_scale, translation);
 
     // Place translation at same baseline level (text will naturally appear below due to font metrics)
@@ -154,7 +156,8 @@ void render_ruby_segments(const struct ruby_params *params) {
         }
 
         // Handle normal text segment
-        int seg_w, seg_h;
+        int seg_w;
+        int seg_h;
         if (seg->ruby) {
             get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg->text, seg->ruby);
         } else {
@@ -222,7 +225,8 @@ static int render_original_text(cairo_t *cairo, const char *font, int scale,
         }
 
         // Get segment size
-        int seg_w, seg_h;
+        int seg_w;
+        int seg_h;
         if (seg->ruby) {
             get_ruby_text_size(cairo, font, &seg_w, &seg_h, scale, seg->text, seg->ruby);
         } else {
@@ -253,11 +257,12 @@ static int render_translation_text(cairo_t *cairo, const char *font, uint32_t fo
                                    const char *translation, double translation_scale,
                                    int y_offset, int base_text_h, int max_ruby_height) {
     // Use custom opacity from config
-    struct config *cfg = config_get();
+    const struct config *cfg = config_get();
     uint32_t dimmed = create_color_with_opacity(foreground, cfg->translation.translation_opacity);
     cairo_set_source_u32(cairo, dimmed);
 
-    int trans_w, trans_h;
+    int trans_w;
+    int trans_h;
     get_text_size(cairo, font, &trans_w, &trans_h, NULL, translation_scale, translation);
 
     // Place translation below main text (adjust spacing based on ruby presence)

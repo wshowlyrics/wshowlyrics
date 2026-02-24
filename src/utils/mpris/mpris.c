@@ -398,7 +398,7 @@ static void handle_metadata_update(GVariant *changed_properties,
         bool is_spotify = saved_player &&
                          strcasecmp(saved_player, "spotify") == 0;
 
-        struct config *cfg = config_get();
+        const struct config *cfg = config_get();
         if (is_spotify && cfg->spotify.auto_position_fix) {
             mpris_state.position_fix_needed = true;
             log_info("Spotify auto track change detected - "
@@ -646,7 +646,7 @@ static bool should_switch_to_player(const char *player_name) {
     }
 
     // Check if new player is preferred over current
-    struct config *cfg = config_get();
+    const struct config *cfg = config_get();
     if (cfg->lyrics.preferred_players && cfg->lyrics.preferred_players[0] != '\0') {
         char *players_copy = strdup(cfg->lyrics.preferred_players);
         char *saveptr;
@@ -893,7 +893,7 @@ static char* find_best_player(void) {
         return NULL;
     }
 
-    struct config *cfg = config_get();
+    const struct config *cfg = config_get();
     char *best_player = NULL;
 
     // If no preferred players, find first playing player or first available
@@ -1534,7 +1534,7 @@ void mpris_apply_position_fix_if_needed(void) {
     }
 
     // Get config
-    struct config *cfg = config_get();
+    const struct config *cfg = config_get();
     if (!cfg->spotify.auto_position_fix) {
         mpris_state.position_fix_needed = false;
         g_mutex_unlock(&mpris_state.mutex);

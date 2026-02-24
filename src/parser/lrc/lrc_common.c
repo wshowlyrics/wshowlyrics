@@ -51,13 +51,13 @@ struct lyrics_line* lrc_find_line_at_time(struct lyrics_data *data, int64_t time
     return current;
 }
 
-int lrc_get_line_index(struct lyrics_data *data, struct lyrics_line *target) {
+int lrc_get_line_index(const struct lyrics_data *data, const struct lyrics_line *target) {
     if (!data || !target) {
         return -1;
     }
 
     int index = 0;
-    struct lyrics_line *line = data->lines;
+    const struct lyrics_line *line = data->lines;
 
     while (line) {
         if (line == target) {

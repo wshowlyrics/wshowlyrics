@@ -379,7 +379,7 @@ void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_
         int lines_completed = (int)(translatable_count * completion_ratio);
 
         // Get cache threshold based on policy (comfort: 50%, balanced: 75%, aggressive: 90%)
-        struct config *cfg = config_get();
+        const struct config *cfg = config_get();
         float threshold = config_get_cache_threshold(cfg->translation.cache_policy);
         int threshold_lines = (int)(translatable_count * threshold);
 
@@ -442,12 +442,12 @@ void translator_curl_response_free(struct translator_curl_response *response) {
     }
 }
 
-bool translator_init_curl_handle(void **handle, const char *name) {
+bool translator_init_curl_handle(CURL **handle, const char *name) {
     if (!handle || !name) {
         return false;
     }
 
-    CURL **curl_handle = (CURL **)handle;
+    CURL **curl_handle = handle;
 
     if (*curl_handle) {
         return true; // Already initialized
@@ -470,12 +470,12 @@ bool translator_init_curl_handle(void **handle, const char *name) {
     return true;
 }
 
-void translator_cleanup_curl_handle(void **handle) {
+void translator_cleanup_curl_handle(CURL **handle) {
     if (!handle) {
         return;
     }
 
-    CURL **curl_handle = (CURL **)handle;
+    CURL **curl_handle = handle;
 
     if (*curl_handle) {
         curl_easy_cleanup(*curl_handle);
@@ -525,7 +525,7 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
                                               struct translator_thread_args *args,
                                               struct lyrics_data *data,
                                               int *current,
-                                              int translatable_count) {
+                                              const int translatable_count) {
     // Check cancellation
     if (data->translation_should_cancel) {
         log_info("%s: Translation cancelled (%d/%d completed)",
@@ -661,7 +661,7 @@ void* translator_async_worker(void *arg) {
     data->translation_in_progress = true;
 
     // Check if translation can complete before song ends
-    struct config *cfg_time = config_get();
+    const struct config *cfg_time = config_get();
     translator_check_time_feasibility(data, cfg_time->translation.rate_limit_ms,
                                        args->track_length_us);
 
@@ -687,7 +687,7 @@ void* translator_async_worker(void *arg) {
 
         // Rate limiting
         if (line->next) {
-            struct config *cfg = config_get();
+            const struct config *cfg = config_get();
             translator_rate_limit_delay(cfg->translation.rate_limit_ms);
         }
 
@@ -765,7 +765,7 @@ int translator_parse_retry_delay(const char *response_json) {
 // Helper: Setup CURL request with headers and options
 // Returns: headers list (caller must free), or NULL on error
 static struct curl_slist* setup_translator_curl_request(CURL *curl,
-                                                         struct translator_http_params *params,
+                                                         const struct translator_http_params *params,
                                                          struct translator_curl_response *response) {
     // Setup CURL request
     if (curl_easy_setopt(curl, CURLOPT_URL, params->endpoint) != CURLE_OK ||
@@ -796,7 +796,7 @@ static struct curl_slist* setup_translator_curl_request(CURL *curl,
 // Sets should_retry: true to retry, false to abort
 static char* handle_translator_http_response(long http_code,
                                              struct translator_curl_response *response,
-                                             struct translator_http_params *params,
+                                             const struct translator_http_params *params,
                                              int attempt, bool *should_retry) {
     *should_retry = false;
 
@@ -839,7 +839,7 @@ static char* handle_translator_http_response(long http_code,
 // Returns: response data on success, NULL to retry/abort
 // Sets should_retry and cleanup_and_return flags for caller
 static char* perform_single_http_attempt(CURL *local_curl,
-                                         struct translator_http_params *params,
+                                         const struct translator_http_params *params,
                                          int attempt, bool *should_retry,
                                          bool *cleanup_and_return) {
     *should_retry = false;

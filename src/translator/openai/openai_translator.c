@@ -125,11 +125,11 @@ static char* translate_single_line(const char *text, const char *target_lang,
 }
 
 bool openai_translator_init(void) {
-    return translator_init_curl_handle((void **)&curl_handle, "openai_translator");
+    return translator_init_curl_handle(&curl_handle, "openai_translator");
 }
 
 void openai_translator_cleanup(void) {
-    translator_cleanup_curl_handle((void **)&curl_handle);
+    translator_cleanup_curl_handle(&curl_handle);
 }
 
 bool openai_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {

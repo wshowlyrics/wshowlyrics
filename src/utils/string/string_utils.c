@@ -31,7 +31,7 @@ char* sanitize_title(const char *title) {
     // Remove YouTube ID pattern: [alphanumeric 11 chars] or (alphanumeric 11 chars)
     // Also remove quality tags like [4K], [60FPS], etc.
     char *write_pos = result;
-    char *read_pos = result;
+    const char *read_pos = result;
 
     while (*read_pos) {
         if (*read_pos == '[' || *read_pos == '(') {
@@ -50,7 +50,7 @@ char* sanitize_title(const char *title) {
     *write_pos = '\0';
 
     // Trim leading/trailing whitespace
-    char *trimmed = trim_whitespace(result);
+    const char *trimmed = trim_whitespace(result);
 
     // If trimmed pointer moved, we need to shift the string within the buffer
     if (trimmed != result) {

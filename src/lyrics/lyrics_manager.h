@@ -12,7 +12,7 @@
  * @param extension File extension to check (e.g., ".lrcx", ".lrc", ".srt")
  * @return true if current lyrics matches the format, false otherwise
  */
-bool lyrics_manager_is_format(struct lyrics_state *state, const char *extension);
+bool lyrics_manager_is_format(const struct lyrics_state *state, const char *extension);
 
 /**
  * Clean track title (remove file extensions, YouTube IDs)

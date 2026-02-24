@@ -12,6 +12,6 @@ void lrc_free_data(struct lyrics_data *data);
 struct lyrics_line* lrc_find_line_at_time(struct lyrics_data *data, int64_t timestamp_us);
 
 // Get the index of a line
-int lrc_get_line_index(struct lyrics_data *data, struct lyrics_line *line);
+int lrc_get_line_index(const struct lyrics_data *data, const struct lyrics_line *line);
 
 #endif // _LYRICS_LRC_COMMON_H

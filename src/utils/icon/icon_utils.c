@@ -81,7 +81,7 @@ GdkPixbuf* icon_utils_load_player_icon(const char *player_name, int size) {
     return icon;
 }
 
-GdkPixbuf* icon_utils_add_badge(GdkPixbuf *base, GdkPixbuf *badge) {
+GdkPixbuf* icon_utils_add_badge(const GdkPixbuf *base, const GdkPixbuf *badge) {
     if (!base) {
         log_error("Base pixbuf is NULL");
         return NULL;
