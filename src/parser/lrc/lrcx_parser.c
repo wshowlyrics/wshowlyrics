@@ -64,8 +64,9 @@ static bool build_full_text_from_segments(struct word_segment *segments,
         seg = seg->next;
     }
 
-    // Allocate buffer
+    // Allocate buffer (free previous to avoid leak from initial calloc)
     builder->full_text_capacity = estimated_len + 1;
+    free(builder->full_text);
     builder->full_text = malloc(builder->full_text_capacity);
     if (!builder->full_text) {
         return false;
