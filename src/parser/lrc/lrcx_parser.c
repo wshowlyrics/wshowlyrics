@@ -371,6 +371,7 @@ static bool parse_lrcx_line(const char *line, const struct lyrics_data *data, st
     pos = parse_first_text_segment(pos, line_timestamp_us, data, &builder);
     if (!pos) {
         // Error during first segment parsing
+        free(builder.full_text);
         free(new_line);
         return false;
     }
