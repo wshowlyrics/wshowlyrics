@@ -522,7 +522,7 @@ bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
 }
 
 bool translator_process_line_translation_ex(struct lyrics_line *line,
-                                              struct translator_thread_args *args,
+                                              const struct translator_thread_args *args,
                                               struct lyrics_data *data,
                                               int *current,
                                               const int translatable_count) {
@@ -881,7 +881,7 @@ static char* perform_single_http_attempt(CURL *local_curl,
 /**
  * Perform HTTP request with retry logic (common for all translators)
  */
-char* translator_perform_http_request(struct translator_http_params *params) {
+char* translator_perform_http_request(const struct translator_http_params *params) {
     if (!params || !params->endpoint || !params->request_body ||
         !params->provider_name || !params->build_headers) {
         return NULL;

@@ -1,102 +1,48 @@
 # TODO: Code Quality & Security Improvements
 
-## 현재 상태 (2026-02-24, 스캔 반영 후)
-
-### 완료된 Phase
-- **Phase 1-8**: Bugs 0개, Vulnerabilities 0개, BLOCKER 0개
-- **Phase S**: 보안취약점 3건 + 동시성 버그 수정 (d51ec9e)
-- **Phase H**: HIGH 5건 수정 (caa80a4)
-- **Phase 9**: Cognitive Complexity CRITICAL 2건 수정 (ba85ad3)
-- **Phase 10-pre**: MAJOR 8건 수정 (23ee4fc) + COPR 빌드 수정 (4d014d0)
-- **Phase 10-A**: lrclib_provider.c 회귀 BLOCKER+CRITICAL 3건 수정 (8196b99)
-- **Phase 10-B**: CRITICAL 4건 수정 (5f4470d) — S134 x2, S859 x3
-- **Phase 10-C**: MAJOR 23건 수정 (3a62cf3, 2de305e, 4356a66)
+## 현재 상태 (2026-02-24, Phase 14 완료)
 
 ### 📊 SonarCloud 현황 (실측)
 
-| 심각도 | 이전 (2/23) | 현재 (2/24) | 변동 |
-|--------|:---:|:---:|:---:|
-| BLOCKER | 1 | **0** | -1 |
-| CRITICAL | 7 | **2** | -5 (신규 2건) |
-| MAJOR | 36 | **14** | -22 |
-| MINOR | 132 | **137** | +5 |
-| **합계** | **176** | **153** | **-23** |
+| 심각도 | 시작 (2/23) | 중간 (2/24) | Phase 14 전 | Phase 14 후 (예상) | 총 변동 |
+|--------|:---:|:---:|:---:|:---:|:---:|
+| BLOCKER | 1 | 0 | 0 | **0** | -1 |
+| CRITICAL | 7 | 2 | 0 | **0** | **-7** |
+| MAJOR | 36 | 14 | 3 | **1** | **-35** |
+| MINOR | 132 | 137 | 34 | **21** | -111 |
+| **합계** | **176** | **153** | **37** | **22** | **-154** |
 
-### Security Hotspot (1건, TO_REVIEW)
-
-| 파일 | 라인 | Rule | 문제 | 확률 |
-|------|------|------|------|------|
-| parser_utils.c | 629 | S5813 | `strlen` 사용 안전성 | HIGH |
-
-> `finalize_ruby_segments()`에서 text는 호출자에 의해 NULL-terminated 보장.
-> SonarCloud 웹에서 수동으로 "Safe" 마킹 필요.
+> MAJOR 3건 중 S107 2건은 Won't Fix 처리 완료 (외부 콜백 시그니처)
+> Won't Fix 처리 후 실질 MAJOR: **1건** (S1820 main.h)
+> MINOR 21건은 모두 외부 콜백 시그니처 S995 → Won't Fix 대상
 
 ---
 
-## 신규 CRITICAL 이슈 (2건) — 리팩토링 회귀
+## 남은 이슈
 
-우리 리팩토링으로 인해 mpris.c에서 새로 감지된 중첩 깊이 이슈:
+### MAJOR (1건 — 코드 수정 필요)
 
-| 파일 | 라인 | Rule | 문제 |
+| 파일 | Rule | 문제 |
+|------|------|------|
+| main.h:53 | S1820 | `lyrics_state` 구조체 42개 필드 (최대 20) |
+
+### MINOR — Won't Fix 대상 (21건 — SonarCloud 웹 처리)
+
+외부 라이브러리 콜백 시그니처로 파라미터 수정 불가:
+
+| 파일 | 건수 | 사유 |
+|------|:---:|------|
+| wayland_events.c | 10 | Wayland `wl_*` 콜백 시그니처 |
+| system_tray.c | 6 | GTK `GdkPixbuf`, `GtkMenuItem` 콜백 시그니처 |
+| dbus_control.c | 3 | GDBus `GDBusConnection` 콜백 시그니처 |
+| shm.c | 1 | Wayland `wl_buffer` 콜백 시그니처 |
+| wayland_manager.c | 1 | Wayland `wl_registry` 콜백 시그니처 |
+
+### Security Hotspot (1건 — SonarCloud 웹 처리)
+
+| 파일 | Rule | 문제 | 조치 |
 |------|------|------|------|
-| mpris.c | 231 | S134 | `list_available_players()` 중첩 깊이 > 3 |
-| mpris.c | 653 | S134 | preferred player 루프 중첩 깊이 > 3 |
-
-> mpris.c:231은 이전 10-B1에서 수정했으나 라인이 이동하여 다시 감지된 것일 수 있음.
-> mpris.c:653은 S924 수정(4356a66)에서 for+done 패턴 도입 시 발생한 신규 이슈.
-
----
-
-## 남은 MAJOR 이슈 (14건)
-
-### Priority 1: 과다 파라미터 (12건) — 구조체 리팩토링
-**Rule**: c:S107 (>7 파라미터)
-
-| 파일 | 라인 | 파라미터 수 |
-|------|------|:---------:|
-| rendering_manager.c | 65 | 11 |
-| rendering_manager.c | 95 | 10 |
-| wayland_events.c | 115 | 10 |
-| word_render.c | 331 | 9 |
-| word_render.c | 168 | 8 |
-| word_render.c | 365 | 8 |
-| rendering_manager.c | 48 | 8 |
-| ruby_render.c | 200 | 8 |
-| ruby_render.c | 252 | 8 |
-| lrcx_parser.c | 83 | 8 |
-| lrcx_parser.c | 208 | 8 |
-| dbus_control.c | 66 | 8 |
-
-### Priority 2: 구조체 필드 과다 (1건)
-**Rule**: c:S1820
-
-| 파일 | 라인 | 문제 |
-|------|------|------|
-| main.h | 51 | 구조체 필드 42개 (최대 20) |
-
-### Priority 3: 중첩 break (1건)
-**Rule**: c:S924
-
-| 파일 | 라인 | 문제 |
-|------|------|------|
-| lrclib_provider.c | 113 | 중첩 break 3→1 필요 |
-
-> dbus_control.c:66은 GDBus 콜백 시그니처라 변경 불가 (Won't Fix 가능).
-> lrclib_provider.c:113은 이전 수정(8196b99)의 early-continue 패턴에서 잔존.
-
----
-
-## Phase 11: MINOR 이슈 (137건)
-
-| Rule | 설명 | 예상 건수 |
-|------|------|:---:|
-| c:S995 | Pointer-to-const 파라미터 | ~47 |
-| c:S1659 | 다중 선언 분리 | ~39 |
-| c:S5350 | Pointer-to-const 변수 | ~36 |
-| c:S1905 | 불필요한 cast 제거 | ~9 |
-| c:S886 | 루프 리팩토링 | ~1 |
-| 기타 | 신규 감지 | ~5 |
-| **합계** | | **137** |
+| parser_utils.c | S5813 | `strlen` 사용 안전성 | Safe 마킹 (NULL-terminated 보장) |
 
 ---
 
@@ -147,29 +93,51 @@
 | include 위치 이동 (S954) | 1 | 2de305e |
 | 중첩 break 감소 (S924 x3) | 3 | 4356a66 |
 
-### MEDIUM 이슈 (미착수)
+### Phase 11: CRITICAL 2건 + MINOR 135건 (완료)
 
-| # | 파일 | 문제 | 영향 |
-|---|------|------|------|
-| M1 | main.c:57-105 | 원격 URL 텍스트 `%s` 치환 | Low |
-| M2 | mpris.c:1187-1331 | 메타데이터 추출 코드 중복 | Maintainability |
-| M3 | translator_common.c:952-957 | cache_path snprintf 잘림 | Truncation |
-| M4 | parser_utils.c:792-823 | 멀티바이트 시퀀스 읽기 | UB |
-| M5 | lyrics_provider.c:705-721 | 문자열 비교 디스패치 | Maintainability |
-| M6 | lyrics_manager.c | join 누락 케이스 | Thread leak |
-| M7 | config.c:484 | INI 512바이트 줄 제한 | Data loss |
-| M8 | system_tray.c:688 | escape_shell_string 감사 | Potential injection |
-| M9 | translator_common.c:166-191 | 캐시 파일 크기 미제한 | OOM |
+| 문제 | 건수 | 커밋 |
+|------|:---:|------|
+| mpris.c S134 중첩 깊이 2건 | 2 | dd1bbb0 |
+| lrclib_provider.c S924 중첩 break | 1 | 896119b |
+| MINOR 135건 (S995, S1659, S5350, S1905 등) | 135 | b7e7048 |
+
+### Phase 12: S107 구조체 리팩토링 (완료)
+
+| 문제 | 건수 | 커밋 |
+|------|:---:|------|
+| lrcx_parser.c S107 — `lrcx_line_builder` 구조체 도입 | 2 | 447b07b |
+| rendering_manager.c S107 — `offset_bar_context` 구조체 도입 | 3 | 86f6334 |
+| ruby_render.c S107 — `ruby_render_context` 구조체 도입 | 2 | 86f6334 |
+| word_render.c S107 — `word_render_context` 구조체 도입 | 3+1 | 86f6334 |
+
+### Phase 13: MEDIUM 코드 리뷰 이슈 (완료)
+
+| # | 파일 | 문제 | 조치 | 커밋 |
+|---|------|------|------|------|
+| M2 | mpris.c | 메타데이터 추출 60줄 중복 | `parse_metadata_from_dict()` 재사용 | 0a7218e |
+| M3 | translator_common.c | cache_path snprintf 잘림 | 반환값 검사 추가 | 0a7218e |
+| M4 | parser_utils.c | 멀티바이트 시퀀스 UB | null 체크 추가 | 0a7218e |
+| M5 | lyrics_provider.c | 문자열 비교 디스패치 | `is_enabled` 콜백 패턴 도입 | 0a7218e |
+| M6 | main.c | thread join 누락 2곳 | `cancel_and_wait_translation()` 추가 | 0a7218e |
+| M7 | constants.h | INI 512바이트 줄 제한 | CONFIG_LINE_SIZE 4096으로 증가 | 0a7218e |
+| M1 | main.c | %s 치환 보안 | 분석 결과 안전 (strstr 수동 치환) | N/A |
+| M8 | system_tray.c | escape_shell_string | Phase S에서 이미 해결 (g_spawn_async) | N/A |
+| M9 | translator_common.c | 캐시 파일 크기 미제한 | Phase H에서 이미 해결 (MAX_CACHE_FILE_SIZE) | N/A |
+
+### Phase 14: MINOR 잔여 13건 (완료)
+
+| 분류 | 건수 | 파일 | 변경 |
+|------|:---:|------|------|
+| S995 const 파라미터 | 6 | lrcx_parser, lyrics_provider, translator_common(x2), parser_utils, word_render | `const` 추가 |
+| S5350 const 변수 | 3 | main, word_render, string_utils | `const` 추가 |
+| S886 루프 리팩토링 | 4 | lrclib_provider (`for`→`while`), lyrics_provider (`break`), mpris (`break`), lang_detect (`for`→`while`) | 루프 구조 개선 |
 
 ---
 
 ## 권장 작업 순서
 
-1. **CRITICAL 2건** — mpris.c:231, 653 중첩 깊이 수정
-2. **MAJOR 잔여** — lrclib_provider.c S924 (1건) + S107 구조체 리팩토링 (12건) + S1820 (1건)
-3. **Security Hotspot** — parser_utils.c S5813 수동 리뷰
-4. **Phase 11** — MINOR 137건
-5. **MEDIUM** — 코드 분석 발견 이슈 9건
+1. **Won't Fix 마킹** — MINOR S995 21건 (SonarCloud 웹) + Security Hotspot Safe 마킹
+2. **S1820** — main.h `lyrics_state` 구조체 42필드 → 서브 구조체 분리
 
 ---
 
@@ -183,9 +151,9 @@
 
 ## 상태
 
-- **최종 업데이트**: 2026-02-24 (SonarCloud 스캔 반영 후)
-- **현재 Phase**: CRITICAL 2건 → MAJOR 잔여 → Phase 11
-- **완료**: Phase 1-10 (BLOCKER 0, MAJOR 대부분)
-- **남은 이슈**: 153건 (CRITICAL 2 + MAJOR 14 + MINOR 137)
+- **최종 업데이트**: 2026-02-24 (Phase 14 완료)
+- **현재 Phase**: Won't Fix 마킹 21건 → S1820 구조체 분리
+- **완료**: Phase 1-14 (BLOCKER 0, CRITICAL 0, MAJOR 대부분, MINOR 대부분)
+- **남은 이슈**: 22건 (MAJOR 1 + MINOR 21) → Won't Fix 후 **1건** (S1820)
 - **목표**: A등급 유지, Quality Gate GREEN 유지, BLOCKER/CRITICAL 0개
 - **참고**: Coverity CID 643610 수정 완료 (b3a410a)

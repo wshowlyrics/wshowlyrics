@@ -629,12 +629,13 @@ static bool local_search(const char *title, const char *artist, const char *albu
 
     // Search all directories
     bool found = false;
-    for (int i = 0; i < dir_count && !found; i++) {
+    for (int i = 0; i < dir_count; i++) {
         if (!search_dirs[i]) continue;
 
         // Try exact filename first (only in first directory - file's own directory)
         found = (i == 0 && try_exact_filename(search_dirs[i], filename_from_url, extensions, data)) ||
                 try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data);
+        if (found) break;
     }
 
     cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url,
@@ -772,7 +773,7 @@ static void cache_lrclib_lyrics(const struct track_metadata *track, struct lyric
 }
 
 // Try all providers to find lyrics
-static bool try_providers(struct track_metadata *track, struct lyrics_data *data,
+static bool try_providers(const struct track_metadata *track, struct lyrics_data *data,
                          int64_t duration_ms, const char *metadata_hash,
                          bool *tried_local, bool *tried_lrclib) {
     for (int i = 0; providers[i]; i++) {

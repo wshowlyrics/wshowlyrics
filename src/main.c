@@ -90,7 +90,7 @@ static bool display_detailed_help(const char *program_name) {
     const char *pos = buffer.data;
     const char *end = buffer.data + buffer.size;
     while (pos < end) {
-        char *placeholder = strstr(pos, "%s");
+        const char *placeholder = strstr(pos, "%s");
         if (placeholder && placeholder < end) {
             fwrite(pos, 1, placeholder - pos, stdout);
             fprintf(stdout, "%s", program_name);

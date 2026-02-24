@@ -602,7 +602,7 @@ static bool handle_annotation_failure(const char *pos, const char **continue_pos
 static bool handle_parsing_failure_and_continue(const char *pos,
                                                 const char **pos_out,
                                                 const char **seg_start_out,
-                                                struct ruby_segment *head) {
+                                                const struct ruby_segment *head) {
     const char *continue_pos;
     if (!handle_annotation_failure(pos, &continue_pos, head)) {
         return false;  // Fatal error

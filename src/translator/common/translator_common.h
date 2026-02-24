@@ -225,7 +225,7 @@ bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
  * @return true to continue, false to break
  */
 bool translator_process_line_translation_ex(struct lyrics_line *line,
-                                              struct translator_thread_args *args,
+                                              const struct translator_thread_args *args,
                                               struct lyrics_data *data,
                                               int *current,
                                               int translatable_count);
@@ -341,6 +341,6 @@ struct translator_http_params {
  * @param params Request parameters (endpoint, headers, retry settings)
  * @return Raw JSON response (caller must free), or NULL on error
  */
-char* translator_perform_http_request(struct translator_http_params *params);
+char* translator_perform_http_request(const struct translator_http_params *params);
 
 #endif // TRANSLATOR_COMMON_H

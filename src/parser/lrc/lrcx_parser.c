@@ -331,7 +331,7 @@ static bool finalize_line_segments(struct lyrics_line *new_line, char *full_text
 
 // Parse a line with word-level timestamps
 // Example: [00:05.00][00:05.20]첫 [00:05.50]번 [00:05.80]째 [00:06.00]줄
-static bool parse_lrcx_line(const char *line, struct lyrics_data *data, struct lyrics_line **line_ptr) {
+static bool parse_lrcx_line(const char *line, const struct lyrics_data *data, struct lyrics_line **line_ptr) {
     if (line[0] != '[') {
         return false;
     }

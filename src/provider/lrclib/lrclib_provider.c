@@ -111,10 +111,8 @@ static struct best_match_result find_best_match_in_results(
     struct best_match_result result = {NULL, NULL, INT64_MAX};
     const char *search_pos = response_data + 1; // Skip opening '['
 
-    for (const char *obj_start = strchr(search_pos, '{');
-         obj_start;
-         obj_start = strchr(search_pos, '{')) {
-
+    const char *obj_start = strchr(search_pos, '{');
+    while (obj_start) {
         // Find object end early for loop advancement
         const char *obj_end = strchr(obj_start, '}');
         if (!obj_end) break;
@@ -152,6 +150,7 @@ static struct best_match_result find_best_match_in_results(
         }
 
         free(synced_lyrics);
+        obj_start = strchr(search_pos, '{');
     }
 
     return result;

@@ -128,12 +128,14 @@ static char* strip_punctuation(const char *text) {
 	}
 
 	size_t j = 0;
-	for (size_t i = 0; i < len; i++) {
+	size_t i = 0;
+	while (i < len) {
 		unsigned char c = (unsigned char)text[i];
 
 		// Skip ASCII punctuation: !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
 		if ((c >= '!' && c <= '/') || (c >= ':' && c <= '@') ||
 		    (c >= '[' && c <= '`') || (c >= '{' && c <= '~')) {
+			i++;
 			continue;
 		}
 
@@ -142,7 +144,7 @@ static char* strip_punctuation(const char *text) {
 		if (i + 2 < len &&
 		    (unsigned char)text[i] == 0xE3 &&
 		    (unsigned char)text[i+1] == 0x80) {
-			i += 2; // Skip all 3 bytes
+			i += 3; // Skip all 3 bytes
 			continue;
 		}
 
@@ -151,12 +153,13 @@ static char* strip_punctuation(const char *text) {
 		if (i + 2 < len &&
 		    (unsigned char)text[i] == 0xEF &&
 		    ((unsigned char)text[i+1] == 0xBC || (unsigned char)text[i+1] == 0xBD)) {
-			i += 2; // Skip all 3 bytes
+			i += 3; // Skip all 3 bytes
 			continue;
 		}
 
 		// Keep everything else (alphanumeric, spaces, and CJK characters)
 		result[j++] = text[i];
+		i++;
 	}
 	result[j] = '\0';
 

@@ -37,7 +37,7 @@ char* sanitize_title(const char *title) {
         if (*read_pos == '[' || *read_pos == '(') {
             char open = *read_pos;
             char close = (open == '[') ? ']' : ')';
-            char *bracket_end = strchr(read_pos + 1, close);
+            const char *bracket_end = strchr(read_pos + 1, close);
 
             if (bracket_end) {
                 // Skip this bracketed content

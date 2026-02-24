@@ -177,7 +177,7 @@ static double calculate_segment_fill_ratio(const struct word_segment *segment,
 
 // Render single segment with fill effect
 static void render_segment_with_fill(const struct word_render_context *ctx,
-                                    struct word_segment *segment,
+                                    const struct word_segment *segment,
                                     int x_offset, int max_ruby_height,
                                     double fill_ratio) {
     if (fill_ratio <= 0.0) {
@@ -216,7 +216,7 @@ static void render_filled_pass(const struct word_render_context *ctx,
         double unfill_override_ratio = 0.0;
 
         if (segment->text && segment->text[0] != '\0') {
-            struct word_segment *unfill_seg = find_active_unfill_segment(segment->next, position_us);
+            const struct word_segment *unfill_seg = find_active_unfill_segment(segment->next, position_us);
             if (unfill_seg) {
                 has_active_unfill = true;
                 unfill_override_ratio = calculate_unfill_ratio(unfill_seg, position_us);
