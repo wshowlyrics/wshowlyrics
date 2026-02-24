@@ -110,9 +110,14 @@ static struct best_match_result find_best_match_in_results(
     struct best_match_result result = {NULL, NULL, INT64_MAX};
     const char *search_pos = response_data + 1; // Skip opening '['
 
-    while (search_pos && *search_pos) {
-        char *obj_start = strchr(search_pos, '{');
-        if (!obj_start) break;
+    for (char *obj_start = strchr(search_pos, '{');
+         obj_start;
+         obj_start = strchr(search_pos, '{')) {
+
+        // Find object end early for loop advancement
+        char *obj_end = strchr(obj_start, '}');
+        if (!obj_end) break;
+        search_pos = obj_end + 1;
 
         // Extract duration and syncedLyrics for this result
         int64_t result_duration = extract_json_int(response_data, "duration", obj_start);
@@ -121,9 +126,6 @@ static struct best_match_result find_best_match_in_results(
         // Skip entries without valid synced lyrics
         if (!synced_lyrics || synced_lyrics[0] == '\0') {
             free(synced_lyrics);
-            char *obj_end = strchr(obj_start, '}');
-            if (!obj_end) break;
-            search_pos = obj_end + 1;
             continue;
         }
 
@@ -149,11 +151,6 @@ static struct best_match_result find_best_match_in_results(
         }
 
         free(synced_lyrics);
-
-        // Move to next object
-        char *obj_end = strchr(obj_start, '}');
-        if (!obj_end) break;
-        search_pos = obj_end + 1;
     }
 
     return result;
