@@ -35,7 +35,7 @@
 
 // Network buffers
 #define URL_BUFFER_SIZE 2048
-#define USER_AGENT_STRING "wshowlyrics/0.9.6"
+#define USER_AGENT_STRING "wshowlyrics/0.9.7"
 
 // File size limits
 #define MAX_LYRICS_FILE_SIZE (10 * 1024 * 1024)   // 10 MB
