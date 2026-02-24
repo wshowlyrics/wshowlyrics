@@ -650,11 +650,16 @@ static void local_cleanup(void) {
     // Nothing to cleanup
 }
 
+static bool local_is_enabled(void) {
+    return g_config.lyrics.extensions && g_config.lyrics.extensions[0] != '\0';
+}
+
 struct lyrics_provider local_provider = {
     .name = "local",
     .search = local_search,
     .init = local_init,
     .cleanup = local_cleanup,
+    .is_enabled = local_is_enabled,
 };
 
 // ============================================================================
@@ -714,19 +719,12 @@ static bool try_load_from_cache(const char *metadata_hash, struct lyrics_data *d
     return true;
 }
 
-// Check if provider should be skipped
+// Check if provider should be skipped via is_enabled callback
 static bool should_skip_provider(const struct lyrics_provider *provider) {
-    if (strcmp(provider->name, "local") == 0 &&
-        (!g_config.lyrics.extensions || g_config.lyrics.extensions[0] == '\0')) {
-        log_info("Skipped provider: %s (no extensions configured)", provider->name);
+    if (provider->is_enabled && !provider->is_enabled()) {
+        log_info("Skipped provider: %s (disabled)", provider->name);
         return true;
     }
-
-    if (strcmp(provider->name, "lrclib") == 0 && !g_config.lyrics.enable_lrclib) {
-        log_info("Skipped provider: %s (disabled in config)", provider->name);
-        return true;
-    }
-
     return false;
 }
 

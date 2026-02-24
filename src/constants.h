@@ -12,7 +12,7 @@
 #define FILENAME_BUFFER_SIZE 256
 
 // Configuration buffers
-#define CONFIG_LINE_SIZE 512
+#define CONFIG_LINE_SIZE 4096
 #define CONFIG_PATH_SIZE 512
 
 // Content buffers

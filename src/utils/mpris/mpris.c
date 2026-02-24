@@ -1250,9 +1250,6 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
         return false;
     }
 
-    // Save player name
-    metadata->player_name = strdup(player);
-
     // Build D-Bus service name
     char bus_name[SMALL_BUFFER_SIZE];
     build_mpris_bus_name(bus_name, sizeof(bus_name), player);
@@ -1284,71 +1281,25 @@ bool mpris_get_metadata(struct track_metadata *metadata) {
     GVariant *metadata_variant = g_variant_get_child_value(result, 0);
     GVariant *metadata_dict = g_variant_get_variant(metadata_variant);
 
-    // Extract metadata fields
-    GVariant *value;
-
-    // Title (xesam:title)
-    value = get_dict_value(metadata_dict, "xesam:title");
-    if (value) {
-        metadata->title = strdup(g_variant_get_string(value, NULL));
-        g_variant_unref(value);
-    }
-
-    // Artist (xesam:artist) - array of strings
-    value = get_dict_value(metadata_dict, "xesam:artist");
-    if (value) {
-        metadata->artist = extract_string_array(value);
-        g_variant_unref(value);
-    }
-
-    // Album (xesam:album)
-    value = get_dict_value(metadata_dict, "xesam:album");
-    if (value) {
-        metadata->album = strdup(g_variant_get_string(value, NULL));
-        g_variant_unref(value);
-    }
-
-    // URL (xesam:url)
-    value = get_dict_value(metadata_dict, "xesam:url");
-    if (value) {
-        metadata->url = strdup(g_variant_get_string(value, NULL));
-        g_variant_unref(value);
-    }
-
-    // Track ID (mpris:trackid) - unique identifier for the track
-    value = get_dict_value(metadata_dict, "mpris:trackid");
-    if (value) {
-        metadata->trackid = strdup(g_variant_get_string(value, NULL));
-        g_variant_unref(value);
-    }
-
-    // Art URL (mpris:artUrl)
-    value = get_dict_value(metadata_dict, "mpris:artUrl");
-    if (value) {
-        metadata->art_url = strdup(g_variant_get_string(value, NULL));
-        g_variant_unref(value);
-    }
-
-    // Length (mpris:length) - microseconds
-    // Note: Different players use different types (INT64 'x' or UINT64 't')
-    value = get_dict_value(metadata_dict, "mpris:length");
-    if (value) {
-        if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64)) {
-            metadata->length_us = g_variant_get_int64(value);
-        } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT64)) {
-            metadata->length_us = (int64_t)g_variant_get_uint64(value);
-        }
-        g_variant_unref(value);
-    }
+    // Reuse shared helper for metadata extraction (eliminates duplication)
+    struct track_metadata *parsed = parse_metadata_from_dict(metadata_dict, player);
 
     g_variant_unref(metadata_dict);
     g_variant_unref(metadata_variant);
     g_variant_unref(result);
+    free(player);
+
+    if (!parsed) {
+        mpris_free_metadata(metadata);
+        return false;
+    }
+
+    // Transfer parsed metadata to output
+    *metadata = *parsed;
+    free(parsed);
 
     // Use cached position (avoid D-Bus call)
     metadata->position_us = mpris_get_position();
-
-    free(player);
 
     // Ignore Spotify advertisements (detect by URL pattern)
     // Spotify ads have URLs like: https://open.spotify.com/ad/...

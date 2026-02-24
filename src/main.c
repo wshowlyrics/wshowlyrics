@@ -353,6 +353,7 @@ static void handle_instrumental_break(struct lyrics_state *state) {
             log_info("Lyrics file is back at original location: %s", sanitize_path(state->lyrics.source_file_path));
         } else {
             log_info("Searching for lyrics again...");
+            cancel_and_wait_translation(&state->lyrics);
             lrc_free_data(&state->lyrics);
             memset(&state->lyrics, 0, sizeof(state->lyrics));
             if (lyrics_find_for_track(&state->current_track, &state->lyrics)) {
@@ -437,6 +438,7 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
 
     dbus_control_cleanup();
     system_tray_cleanup();
+    cancel_and_wait_translation(&state->lyrics);
     lrc_free_data(&state->lyrics);
     mpris_free_metadata(&state->current_track);
     mpris_cleanup();

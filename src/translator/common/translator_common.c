@@ -967,9 +967,13 @@ bool translator_translate_lyrics_generic(struct lyrics_data *data,
     // Build cache path (empty if cache disabled)
     char cache_path[512] = {0};
     if (is_cache_enabled()) {
-        snprintf(cache_path, sizeof(cache_path),
-                 "%s/%s_%s.json",
-                 get_cache_translated_dir(), data->md5_checksum, target_lang);
+        int written = snprintf(cache_path, sizeof(cache_path),
+                               "%s/%s_%s.json",
+                               get_cache_translated_dir(), data->md5_checksum, target_lang);
+        if (written < 0 || (size_t)written >= sizeof(cache_path)) {
+            log_warn("%s: Cache path truncated, disabling cache for this translation", provider_name);
+            cache_path[0] = '\0';
+        }
 
         // Create cache directories
         if (!ensure_cache_directories()) {

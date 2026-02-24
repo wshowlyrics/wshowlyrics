@@ -20,6 +20,9 @@ struct lyrics_provider {
 
     // Cleanup provider
     void (*cleanup)(void);
+
+    // Check if provider is enabled (NULL means always enabled)
+    bool (*is_enabled)(void);
 };
 
 // Concrete implementations

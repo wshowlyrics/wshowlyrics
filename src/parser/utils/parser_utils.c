@@ -801,7 +801,9 @@ void normalize_fullwidth_punctuation(char *text) {
 
     while (*read) {
         // Check for fullwidth punctuation (U+FF00 - U+FF5E)
-        if ((unsigned char)read[0] == 0xEF && (unsigned char)read[1] == 0xBC) {
+        // Verify all 3 bytes exist before accessing multi-byte sequence
+        if ((unsigned char)read[0] == 0xEF && read[1] != '\0' &&
+            (unsigned char)read[1] == 0xBC && read[2] != '\0') {
             unsigned char third = (unsigned char)read[2];
             // U+FF01-FF5E maps to 0x21-0x7E
             if (third >= 0x81 && third <= 0xBF) {
@@ -810,7 +812,8 @@ void normalize_fullwidth_punctuation(char *text) {
                 read += 3;
                 continue;
             }
-        } else if ((unsigned char)read[0] == 0xEF && (unsigned char)read[1] == 0xBD) {
+        } else if ((unsigned char)read[0] == 0xEF && read[1] != '\0' &&
+                   (unsigned char)read[1] == 0xBD && read[2] != '\0') {
             unsigned char third = (unsigned char)read[2];
             // U+FF61-FF9F (halfwidth katakana range, but check for punct)
             if (third >= 0x80 && third <= 0x9F) {
