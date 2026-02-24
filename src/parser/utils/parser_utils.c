@@ -641,7 +641,7 @@ static bool finalize_ruby_segments(const char *seg_start, const char *text_end,
 // Returns: number of segments created, or -1 on failure (caller handles cleanup)
 static int parse_ruby_segments_loop(const char *text, const char *text_end,
                                     struct ruby_segment ***next_seg,
-                                    struct ruby_segment *head, int *count) {
+                                    const struct ruby_segment *head, int *count) {
     const char *pos = text;
     const char *seg_start = pos;
 
