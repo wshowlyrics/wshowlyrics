@@ -865,11 +865,13 @@ This project uses the `wlr-layer-shell-unstable-v1` Wayland protocol for display
 ### Officially Tested
 
 - **Sway** - Fully supported and tested
+- **Hyprland** - Fully supported and tested
+  - Hyprland's built-in animation effects provide smooth transitions for lyrics overlay changes, delivering a polished visual experience without any additional configuration
 - **KDE Plasma (5.27+)** - Fully supported and tested
 
 ### Other Compositors
 
-Other wlr-layer-shell compatible compositors (Hyprland, river, wayfire, etc.) may also work, but are not officially tested and may have stability issues.
+Other wlr-layer-shell compatible compositors (river, wayfire, etc.) may also work, but are not officially tested and may have stability issues.
 
 ## Dependencies
 
