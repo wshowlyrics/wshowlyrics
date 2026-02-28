@@ -21,6 +21,6 @@ jobs:
         env:
           GITLAB_PAT: ${{ secrets.GITLAB_PAT }}
         run: |
-          git remote add gitlab "https://oauth2:${GITLAB_PAT}@gitlab.com/unstable-code/lyrics.git"
+          git remote add gitlab "https://oauth2:${GITLAB_PAT}@gitlab.com/wshowlyrics/wshowlyrics.git"
           git push gitlab --all --force
           git push gitlab --tags --force
