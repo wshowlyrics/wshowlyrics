@@ -10,6 +10,8 @@ on:
       - '**.c'
       - '**.h'
       - 'meson.build'
+      - 'meson_options.txt'
+      - 'fuzz/**'
       - '.github/**/*.yml'
   pull_request:
     branches:
@@ -18,6 +20,8 @@ on:
       - '**.c'
       - '**.h'
       - 'meson.build'
+      - 'meson_options.txt'
+      - 'fuzz/**'
       - '.github/**/*.yml'
 
 jobs:
@@ -122,3 +126,58 @@ jobs:
           tar -tvf *.pkg.tar.zst | grep -E "(wshowlyrics|settings.ini|wshowlyrics.service)"
           echo "Package contents verified"
         fi
+
+  fuzz:
+    runs-on: ubuntu-latest
+    name: Fuzz Testing (libFuzzer + ASan)
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang meson ninja-build \
+          libcairo2-dev libpango1.0-dev libwayland-dev wayland-protocols \
+          libcurl4-openssl-dev libappindicator3-dev libgdk-pixbuf-2.0-dev \
+          libssl-dev libjson-c-dev libglib2.0-dev
+
+    - name: Build fuzz targets
+      env:
+        CC: clang
+      run: |
+        meson setup build-fuzz -Dfuzzing=true
+        meson compile -C build-fuzz
+
+    - name: Run fuzz_lrc
+      run: |
+        mkdir -p fuzz/artifacts/lrc
+        ./build-fuzz/fuzz_lrc fuzz/corpus/lrc/ \
+          -artifact_prefix=fuzz/artifacts/lrc/ \
+          -max_total_time=60 \
+          -print_final_stats=1
+
+    - name: Run fuzz_lrcx
+      run: |
+        mkdir -p fuzz/artifacts/lrcx
+        ./build-fuzz/fuzz_lrcx fuzz/corpus/lrcx/ \
+          -artifact_prefix=fuzz/artifacts/lrcx/ \
+          -max_total_time=60 \
+          -print_final_stats=1
+
+    - name: Run fuzz_srt
+      run: |
+        mkdir -p fuzz/artifacts/srt
+        ./build-fuzz/fuzz_srt fuzz/corpus/srt/ \
+          -artifact_prefix=fuzz/artifacts/srt/ \
+          -max_total_time=60 \
+          -print_final_stats=1
+
+    - name: Upload crash artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-crashes
+        path: fuzz/artifacts/
+        retention-days: 30
