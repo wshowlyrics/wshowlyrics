@@ -78,11 +78,17 @@ settings.ini
 *.ini
 !settings.ini.example
 
-# Fuzz testing artifacts (seed corpus is tracked)
+# Fuzz testing artifacts
 build-fuzz/
 build-valgrind/
 fuzz/artifacts/
-!fuzz/corpus/**
 crash-*
 leak-*
 timeout-*
+
+# Fuzzer-generated corpus (ignore all, then allow seed files)
+fuzz/corpus/**
+!fuzz/corpus/**/
+!fuzz/corpus/**/*.lrc
+!fuzz/corpus/**/*.lrcx
+!fuzz/corpus/**/*.srt

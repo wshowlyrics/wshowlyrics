@@ -4,22 +4,24 @@ on:
   push:
     branches:
       - master
+    tags:
+      - 'v*.*.*'
     paths:
-      - 'src/parser/**'
-      - 'src/utils/string/**'
-      - 'fuzz/**'
+      - '**.c'
+      - '**.h'
       - 'meson.build'
       - 'meson_options.txt'
+      - 'fuzz/**'
       - '.github/workflows/fuzz.yml'
   pull_request:
     branches:
       - master
     paths:
-      - 'src/parser/**'
-      - 'src/utils/string/**'
-      - 'fuzz/**'
+      - '**.c'
+      - '**.h'
       - 'meson.build'
       - 'meson_options.txt'
+      - 'fuzz/**'
       - '.github/workflows/fuzz.yml'
 
 jobs:
@@ -34,7 +36,10 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang meson ninja-build libcairo2-dev
+        sudo apt-get install -y clang meson ninja-build \
+          libcairo2-dev libpango1.0-dev libwayland-dev wayland-protocols \
+          libcurl4-openssl-dev libappindicator3-dev libgdk-pixbuf-2.0-dev \
+          libssl-dev libjson-c-dev libglib2.0-dev
 
     - name: Build fuzz targets
       env:

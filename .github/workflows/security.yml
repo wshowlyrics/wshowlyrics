@@ -2,14 +2,43 @@ name: Security Scan
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "Fuzz Testing"]
     types:
       - completed
 
 jobs:
+  gate:
+    name: Verify CI + Fuzz
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check both workflows succeeded
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA=${{ github.event.workflow_run.head_sha }}
+          REPO=${{ github.repository }}
+
+          CI_CONCLUSION=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed" \
+            --jq '.workflow_runs[0].conclusion // empty')
+          FUZZ_CONCLUSION=$(gh api "repos/$REPO/actions/workflows/fuzz.yml/runs?head_sha=$SHA&status=completed" \
+            --jq '.workflow_runs[0].conclusion // empty')
+
+          echo "CI=$CI_CONCLUSION, Fuzz=$FUZZ_CONCLUSION"
+
+          if [[ "$CI_CONCLUSION" == "success" && "$FUZZ_CONCLUSION" == "success" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Waiting for both to succeed — skipping this trigger"
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   secret-scan:
     name: Secret Scanning
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -25,7 +54,8 @@ jobs:
 
   sast-semgrep:
     name: SAST - Semgrep
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
