@@ -10,11 +10,8 @@ jobs:
   gate:
     name: Verify CI + Fuzz
     runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - name: Check both workflows succeeded
-        id: check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -29,16 +26,15 @@ jobs:
           echo "CI=$CI_CONCLUSION, Fuzz=$FUZZ_CONCLUSION"
 
           if [[ "$CI_CONCLUSION" == "success" && "$FUZZ_CONCLUSION" == "success" ]]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "Both workflows succeeded — proceeding"
           else
-            echo "Waiting for both to succeed — skipping this trigger"
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "::error::CI=$CI_CONCLUSION, Fuzz=$FUZZ_CONCLUSION — both must succeed"
+            exit 1
           fi
 
   secret-scan:
     name: Secret Scanning
     needs: gate
-    if: needs.gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -55,7 +51,6 @@ jobs:
   sast-semgrep:
     name: SAST - Semgrep
     needs: gate
-    if: needs.gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
