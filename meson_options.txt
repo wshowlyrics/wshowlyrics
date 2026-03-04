@@ -1,0 +1,2 @@
+option('fuzzing', type: 'boolean', value: false, description: 'Build fuzz targets (requires clang with libFuzzer)')
+option('fuzz_sanitizer', type: 'combo', choices: ['address', 'none'], value: 'address', description: 'Sanitizer for fuzz targets (none for valgrind)')

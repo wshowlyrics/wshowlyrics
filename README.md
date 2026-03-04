@@ -937,6 +937,34 @@ mpv --force-window=yes song.mp3
 # All options from the Usage section above work with ./build/lyrics
 ```
 
+### Fuzz Testing
+
+The project includes [libFuzzer](https://llvm.org/docs/LibFuzzer.html) + [AddressSanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) fuzz targets for parser testing. Requires `clang`:
+
+```bash
+# Build with ASan (default, catches memory errors at runtime)
+CC=clang meson setup build-fuzz -Dfuzzing=true
+meson compile -C build-fuzz
+
+# Run fuzz targets with seed corpus
+./build-fuzz/fuzz_lrc fuzz/corpus/lrc/ -max_total_time=60
+./build-fuzz/fuzz_lrcx fuzz/corpus/lrcx/ -max_total_time=60
+./build-fuzz/fuzz_srt fuzz/corpus/srt/ -max_total_time=60
+```
+
+For memory leak analysis with Valgrind, build without ASan (they conflict):
+
+```bash
+CC=clang meson setup build-valgrind -Dfuzzing=true -Dfuzz_sanitizer=none
+meson compile -C build-valgrind
+
+# Run individual corpus files through Valgrind
+valgrind --leak-check=full ./build-valgrind/fuzz_lrc fuzz/corpus/lrc/basic.lrc
+
+# Run all seed corpus files
+valgrind --leak-check=full ./build-valgrind/fuzz_lrc fuzz/corpus/lrc/
+```
+
 ## Legal Notice
 
 > [!NOTE]

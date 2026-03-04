@@ -62,6 +62,16 @@ configure_file(
 
 subdir('protocols')
 
+# Parser sources (shared between main binary and fuzz targets)
+parser_sources = files(
+	'src/parser/lrc/lrc_common.c',
+	'src/parser/lrc/lrc_parser.c',
+	'src/parser/lrc/lrcx_parser.c',
+	'src/parser/srt/srt_parser.c',
+	'src/parser/utils/parser_utils.c',
+	'src/utils/string/string_utils.c',
+)
+
 executable(
 	'lyrics',
 	files(
@@ -75,10 +85,6 @@ executable(
 		'src/utils/shm/shm.c',
 		'src/utils/mpris/mpris.c',
 		'src/utils/dbus_control/dbus_control.c',
-		'src/parser/lrc/lrc_common.c',
-		'src/parser/lrc/lrc_parser.c',
-		'src/parser/lrc/lrcx_parser.c',
-		'src/parser/srt/srt_parser.c',
 		'src/provider/lyrics/lyrics_provider.c',
 		'src/provider/lrclib/lrclib_provider.c',
 		'src/provider/itunes/itunes_artwork.c',
@@ -89,12 +95,10 @@ executable(
 		'src/translator/openai/openai_translator.c',
 		'src/user_experience/system_tray/system_tray.c',
 		'src/user_experience/config/config.c',
-		'src/parser/utils/parser_utils.c',
 		'src/utils/curl/curl_utils.c',
 		'src/utils/file/file_utils.c',
 		'src/utils/icon/icon_utils.c',
 		'src/utils/json/json_utils.c',
-		'src/utils/string/string_utils.c',
 		'src/utils/lock/lock_file.c',
 		'src/utils/runtime/runtime_dir.c',
 		'src/utils/lang_detect/lang_detect.c',
@@ -103,7 +107,7 @@ executable(
 		'src/utils/render/word_render.c',
 		'src/utils/wayland/wayland_manager.c',
 		'src/utils/wayland/wayland_init.c',
-	),
+	) + parser_sources,
 	include_directories: include_directories('src'),
 	dependencies: [
 		appindicator,
@@ -156,3 +160,30 @@ install_data(
 	'wshowlyrics.svg',
 	install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps',
 )
+
+# Fuzz targets (requires clang with libFuzzer)
+if get_option('fuzzing')
+	fuzz_targets = {
+		'fuzz_lrc': 'fuzz/fuzz_lrc.c',
+		'fuzz_lrcx': 'fuzz/fuzz_lrcx.c',
+		'fuzz_srt': 'fuzz/fuzz_srt.c',
+	}
+
+	fuzz_sanitizer = get_option('fuzz_sanitizer')
+	if fuzz_sanitizer == 'address'
+		fuzz_sanitizer_args = ['-fsanitize=fuzzer,address']
+	else
+		fuzz_sanitizer_args = ['-fsanitize=fuzzer']
+	endif
+
+	foreach name, src : fuzz_targets
+		executable(name,
+			files(src) + parser_sources,
+			include_directories: include_directories('src'),
+			dependencies: [cairo],
+			c_args: fuzz_sanitizer_args,
+			link_args: fuzz_sanitizer_args,
+			install: false,
+		)
+	endforeach
+endif

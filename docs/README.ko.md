@@ -932,6 +932,34 @@ mpv --force-window=yes song.mp3
 # 위의 사용 방법 섹션의 모든 옵션이 ./build/lyrics 에서도 동작합니다
 ```
 
+### 퍼즈 테스팅
+
+프로젝트에 [libFuzzer](https://llvm.org/docs/LibFuzzer.html) + [AddressSanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) 퍼즈 타겟이 포함되어 있습니다. `clang`이 필요합니다:
+
+```bash
+# ASan과 함께 빌드 (기본값, 런타임 메모리 오류 감지)
+CC=clang meson setup build-fuzz -Dfuzzing=true
+meson compile -C build-fuzz
+
+# seed corpus와 함께 퍼즈 타겟 실행
+./build-fuzz/fuzz_lrc fuzz/corpus/lrc/ -max_total_time=60
+./build-fuzz/fuzz_lrcx fuzz/corpus/lrcx/ -max_total_time=60
+./build-fuzz/fuzz_srt fuzz/corpus/srt/ -max_total_time=60
+```
+
+Valgrind으로 메모리 누수 분석 시, ASan 없이 빌드해야 합니다 (둘은 충돌함):
+
+```bash
+CC=clang meson setup build-valgrind -Dfuzzing=true -Dfuzz_sanitizer=none
+meson compile -C build-valgrind
+
+# 개별 corpus 파일을 Valgrind으로 실행
+valgrind --leak-check=full ./build-valgrind/fuzz_lrc fuzz/corpus/lrc/basic.lrc
+
+# 전체 seed corpus 파일 실행
+valgrind --leak-check=full ./build-valgrind/fuzz_lrc fuzz/corpus/lrc/
+```
+
 ## 법적 고지
 
 > [!NOTE]

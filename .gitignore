@@ -77,3 +77,12 @@ builddir/
 settings.ini
 *.ini
 !settings.ini.example
+
+# Fuzz testing artifacts (seed corpus is tracked)
+build-fuzz/
+build-valgrind/
+fuzz/artifacts/
+!fuzz/corpus/**
+crash-*
+leak-*
+timeout-*
