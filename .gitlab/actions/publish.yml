@@ -1,0 +1,709 @@
+# Publish stage jobs
+
+# ─── GitHub Release (tag-only) ────────────────────────────────────────
+
+publish:github-release:
+  stage: publish
+  image: ubuntu:latest
+  extends: .tag-only-rules
+  needs:
+    - job: package:deb:amd64
+      artifacts: true
+    - job: package:deb:arm64
+      artifacts: true
+    - job: package:rpm:x86_64
+      artifacts: true
+    - job: package:rpm:aarch64
+      artifacts: true
+    - job: package:appimage:x86_64
+      artifacts: true
+    - job: package:appimage:aarch64
+      artifacts: true
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+
+    - |
+      apt-get update -qq
+      apt-get install -y -qq curl jq
+
+    # Install gh CLI
+    - |
+      curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list
+      apt-get update -qq
+      apt-get install -y -qq gh
+
+    # Collect all artifacts
+    - |
+      mkdir -p release-assets
+      find . -maxdepth 1 -name "wshowlyrics*" -type f -exec cp {} release-assets/ \;
+      ls -lh release-assets/
+
+    # Create GitHub Release
+    - |
+      cat > /tmp/release-body.md << EOF
+      ## Release ${VERSION}
+
+      ### Installation
+
+      #### Debian/Ubuntu (.deb)
+      \`\`\`bash
+      # Download the appropriate .deb file for your architecture
+      sudo dpkg -i wshowlyrics_${VERSION}_amd64.deb
+      sudo apt-get install -f  # Install dependencies
+      \`\`\`
+
+      #### Fedora/RHEL (.rpm)
+      \`\`\`bash
+      # Download the appropriate .rpm file for your architecture
+      sudo dnf install wshowlyrics-${VERSION}-1.fc*.rpm
+      \`\`\`
+
+      #### Universal (AppImage)
+      \`\`\`bash
+      # Download the appropriate AppImage file for your architecture
+      chmod +x wshowlyrics-${VERSION}-x86_64.AppImage
+      ./wshowlyrics-${VERSION}-x86_64.AppImage
+      \`\`\`
+
+      ### Package Verification
+
+      All packages are signed with GPG key \`B4CD9B155AA3124C\`.
+
+      #### Verify .deb
+      \`\`\`bash
+      dpkg-sig --verify wshowlyrics_${VERSION}_amd64.deb
+      \`\`\`
+
+      #### Verify .rpm
+      \`\`\`bash
+      rpm --checksig wshowlyrics-${VERSION}-1.fc*.rpm
+      \`\`\`
+
+      #### Verify AppImage
+      \`\`\`bash
+      gpg --verify wshowlyrics-${VERSION}-x86_64.AppImage.asc \\
+                   wshowlyrics-${VERSION}-x86_64.AppImage
+      \`\`\`
+      EOF
+    - |
+      GH_TOKEN="$GITHUB_PAT" gh release create "$CI_COMMIT_TAG" \
+        release-assets/* \
+        --repo unstable-code/lyrics \
+        --title "v${VERSION}" \
+        --notes-file /tmp/release-body.md \
+        --generate-notes
+
+# ─── NUR Unstable (nightly) ───────────────────────────────────────────
+
+publish:nur-unstable:
+  stage: publish
+  image: nixos/nix:latest
+  extends: .nontag-master-rules
+  needs:
+    - job: build:makepkg
+      optional: true
+    - job: build:fuzz
+      optional: true
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - COMMIT_HASH="$CI_COMMIT_SHA"
+    - COMMIT_DATE=$(echo "$CI_COMMIT_TIMESTAMP" | cut -d'T' -f1)
+
+    # Calculate Nix hash (use GitLab archive)
+    - |
+      HASH_BASE32=$(nix-prefetch-url --unpack \
+        "https://gitlab.com/wshowlyrics/wshowlyrics/-/archive/${COMMIT_HASH}/wshowlyrics-${COMMIT_HASH}.tar.gz" 2>&1 | tail -1)
+      HASH_SRI=$(nix hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
+      echo "Nix SRI hash: ${HASH_SRI}"
+
+    # Clone NUR repository
+    - git clone "https://oauth2:${NUR_PAT}@github.com/unstable-code/nur-packages.git" nur-packages
+
+    # Update unstable.nix
+    - |
+      cd nur-packages/pkgs/wshowlyrics
+      sed -i "s|version = \"[^\"]*\";|version = \"${COMMIT_DATE}\";|" unstable.nix
+      sed -i "s|rev = \"[^\"]*\";|rev = \"${COMMIT_HASH}\";|" unstable.nix
+      sed -i "s|hash = \"[^\"]*\";|hash = \"${HASH_SRI}\";|" unstable.nix
+      grep -E "version|rev|hash" unstable.nix | head -3
+
+    # Commit and push
+    - |
+      cd nur-packages
+      git config user.name "gitlab-ci[bot]"
+      git config user.email "gitlab-ci[bot]@gitlab.com"
+      git add pkgs/wshowlyrics/unstable.nix
+      git diff --staged --quiet || git commit -m "wshowlyrics-unstable: ${COMMIT_DATE}"
+      git push origin main || git push origin master
+
+# ─── NUR Stable (tag) ────────────────────────────────────────────────
+
+publish:nur-stable:
+  stage: publish
+  image: nixos/nix:latest
+  extends: .tag-only-rules
+  needs:
+    - job: build:makepkg
+    - job: build:fuzz
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+
+    # Calculate Nix hash from tag archive
+    - |
+      HASH_BASE32=$(nix-prefetch-url --unpack \
+        "https://gitlab.com/wshowlyrics/wshowlyrics/-/archive/${CI_COMMIT_TAG}/wshowlyrics-${CI_COMMIT_TAG}.tar.gz" 2>&1 | tail -1)
+      HASH_SRI=$(nix hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
+      echo "Nix SRI hash: ${HASH_SRI}"
+
+    # Clone NUR repository
+    - git clone "https://oauth2:${NUR_PAT}@github.com/unstable-code/nur-packages.git" nur-packages
+
+    # Update default.nix
+    - |
+      cd nur-packages/pkgs/wshowlyrics
+      sed -i "s|version = \"[^\"]*\";|version = \"${VERSION}\";|" default.nix
+      sed -i "s|rev = \"[^\"]*\";|rev = \"${CI_COMMIT_TAG}\";|" default.nix
+      sed -i "s|hash = \"[^\"]*\";|hash = \"${HASH_SRI}\";|" default.nix
+      grep -E "version|rev|hash" default.nix | head -3
+
+    # Commit and push
+    - |
+      cd nur-packages
+      git config user.name "gitlab-ci[bot]"
+      git config user.email "gitlab-ci[bot]@gitlab.com"
+      git add pkgs/wshowlyrics/default.nix
+      git diff --staged --quiet || git commit -m "wshowlyrics: ${VERSION}"
+      git push origin main || git push origin master
+
+# ─── COPR Nightly ─────────────────────────────────────────────────────
+
+publish:copr-nightly:
+  stage: publish
+  image: fedora:latest
+  extends: .nontag-master-rules
+  needs:
+    - job: build:makepkg
+      optional: true
+    - job: build:fuzz
+      optional: true
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - dnf install -y copr-cli rpm-build rpmdevtools git
+
+    # Setup COPR config
+    - |
+      mkdir -p ~/.config
+      echo "$COPR_CONFIG" | base64 -d > ~/.config/copr
+      chmod 600 ~/.config/copr
+
+    # Package version
+    - |
+      VER=$(printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)")
+      COMMIT_SHORT=$(git rev-parse --short HEAD)
+      CHANGELOG_DATE=$(date +"%a %b %d %Y")
+
+    # Create .spec
+    - |
+      cat > wshowlyrics.spec << SPECEOF
+      Name:           wshowlyrics
+      Version:        ${VER}
+      Release:        1%{?dist}
+      Summary:        Wayland-native lyrics display with online fallback (nightly build)
+
+      License:        GPL-3.0-or-later
+      URL:            https://github.com/unstable-code/lyrics
+      Source0:        wshowlyrics-${VER}.tar.gz
+
+      BuildRequires:  meson >= 0.48.0
+      BuildRequires:  ninja-build
+      BuildRequires:  gcc
+      BuildRequires:  wayland-devel
+      BuildRequires:  wayland-protocols-devel
+      BuildRequires:  cairo-devel
+      BuildRequires:  pango-devel
+      BuildRequires:  libcurl-devel
+      BuildRequires:  fontconfig-devel
+      BuildRequires:  libappindicator-gtk3-devel
+      BuildRequires:  gdk-pixbuf2-devel
+      BuildRequires:  json-c-devel
+      BuildRequires:  openssl-devel
+
+      Requires:       libwayland-client
+      Requires:       cairo
+      Requires:       pango
+      Requires:       libcurl
+      Requires:       fontconfig
+      Requires:       libappindicator-gtk3
+      Requires:       gdk-pixbuf2
+      Requires:       glib2
+      Requires:       json-c
+      Requires:       openssl-libs
+
+      Suggests:       sway
+      Suggests:       hyprland
+
+      Provides:       wshowlyrics = %{version}-%{release}
+      Conflicts:      wshowlyrics
+
+      %description
+      wshowlyrics is a lightweight lyrics overlay for Wayland compositors
+      that displays synchronized lyrics for currently playing music.
+
+      This is a nightly build from the latest master branch (commit ${COMMIT_SHORT}).
+
+      Features:
+      - MPRIS2 integration for music player detection
+      - Local lyrics file support (.lrc, .lrcx, .srt)
+      - Online lyrics fetching from lrclib.net
+      - Karaoke-style word-level timing
+      - AI-powered translation support
+      - System tray integration with album art
+
+      %prep
+      %autosetup -n lyrics-${VER}
+
+      %build
+      %meson
+      %meson_build
+
+      %install
+      %meson_install
+      mv %{buildroot}%{_bindir}/lyrics %{buildroot}%{_bindir}/wshowlyrics
+
+      %post
+      %systemd_user_post wshowlyrics.service
+
+      %preun
+      %systemd_user_preun wshowlyrics.service
+
+      %files
+      %license LICENSE
+      %doc README.md
+      %{_bindir}/wshowlyrics
+      %{_bindir}/wshowlyrics-offset
+      %config(noreplace) %{_sysconfdir}/wshowlyrics/settings.ini
+      %{_userunitdir}/wshowlyrics.service
+      %{_datadir}/applications/wshowlyrics.desktop
+      %{_datadir}/icons/hicolor/scalable/apps/wshowlyrics.svg
+
+      %changelog
+      * ${CHANGELOG_DATE} unstable-code <assa0620@gmail.com> - ${VER}-1
+      - Nightly build from master branch (commit ${COMMIT_SHORT})
+      SPECEOF
+
+    # Create source tarball
+    - git archive --format=tar.gz --prefix="lyrics-${VER}/" -o "wshowlyrics-${VER}.tar.gz" HEAD
+
+    # Build SRPM
+    - |
+      mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+      cp "wshowlyrics-${VER}.tar.gz" ~/rpmbuild/SOURCES/
+      cp wshowlyrics.spec ~/rpmbuild/SPECS/
+      rpmbuild -bs ~/rpmbuild/SPECS/wshowlyrics.spec
+
+    # Upload to COPR
+    - |
+      SRPM=$(find ~/rpmbuild/SRPMS -name "wshowlyrics-*.src.rpm" | head -1)
+      copr-cli build unstable-code/wshowlyrics-nightly "$SRPM"
+
+    - echo "COPR nightly build submitted (version: ${VER})"
+    - echo "Build status: https://copr.fedorainfracloud.org/coprs/unstable-code/wshowlyrics-nightly/builds/"
+
+# ─── COPR Stable (tag) ───────────────────────────────────────────────
+
+publish:copr-stable:
+  stage: publish
+  image: fedora:latest
+  extends: .tag-only-rules
+  needs:
+    - job: build:makepkg
+    - job: build:fuzz
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - dnf install -y copr-cli rpm-build rpmdevtools wget
+
+    # Setup COPR config
+    - |
+      mkdir -p ~/.config
+      echo "$COPR_CONFIG" | base64 -d > ~/.config/copr
+      chmod 600 ~/.config/copr
+
+    - CHANGELOG_DATE=$(date +"%a %b %d %Y")
+
+    # Create .spec
+    - |
+      cat > wshowlyrics.spec << SPECEOF
+      Name:           wshowlyrics
+      Version:        ${VERSION}
+      Release:        1%{?dist}
+      Summary:        Wayland-native lyrics display with online fallback
+
+      License:        GPL-3.0-or-later
+      URL:            https://github.com/unstable-code/lyrics
+      Source0:        https://github.com/unstable-code/lyrics/archive/refs/tags/v${VERSION}.tar.gz
+
+      BuildRequires:  meson >= 0.48.0
+      BuildRequires:  ninja-build
+      BuildRequires:  gcc
+      BuildRequires:  wayland-devel
+      BuildRequires:  wayland-protocols-devel
+      BuildRequires:  cairo-devel
+      BuildRequires:  pango-devel
+      BuildRequires:  libcurl-devel
+      BuildRequires:  fontconfig-devel
+      BuildRequires:  libappindicator-gtk3-devel
+      BuildRequires:  gdk-pixbuf2-devel
+      BuildRequires:  json-c-devel
+      BuildRequires:  openssl-devel
+
+      Requires:       libwayland-client
+      Requires:       cairo
+      Requires:       pango
+      Requires:       libcurl
+      Requires:       fontconfig
+      Requires:       libappindicator-gtk3
+      Requires:       gdk-pixbuf2
+      Requires:       glib2
+      Requires:       json-c
+      Requires:       openssl-libs
+
+      Suggests:       sway
+      Suggests:       hyprland
+
+      %description
+      wshowlyrics is a lightweight lyrics overlay for Wayland compositors
+      that displays synchronized lyrics for currently playing music.
+
+      Features:
+      - MPRIS2 integration for music player detection
+      - Local lyrics file support (.lrc, .lrcx, .srt)
+      - Online lyrics fetching from lrclib.net
+      - Karaoke-style word-level timing
+      - AI-powered translation support
+      - System tray integration with album art
+
+      %prep
+      %autosetup -n lyrics-${VERSION}
+
+      %build
+      %meson
+      %meson_build
+
+      %install
+      %meson_install
+      mv %{buildroot}%{_bindir}/lyrics %{buildroot}%{_bindir}/wshowlyrics
+
+      %post
+      %systemd_user_post wshowlyrics.service
+
+      %preun
+      %systemd_user_preun wshowlyrics.service
+
+      %files
+      %license LICENSE
+      %doc README.md
+      %{_bindir}/wshowlyrics
+      %{_bindir}/wshowlyrics-offset
+      %config(noreplace) %{_sysconfdir}/wshowlyrics/settings.ini
+      %{_userunitdir}/wshowlyrics.service
+      %{_datadir}/applications/wshowlyrics.desktop
+      %{_datadir}/icons/hicolor/scalable/apps/wshowlyrics.svg
+
+      %changelog
+      * ${CHANGELOG_DATE} unstable-code <assa0620@gmail.com> - ${VERSION}-1
+      - Release ${VERSION}
+      SPECEOF
+
+    # Download source tarball from GitHub release
+    - wget "https://github.com/unstable-code/lyrics/archive/refs/tags/v${VERSION}.tar.gz"
+
+    # Build SRPM
+    - |
+      mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+      cp "v${VERSION}.tar.gz" ~/rpmbuild/SOURCES/
+      cp wshowlyrics.spec ~/rpmbuild/SPECS/
+      rpmbuild -bs ~/rpmbuild/SPECS/wshowlyrics.spec
+
+    # Upload to COPR
+    - |
+      SRPM=$(find ~/rpmbuild/SRPMS -name "wshowlyrics-*.src.rpm" | head -1)
+      copr-cli build unstable-code/wshowlyrics "$SRPM"
+
+    - echo "COPR stable build submitted (version: ${VERSION})"
+    - echo "Build status: https://copr.fedorainfracloud.org/coprs/unstable-code/wshowlyrics/builds/"
+
+# ─── AUR Git (nightly) ───────────────────────────────────────────────
+
+publish:aur-git:
+  stage: publish
+  image: archlinux:latest
+  extends: .nontag-master-rules
+  needs:
+    - job: build:makepkg
+      optional: true
+    - job: build:fuzz
+      optional: true
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - pacman -Syu --noconfirm base-devel git openssh sudo
+
+    # Package version
+    - VER=$(printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)")
+
+    # Setup SSH for AUR
+    - |
+      mkdir -p ~/.ssh
+      echo "$AUR_SSH_KEY" | base64 -d > ~/.ssh/aur
+      chmod 600 ~/.ssh/aur
+      ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+    # Clone AUR repository
+    - GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git clone ssh://aur@aur.archlinux.org/wshowlyrics-git.git aur
+
+    # Update PKGBUILD
+    - |
+      cd aur
+      sed -i "s/^pkgver=.*/pkgver=${VER}/" PKGBUILD
+      sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+    # Generate .SRCINFO
+    - |
+      cd aur
+      useradd -m builder || true
+      chown -R builder:builder .
+      sudo -u builder makepkg --printsrcinfo > .SRCINFO
+
+    # Commit and push
+    - |
+      cd aur
+      git config user.name "unstable-code"
+      git config user.email "assa0620@gmail.com"
+      git add PKGBUILD .SRCINFO
+      git diff --staged --quiet || git commit -m "Update to ${VER}"
+      GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git push origin master
+
+# ─── AUR Stable (tag) ────────────────────────────────────────────────
+
+publish:aur-stable:
+  stage: publish
+  image: archlinux:latest
+  extends: .tag-only-rules
+  needs:
+    - job: build:makepkg
+    - job: build:fuzz
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - pacman -Syu --noconfirm base-devel git openssh sudo pacman-contrib
+
+    # Setup SSH for AUR
+    - |
+      mkdir -p ~/.ssh
+      echo "$AUR_SSH_KEY" | base64 -d > ~/.ssh/aur
+      chmod 600 ~/.ssh/aur
+      ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+    # Clone AUR repository (stable package, not -git)
+    - GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git clone ssh://aur@aur.archlinux.org/wshowlyrics.git aur
+
+    # Update PKGBUILD
+    - |
+      cd aur
+      sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+      sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+    # Update checksums and generate .SRCINFO
+    - |
+      cd aur
+      useradd -m builder || true
+      chown -R builder:builder .
+      sudo -u builder updpkgsums
+      sudo -u builder makepkg --printsrcinfo > .SRCINFO
+
+    # Commit and push
+    - |
+      cd aur
+      git config user.name "unstable-code"
+      git config user.email "assa0620@gmail.com"
+      git add PKGBUILD .SRCINFO
+      git diff --staged --quiet || git commit -m "Update to version ${VERSION}"
+      GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git push origin master
+
+# ─── PPA (tag, jammy + noble) ────────────────────────────────────────
+
+.ppa-script:
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - |
+      apt-get update -qq
+      apt-get install -y -qq devscripts debhelper dput-ng gnupg2 git
+
+    # Create debian directory
+    - mkdir -p debian/source
+
+    # debian/control
+    - |
+      cat > debian/control << 'EOF'
+      Source: wshowlyrics
+      Section: sound
+      Priority: optional
+      Maintainer: unstable-code <assa0620@gmail.com>
+      Build-Depends: debhelper-compat (= 13),
+                     meson (>= 0.48.0),
+                     ninja-build,
+                     libwayland-dev,
+                     wayland-protocols,
+                     libcairo2-dev,
+                     libpango1.0-dev,
+                     libcurl4-openssl-dev,
+                     libfontconfig1-dev,
+                     libappindicator3-dev,
+                     libgdk-pixbuf-2.0-dev,
+                     libjson-c-dev,
+                     libssl-dev
+      Standards-Version: 4.6.0
+      Homepage: https://github.com/unstable-code/lyrics
+      Vcs-Git: https://github.com/unstable-code/lyrics.git
+      Vcs-Browser: https://github.com/unstable-code/lyrics
+
+      Package: wshowlyrics
+      Architecture: any
+      Depends: ${shlibs:Depends}, ${misc:Depends}
+      Suggests: sway | hyprland
+      Description: Wayland-native lyrics display with online fallback
+       wshowlyrics is a lightweight lyrics overlay for Wayland compositors
+       that displays synchronized lyrics for currently playing music.
+       .
+       Features:
+        - MPRIS2 integration for music player detection
+        - Local lyrics file support (.lrc, .lrcx, .srt)
+        - Online lyrics fetching from lrclib.net
+        - Karaoke-style word-level timing
+        - AI-powered translation support
+        - System tray integration with album art
+      EOF
+
+    # debian/rules
+    - |
+      cat > debian/rules << 'RULESEOF'
+      #!/usr/bin/make -f
+
+      %:
+      	dh $@ --buildsystem=meson
+
+      override_dh_auto_configure:
+      	dh_auto_configure -- --prefix=/usr
+
+      override_dh_auto_install:
+      	dh_auto_install
+      	mv debian/wshowlyrics/usr/bin/lyrics debian/wshowlyrics/usr/bin/wshowlyrics
+      RULESEOF
+    - chmod +x debian/rules
+
+    # debian/copyright
+    - |
+      cat > debian/copyright << 'EOF'
+      Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+      Upstream-Name: wshowlyrics
+      Upstream-Contact: unstable-code <assa0620@gmail.com>
+      Source: https://github.com/unstable-code/lyrics
+
+      Files: *
+      Copyright: 2024-2025 unstable-code <assa0620@gmail.com>
+      License: GPL-3.0-or-later
+
+      License: GPL-3.0-or-later
+       This program is free software: you can redistribute it and/or modify
+       it under the terms of the GNU General Public License as published by
+       the Free Software Foundation, either version 3 of the License, or
+       (at your option) any later version.
+       .
+       This program is distributed in the hope that it will be useful,
+       but WITHOUT ANY WARRANTY; without even the implied warranty of
+       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+       GNU General Public License for more details.
+       .
+       You should have received a copy of the GNU General Public License
+       along with this program.  If not, see <https://www.gnu.org/licenses/>.
+       .
+       On Debian systems, the complete text of the GNU General Public
+       License version 3 can be found in "/usr/share/common-licenses/GPL-3".
+      EOF
+
+    # debian/source/format
+    - echo "3.0 (quilt)" > debian/source/format
+
+    # Update changelog
+    - |
+      dch --create \
+        --package wshowlyrics \
+        --newversion "${VERSION}-1~${UBUNTU_RELEASE}1" \
+        --distribution ${UBUNTU_RELEASE} \
+        "Release ${VERSION}" \
+        --force-distribution
+      dch --release ""
+
+    # Import GPG key
+    - |
+      echo "$GPG_PRIVATE_KEY" | base64 -d | gpg --batch --yes --import
+      echo "use-agent" >> ~/.gnupg/gpg.conf
+      echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+      gpg-agent --daemon --allow-preset-passphrase || true
+
+    # Create orig tarball
+    - git archive --format=tar.gz --prefix="wshowlyrics-${VERSION}/" -o "../wshowlyrics_${VERSION}.orig.tar.gz" HEAD
+
+    # Build source package
+    - debuild -S -sa -d -kB4CD9B155AA3124C
+
+    # Setup dput
+    - |
+      cat > ~/.dput.cf << 'EOF'
+      [wshowlyrics-ppa]
+      fqdn = ppa.launchpad.net
+      method = ftp
+      incoming = ~unstable-code/ubuntu/wshowlyrics/
+      login = anonymous
+      allow_unsigned_uploads = 0
+      EOF
+
+    # Upload to PPA
+    - |
+      CHANGES_FILE="../wshowlyrics_${VERSION}-1~${UBUNTU_RELEASE}1_source.changes"
+      dput wshowlyrics-ppa "$CHANGES_FILE"
+
+    - echo "PPA upload for ${UBUNTU_RELEASE} completed!"
+    - echo "Build status: https://launchpad.net/~unstable-code/+archive/ubuntu/wshowlyrics/+packages"
+
+publish:ppa:jammy:
+  stage: publish
+  image: ubuntu:22.04
+  extends: .tag-only-rules
+  needs:
+    - job: build:makepkg
+    - job: build:fuzz
+  variables:
+    UBUNTU_RELEASE: jammy
+    DEBIAN_FRONTEND: noninteractive
+  script:
+    - !reference [.ppa-script, script]
+
+publish:ppa:noble:
+  stage: publish
+  image: ubuntu:24.04
+  extends: .tag-only-rules
+  needs:
+    - job: build:makepkg
+    - job: build:fuzz
+  variables:
+    UBUNTU_RELEASE: noble
+    DEBIAN_FRONTEND: noninteractive
+  script:
+    - !reference [.ppa-script, script]

@@ -1,0 +1,320 @@
+# Package stage jobs (tag-only)
+# ARM64: separate jobs because parallel:matrix doesn't support per-matrix tags
+
+# ─── Common templates ─────────────────────────────────────────────────
+
+.package:deb:
+  stage: package
+  image: ubuntu:22.04
+  extends: .tag-only-rules
+  needs:
+    - job: build:makepkg
+    - job: build:fuzz
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+
+    # Build in Ubuntu 22.04 for broad compatibility
+    - |
+      apt-get update -qq
+      apt-get install -y -qq \
+        meson ninja-build \
+        libwayland-dev wayland-protocols \
+        libcairo2-dev libpango1.0-dev \
+        libcurl4-openssl-dev libfontconfig1-dev \
+        libappindicator3-dev libgdk-pixbuf-2.0-dev \
+        libjson-c-dev libssl-dev \
+        dpkg-dev debsigs devscripts file
+
+    # Build
+    - meson setup build --prefix=/usr
+    - meson compile -C build
+
+    # Create package structure
+    - |
+      PKG_DIR="wshowlyrics_${VERSION}_${DEB_ARCH}"
+      mkdir -p "${PKG_DIR}/DEBIAN"
+      mkdir -p "${PKG_DIR}/usr/bin"
+      mkdir -p "${PKG_DIR}/etc/wshowlyrics"
+      mkdir -p "${PKG_DIR}/usr/lib/systemd/user"
+      mkdir -p "${PKG_DIR}/usr/share/doc/wshowlyrics"
+      mkdir -p "${PKG_DIR}/usr/share/applications"
+      mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/scalable/apps"
+      cp build/lyrics "${PKG_DIR}/usr/bin/wshowlyrics"
+      cp wshowlyrics-offset "${PKG_DIR}/usr/bin/wshowlyrics-offset"
+      chmod 755 "${PKG_DIR}/usr/bin/wshowlyrics-offset"
+      cp settings.ini.example "${PKG_DIR}/etc/wshowlyrics/settings.ini"
+      cp wshowlyrics.service "${PKG_DIR}/usr/lib/systemd/user/"
+      cp wshowlyrics.desktop "${PKG_DIR}/usr/share/applications/"
+      cp wshowlyrics.svg "${PKG_DIR}/usr/share/icons/hicolor/scalable/apps/"
+      cp README.md LICENSE "${PKG_DIR}/usr/share/doc/wshowlyrics/"
+
+    # Create DEBIAN/control
+    - |
+      PKG_DIR="wshowlyrics_${VERSION}_${DEB_ARCH}"
+      cat > "${PKG_DIR}/DEBIAN/control" <<EOF
+      Package: wshowlyrics
+      Version: ${VERSION}
+      Section: sound
+      Priority: optional
+      Architecture: ${DEB_ARCH}
+      Depends: libwayland-client0, libcairo2, libpango-1.0-0, libcurl4, libfontconfig1, libappindicator3-1, libgdk-pixbuf-2.0-0, libglib2.0-0, libjson-c5, libssl3
+      Recommends: sway | hyprland
+      Maintainer: unstable-code <assa0620@gmail.com>
+      Description: Wayland-native lyrics display with online fallback
+       wshowlyrics is a lightweight lyrics overlay for Wayland compositors
+       that displays synchronized lyrics for currently playing music.
+       .
+       Features:
+        - MPRIS2 integration for music player detection
+        - Local lyrics file support (.lrc, .lrcx, .srt)
+        - Online lyrics fetching from lrclib.net
+        - Karaoke-style word-level timing
+        - AI-powered translation support
+        - System tray integration with album art
+      Homepage: https://github.com/unstable-code/lyrics
+      EOF
+
+    # Create postinst
+    - |
+      PKG_DIR="wshowlyrics_${VERSION}_${DEB_ARCH}"
+      cat > "${PKG_DIR}/DEBIAN/postinst" <<'EOF'
+      #!/bin/sh
+      set -e
+      if [ "$1" = "configure" ]; then
+          if command -v systemctl >/dev/null 2>&1; then
+              systemctl --user daemon-reload 2>/dev/null || true
+          fi
+      fi
+      exit 0
+      EOF
+      chmod 755 "${PKG_DIR}/DEBIAN/postinst"
+
+    # Build .deb
+    - dpkg-deb --build "wshowlyrics_${VERSION}_${DEB_ARCH}"
+
+    # GPG sign
+    - |
+      echo "$GPG_PRIVATE_KEY" | base64 -d | gpg --batch --yes --import
+      debsigs --sign=origin -k B4CD9B155AA3124C "wshowlyrics_${VERSION}_${DEB_ARCH}.deb"
+  artifacts:
+    paths:
+      - "wshowlyrics_*.deb"
+    expire_in: 7 days
+
+.package:rpm:
+  stage: package
+  image: fedora:latest
+  extends: .tag-only-rules
+  needs:
+    - job: build:makepkg
+    - job: build:fuzz
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - dnf install -y rpm-build rpmdevtools dnf-plugins-core rpm-sign gnupg2 git
+    - mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+
+    # Create .spec
+    - |
+      CHANGELOG_DATE=$(date +"%a %b %d %Y")
+      cat > ~/rpmbuild/SPECS/wshowlyrics.spec << SPECEOF
+      %global debug_package %{nil}
+
+      Name:           wshowlyrics
+      Version:        ${VERSION}
+      Release:        1%{?dist}
+      Summary:        Wayland-native lyrics display with online fallback
+
+      License:        GPL-3.0-or-later
+      URL:            https://github.com/unstable-code/lyrics
+      Source0:        %{name}-%{version}.tar.gz
+
+      BuildRequires:  meson >= 0.48.0
+      BuildRequires:  ninja-build
+      BuildRequires:  gcc
+      BuildRequires:  wayland-devel
+      BuildRequires:  wayland-protocols-devel
+      BuildRequires:  cairo-devel
+      BuildRequires:  pango-devel
+      BuildRequires:  libcurl-devel
+      BuildRequires:  fontconfig-devel
+      BuildRequires:  libappindicator-gtk3-devel
+      BuildRequires:  gdk-pixbuf2-devel
+      BuildRequires:  json-c-devel
+      BuildRequires:  openssl-devel
+
+      Requires:       wayland
+      Requires:       cairo
+      Requires:       pango
+      Requires:       libcurl
+      Requires:       fontconfig
+      Requires:       libappindicator-gtk3
+      Requires:       gdk-pixbuf2
+      Requires:       glib2
+      Requires:       json-c
+      Requires:       openssl-libs
+
+      Recommends:     sway
+
+      %description
+      wshowlyrics is a lightweight lyrics overlay for Wayland compositors
+      that displays synchronized lyrics for currently playing music.
+
+      Features:
+      - MPRIS2 integration for music player detection
+      - Local lyrics file support (.lrc, .lrcx, .srt)
+      - Online lyrics fetching from lrclib.net
+      - Karaoke-style word-level timing
+      - AI-powered translation support
+      - System tray integration with album art
+
+      %prep
+      %autosetup
+
+      %build
+      %meson
+      %meson_build
+
+      %install
+      %meson_install
+      mv %{buildroot}%{_bindir}/lyrics %{buildroot}%{_bindir}/wshowlyrics
+
+      %post
+      %systemd_user_post wshowlyrics.service
+
+      %preun
+      %systemd_user_preun wshowlyrics.service
+
+      %files
+      %license LICENSE
+      %doc README.md
+      %{_bindir}/wshowlyrics
+      %{_bindir}/wshowlyrics-offset
+      %config(noreplace) %{_sysconfdir}/wshowlyrics/settings.ini
+      %{_userunitdir}/wshowlyrics.service
+      %{_datadir}/applications/wshowlyrics.desktop
+      %{_datadir}/icons/hicolor/scalable/apps/wshowlyrics.svg
+
+      %changelog
+      * ${CHANGELOG_DATE} unstable-code <assa0620@gmail.com> - ${VERSION}-1
+      - Release ${VERSION}
+      SPECEOF
+
+    # Create source tarball
+    - git archive --format=tar.gz --prefix="wshowlyrics-${VERSION}/" -o ~/rpmbuild/SOURCES/wshowlyrics-${VERSION}.tar.gz HEAD
+
+    # Install build deps and build
+    - dnf builddep -y ~/rpmbuild/SPECS/wshowlyrics.spec
+    - rpmbuild -ba ~/rpmbuild/SPECS/wshowlyrics.spec
+
+    # Copy RPMs to workspace
+    - cp ~/rpmbuild/RPMS/${RPM_ARCH}/wshowlyrics-*.rpm .
+
+    # GPG sign
+    - |
+      echo "$GPG_PRIVATE_KEY" | base64 -d | gpg --batch --yes --import
+      rpm --addsign --define "_gpg_name B4CD9B155AA3124C" wshowlyrics-*.rpm
+  artifacts:
+    paths:
+      - "wshowlyrics-*.rpm"
+    expire_in: 7 days
+
+.package:appimage:
+  stage: package
+  image: ubuntu:22.04
+  extends: .tag-only-rules
+  needs:
+    - job: build:makepkg
+    - job: build:fuzz
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - |
+      apt-get update -qq
+      apt-get install -y -qq \
+        meson ninja-build \
+        libwayland-dev wayland-protocols \
+        libcairo2-dev libpango1.0-dev \
+        libcurl4-openssl-dev libfontconfig1-dev \
+        libappindicator3-dev libgdk-pixbuf-2.0-dev \
+        libjson-c-dev libssl-dev libglib2.0-dev \
+        file wget desktop-file-utils gnupg2
+
+    # Build
+    - meson setup build --prefix=/usr
+    - meson compile -C build
+    - DESTDIR=$PWD/AppDir meson install -C build
+    - mv AppDir/usr/bin/lyrics AppDir/usr/bin/wshowlyrics
+
+    # Download linuxdeploy
+    - |
+      wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${APPIMAGE_ARCH}.AppImage"
+      chmod +x "linuxdeploy-${APPIMAGE_ARCH}.AppImage"
+      "./linuxdeploy-${APPIMAGE_ARCH}.AppImage" --appimage-extract
+
+    # Create AppImage
+    - |
+      ARCH=${APPIMAGE_ARCH} ./squashfs-root/AppRun \
+        --appdir AppDir \
+        --executable AppDir/usr/bin/wshowlyrics \
+        --desktop-file AppDir/usr/share/applications/wshowlyrics.desktop \
+        --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/wshowlyrics.svg \
+        --output appimage
+
+    # Rename
+    - mv wshowlyrics-*.AppImage "wshowlyrics-${VERSION}-${APPIMAGE_ARCH}.AppImage"
+
+    # GPG sign
+    - |
+      echo "$GPG_PRIVATE_KEY" | base64 -d | gpg --batch --yes --import
+      gpg --batch --yes --armor --detach-sign --default-key B4CD9B155AA3124C \
+        "wshowlyrics-${VERSION}-${APPIMAGE_ARCH}.AppImage"
+  artifacts:
+    paths:
+      - "wshowlyrics-*.AppImage"
+      - "wshowlyrics-*.AppImage.asc"
+    expire_in: 7 days
+
+# ─── Architecture-specific jobs ───────────────────────────────────────
+
+package:deb:amd64:
+  extends: .package:deb
+  tags:
+    - saas-linux-small-amd64
+  variables:
+    DEB_ARCH: amd64
+
+package:deb:arm64:
+  extends: .package:deb
+  tags:
+    - saas-linux-small-arm64
+  variables:
+    DEB_ARCH: arm64
+
+package:rpm:x86_64:
+  extends: .package:rpm
+  tags:
+    - saas-linux-small-amd64
+  variables:
+    RPM_ARCH: x86_64
+
+package:rpm:aarch64:
+  extends: .package:rpm
+  tags:
+    - saas-linux-small-arm64
+  variables:
+    RPM_ARCH: aarch64
+
+package:appimage:x86_64:
+  extends: .package:appimage
+  tags:
+    - saas-linux-small-amd64
+  variables:
+    APPIMAGE_ARCH: x86_64
+
+package:appimage:aarch64:
+  extends: .package:appimage
+  tags:
+    - saas-linux-small-arm64
+  variables:
+    APPIMAGE_ARCH: aarch64

@@ -1,0 +1,96 @@
+# Build stage jobs
+
+build:makepkg:
+  stage: build
+  image: archlinux:latest
+  extends: .source-changes-rules
+  script:
+    # Disable sandbox globally for Docker container compatibility
+    - sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
+    - pacman -Syu --noconfirm
+    - grep -q '^DisableSandbox' /etc/pacman.conf || sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
+    - pacman -S --noconfirm base-devel git sudo
+
+    # Download actual PKGBUILD from AUR repository
+    - git clone --depth=1 https://aur.archlinux.org/wshowlyrics-git.git /tmp/aur-pkg
+    - cp /tmp/aur-pkg/PKGBUILD .
+
+    # Modify PKGBUILD for CI environment
+    - sed -i 's|source=.*|source=()|' PKGBUILD
+    - sed -i 's|sha256sums=.*|sha256sums=()|' PKGBUILD
+    - sed -i 's|cd "$srcdir/lyrics"|cd "$startdir"|g' PKGBUILD
+
+    # Create non-root user for makepkg
+    - useradd -m builder
+    - chown -R builder:builder .
+    - echo "builder ALL=(ALL) NOPASSWD: /usr/bin/pacman" >> /etc/sudoers
+
+    # Run makepkg with automatic dependency resolution
+    - su builder -c "makepkg -sf --noconfirm"
+
+    # Verify binary
+    - |
+      if [ ! -f build/lyrics ]; then
+        echo "Error: lyrics binary not found"
+        ls -la build/ || echo "build/ directory not found"
+        exit 1
+      fi
+      echo "Build successful: lyrics binary created"
+      ls -lh build/lyrics
+
+    # Smoke tests
+    - ./build/lyrics -h || true
+    - |
+      FILE_OUTPUT=$(file build/lyrics)
+      echo "Binary info: $FILE_OUTPUT"
+      if ! echo "$FILE_OUTPUT" | grep -q "ELF.*executable"; then
+        echo "Error: Invalid binary format"
+        exit 1
+      fi
+      echo "Binary format verified: ELF executable"
+
+    # Verify installation files
+    - |
+      if [ ! -f wshowlyrics.service ]; then
+        echo "Error: wshowlyrics.service not found"
+        exit 1
+      fi
+      if ! grep -q "ExecStart=/usr/bin/wshowlyrics" wshowlyrics.service; then
+        echo "Error: Invalid service file content"
+        exit 1
+      fi
+      echo "Installation files verified"
+      if ls *.pkg.tar.zst 1>/dev/null 2>&1; then
+        tar -tvf *.pkg.tar.zst | grep -E "(wshowlyrics|settings.ini|wshowlyrics.service)"
+        echo "Package contents verified"
+      fi
+
+build:fuzz:
+  stage: build
+  image: ubuntu:latest
+  extends: .source-changes-rules
+  variables:
+    CC: clang
+  script:
+    - |
+      apt-get update -qq
+      apt-get install -y -qq clang meson ninja-build \
+        libcairo2-dev libpango1.0-dev libwayland-dev wayland-protocols \
+        libcurl4-openssl-dev libappindicator3-dev libgdk-pixbuf-2.0-dev \
+        libssl-dev libjson-c-dev libglib2.0-dev
+
+    # Build fuzz targets
+    - meson setup build-fuzz -Dfuzzing=true
+    - meson compile -C build-fuzz
+
+    # Run fuzzers (60s each)
+    - mkdir -p fuzz/artifacts/lrc fuzz/artifacts/lrcx fuzz/artifacts/srt
+
+    - ./build-fuzz/fuzz_lrc fuzz/corpus/lrc/ -artifact_prefix=fuzz/artifacts/lrc/ -max_total_time=60 -print_final_stats=1
+    - ./build-fuzz/fuzz_lrcx fuzz/corpus/lrcx/ -artifact_prefix=fuzz/artifacts/lrcx/ -max_total_time=60 -print_final_stats=1
+    - ./build-fuzz/fuzz_srt fuzz/corpus/srt/ -artifact_prefix=fuzz/artifacts/srt/ -max_total_time=60 -print_final_stats=1
+  artifacts:
+    when: on_failure
+    paths:
+      - fuzz/artifacts/
+    expire_in: 30 days

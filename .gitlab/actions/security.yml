@@ -1,0 +1,41 @@
+# Security stage jobs
+
+security:gitleaks:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  extends: .source-changes-rules
+  needs:
+    - job: build:makepkg
+      optional: true
+    - job: build:fuzz
+      optional: true
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - gitleaks detect --source="." --verbose --no-git
+
+security:semgrep:
+  stage: security
+  image: python:3.12-slim
+  extends: .source-changes-rules
+  needs:
+    - job: build:makepkg
+      optional: true
+    - job: build:fuzz
+      optional: true
+  variables:
+    SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN
+  script:
+    - pip install --quiet semgrep
+    - |
+      semgrep ci \
+        --config p/security-audit \
+        --config p/c \
+        --config p/ci \
+        --sarif > gl-sast-report.json || true
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+    when: always

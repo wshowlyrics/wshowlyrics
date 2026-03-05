@@ -1,0 +1,70 @@
+# GitLab CI/CD Pipeline for wshowlyrics
+# Coverity Scan remains on GitHub Actions (coverity.com GitHub-only integration)
+
+stages:
+  - build
+  - security
+  - package
+  - publish
+
+workflow:
+  rules:
+    # CI config changes: run full pipeline when RUN_ALL is set
+    - if: $RUN_ALL == "true"
+    # Version tags: full pipeline
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+    # Merge requests: build + security only
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Push to master: full pipeline
+    - if: $CI_COMMIT_BRANCH == "master"
+
+variables:
+  GIT_DEPTH: 20
+  # GitLab → GitHub push mirror (configured in GitLab UI, not here)
+  # Coverity remains on GitHub Actions (coverity-scan.yml)
+
+# ─── Shared rule templates ────────────────────────────────────────────
+
+# Source code changes (build/security stages)
+.source-changes-rules:
+  rules:
+    - if: $RUN_ALL == "true"
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "**/*.c"
+        - "**/*.h"
+        - meson.build
+        - meson_options.txt
+        - "fuzz/**"
+        - ".gitlab-ci.yml"
+        - ".gitlab/**/*.yml"
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "**/*.c"
+        - "**/*.h"
+        - meson.build
+        - meson_options.txt
+        - "fuzz/**"
+        - ".gitlab-ci.yml"
+        - ".gitlab/**/*.yml"
+
+# Tag-only jobs (package/publish release)
+.tag-only-rules:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+
+# Non-tag master push (nightly/unstable publish)
+.nontag-master-rules:
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == "master"
+
+# ─── Include action files ─────────────────────────────────────────────
+
+include:
+  - local: .gitlab/actions/build.yml
+  - local: .gitlab/actions/security.yml
+  - local: .gitlab/actions/package.yml
+  - local: .gitlab/actions/publish.yml
