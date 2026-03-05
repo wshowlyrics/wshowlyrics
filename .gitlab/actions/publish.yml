@@ -113,6 +113,9 @@ publish:nur-unstable:
     - COMMIT_HASH="$CI_COMMIT_SHA"
     - COMMIT_DATE=$(echo "$CI_COMMIT_TIMESTAMP" | cut -d'T' -f1)
 
+    # Install tools missing from nixos/nix image
+    - nix-env -iA nixpkgs.gnused nixpkgs.findutils
+
     # Calculate Nix hash, update unstable.nix, commit and push
     - |
       HASH_BASE32=$(nix-prefetch-url --unpack \
@@ -145,6 +148,7 @@ publish:nur-stable:
     - job: build:fuzz
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
+    - nix-env -iA nixpkgs.gnused nixpkgs.findutils
 
     # Calculate Nix hash, update default.nix, commit and push
     - |
@@ -465,6 +469,7 @@ publish:aur-git:
       useradd -m builder || true
       chown -R builder:builder .
       sudo -u builder makepkg --printsrcinfo > .SRCINFO
+      chown -R root:root .
 
       git config user.name "unstable-code"
       git config user.email "assa0620@gmail.com"
@@ -503,6 +508,7 @@ publish:aur-stable:
       chown -R builder:builder .
       sudo -u builder updpkgsums
       sudo -u builder makepkg --printsrcinfo > .SRCINFO
+      chown -R root:root .
 
       git config user.name "unstable-code"
       git config user.email "assa0620@gmail.com"
