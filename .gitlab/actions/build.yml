@@ -61,10 +61,12 @@ build:makepkg:
         exit 1
       fi
       echo "Installation files verified"
-      if ls *.pkg.tar.zst 1>/dev/null 2>&1; then
-        tar -tvf *.pkg.tar.zst | grep -E "(wshowlyrics|settings.ini|wshowlyrics.service)"
-        echo "Package contents verified"
-      fi
+      for pkg in *.pkg.tar.zst; do
+        [ -f "$pkg" ] || continue
+        echo "=== $pkg ==="
+        tar -tvf "$pkg" | grep -E "(wshowlyrics|settings.ini|wshowlyrics.service)" || true
+      done
+      echo "Package contents verified"
 
 build:fuzz:
   stage: build

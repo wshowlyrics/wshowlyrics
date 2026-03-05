@@ -258,7 +258,13 @@ bool srt_parse_string(const char *content, struct lyrics_data *data) {
     }
 
     free(content_copy);
-    return data->line_count > 0;
+
+    if (data->line_count == 0) {
+        lrc_free_data(data);
+        return false;
+    }
+
+    return true;
 }
 
 bool srt_parse_file(const char *filename, struct lyrics_data *data) {
