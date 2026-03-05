@@ -311,8 +311,9 @@ publish:copr-nightly:
       SRPM=$(find ~/rpmbuild/SRPMS -name "wshowlyrics-*.src.rpm" | head -1)
       copr-cli build unstable-code/wshowlyrics-nightly "$SRPM"
 
-    - echo "COPR nightly build submitted (version: ${VER})"
-    - echo "Build status: https://copr.fedorainfracloud.org/coprs/unstable-code/wshowlyrics-nightly/builds/"
+    - |
+      echo "COPR nightly build submitted (version: ${VER})"
+      echo "Build status: https://copr.fedorainfracloud.org/coprs/unstable-code/wshowlyrics-nightly/builds/"
 
 # ─── COPR Stable (tag) ───────────────────────────────────────────────
 
@@ -436,8 +437,9 @@ publish:copr-stable:
       SRPM=$(find ~/rpmbuild/SRPMS -name "wshowlyrics-*.src.rpm" | head -1)
       copr-cli build unstable-code/wshowlyrics "$SRPM"
 
-    - echo "COPR stable build submitted (version: ${VERSION})"
-    - echo "Build status: https://copr.fedorainfracloud.org/coprs/unstable-code/wshowlyrics/builds/"
+    - |
+      echo "COPR stable build submitted (version: ${VERSION})"
+      echo "Build status: https://copr.fedorainfracloud.org/coprs/unstable-code/wshowlyrics/builds/"
 
 # ─── AUR Git (nightly) ───────────────────────────────────────────────
 
@@ -539,7 +541,7 @@ publish:aur-stable:
 # ─── PPA (tag, jammy + noble) ────────────────────────────────────────
 
 .ppa-script:
-  script:
+  script: &ppa-script
     - VERSION="${CI_COMMIT_TAG#v}"
     - |
       apt-get update -qq
@@ -679,8 +681,9 @@ publish:aur-stable:
       CHANGES_FILE="../wshowlyrics_${VERSION}-1~${UBUNTU_RELEASE}1_source.changes"
       dput wshowlyrics-ppa "$CHANGES_FILE"
 
-    - echo "PPA upload for ${UBUNTU_RELEASE} completed!"
-    - echo "Build status: https://launchpad.net/~unstable-code/+archive/ubuntu/wshowlyrics/+packages"
+    - |
+      echo "PPA upload for ${UBUNTU_RELEASE} completed!"
+      echo "Build status: https://launchpad.net/~unstable-code/+archive/ubuntu/wshowlyrics/+packages"
 
 publish:ppa:jammy:
   stage: publish
@@ -692,8 +695,7 @@ publish:ppa:jammy:
   variables:
     UBUNTU_RELEASE: jammy
     DEBIAN_FRONTEND: noninteractive
-  script:
-    - !reference [.ppa-script, script]
+  script: *ppa-script
 
 publish:ppa:noble:
   stage: publish
@@ -705,5 +707,4 @@ publish:ppa:noble:
   variables:
     UBUNTU_RELEASE: noble
     DEBIAN_FRONTEND: noninteractive
-  script:
-    - !reference [.ppa-script, script]
+  script: *ppa-script
