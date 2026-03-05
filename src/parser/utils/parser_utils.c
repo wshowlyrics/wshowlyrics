@@ -446,6 +446,7 @@ int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_s
         next_word = &word_seg->next;
 
         struct ruby_segment *next_ruby = ruby_seg->next;
+        free(ruby_seg->translation);  // Free translation (not transferred to word_seg)
         free(ruby_seg);  // Free the ruby_segment shell (text/ruby already transferred)
         ruby_seg = next_ruby;
     }
