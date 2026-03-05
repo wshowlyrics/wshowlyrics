@@ -86,12 +86,18 @@ build:fuzz:
     - meson setup build-fuzz -Dfuzzing=true
     - meson compile -C build-fuzz
 
-    # Run fuzzers (60s each)
+    # Run fuzzers (60s each, suppress parser warnings to avoid 4MB log limit)
     - mkdir -p fuzz/artifacts/lrc fuzz/artifacts/lrcx fuzz/artifacts/srt
-
-    - ./build-fuzz/fuzz_lrc fuzz/corpus/lrc/ -artifact_prefix=fuzz/artifacts/lrc/ -max_total_time=60 -print_final_stats=1
-    - ./build-fuzz/fuzz_lrcx fuzz/corpus/lrcx/ -artifact_prefix=fuzz/artifacts/lrcx/ -max_total_time=60 -print_final_stats=1
-    - ./build-fuzz/fuzz_srt fuzz/corpus/srt/ -artifact_prefix=fuzz/artifacts/srt/ -max_total_time=60 -print_final_stats=1
+    - |
+      run_fuzzer() {
+        local name="$1"; shift
+        echo "=== Running $name ==="
+        "$@" 2>fuzz_${name}.log || { tail -50 fuzz_${name}.log; return 1; }
+        grep -E "^(stat::|SUMMARY)" fuzz_${name}.log || true
+      }
+      run_fuzzer lrc ./build-fuzz/fuzz_lrc fuzz/corpus/lrc/ -artifact_prefix=fuzz/artifacts/lrc/ -max_total_time=60 -print_final_stats=1
+      run_fuzzer lrcx ./build-fuzz/fuzz_lrcx fuzz/corpus/lrcx/ -artifact_prefix=fuzz/artifacts/lrcx/ -max_total_time=60 -print_final_stats=1
+      run_fuzzer srt ./build-fuzz/fuzz_srt fuzz/corpus/srt/ -artifact_prefix=fuzz/artifacts/srt/ -max_total_time=60 -print_final_stats=1
   artifacts:
     when: on_failure
     paths:
