@@ -1,5 +1,5 @@
 # Lyrics Overlay for Wayland
-[![Build Status](https://github.com/unstable-code/lyrics/actions/workflows/ci.yml/badge.svg)](https://github.com/unstable-code/lyrics/actions/workflows/ci.yml)
+[![Build Status](https://gitlab.com/wshowlyrics/wshowlyrics/badges/master/pipeline.svg)](https://gitlab.com/wshowlyrics/wshowlyrics/-/pipelines)
 [![GitHub release](https://img.shields.io/github/v/release/unstable-code/lyrics)](https://github.com/unstable-code/lyrics/releases)
 [![AUR version](https://img.shields.io/aur/version/wshowlyrics-git)](https://aur.archlinux.org/packages/wshowlyrics-git)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://www.linux.org/)
@@ -17,6 +17,8 @@
 <img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/e33bb35e-24f3-4632-811c-b7e55a0660a1" />
 
 Wayland 기반 가사 오버레이 프로그램입니다. [wshowkeys 프로젝트를 기반](https://github.com/unstable-code/wshowkeys)으로 제작되었으며, [LyricsX](https://github.com/ddddxxx/LyricsX)에서 영감을 받았습니다.
+
+> **원본**: [GitLab](https://gitlab.com/wshowlyrics/wshowlyrics) | **미러**: [GitHub](https://github.com/unstable-code/lyrics)
 
 ## 기능
 

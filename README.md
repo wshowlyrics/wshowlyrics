@@ -1,5 +1,5 @@
 # Lyrics Overlay for Wayland
-[![Build Status](https://github.com/unstable-code/lyrics/actions/workflows/ci.yml/badge.svg)](https://github.com/unstable-code/lyrics/actions/workflows/ci.yml)
+[![Build Status](https://gitlab.com/wshowlyrics/wshowlyrics/badges/master/pipeline.svg)](https://gitlab.com/wshowlyrics/wshowlyrics/-/pipelines)
 [![GitHub release](https://img.shields.io/github/v/release/unstable-code/lyrics)](https://github.com/unstable-code/lyrics/releases)
 [![AUR version](https://img.shields.io/aur/version/wshowlyrics-git)](https://aur.archlinux.org/packages/wshowlyrics-git)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://www.linux.org/)
@@ -17,6 +17,8 @@
 <img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/1909f0c1-445b-4526-b30f-6a5df93e624d" />
 
 A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https://github.com/unstable-code/wshowkeys) and inspired by [LyricsX](https://github.com/ddddxxx/LyricsX).
+
+> **Source**: [GitLab](https://gitlab.com/wshowlyrics/wshowlyrics) | **Mirror**: [GitHub](https://github.com/unstable-code/lyrics)
 
 <p align="center">
   <a href="docs/README.ko.md">🇰🇷 한국어</a>
