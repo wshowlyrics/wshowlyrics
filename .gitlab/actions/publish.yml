@@ -113,27 +113,21 @@ publish:nur-unstable:
     - COMMIT_HASH="$CI_COMMIT_SHA"
     - COMMIT_DATE=$(echo "$CI_COMMIT_TIMESTAMP" | cut -d'T' -f1)
 
-    # Calculate Nix hash (use GitLab archive)
+    # Calculate Nix hash, update unstable.nix, commit and push
     - |
       HASH_BASE32=$(nix-prefetch-url --unpack \
         "https://gitlab.com/wshowlyrics/wshowlyrics/-/archive/${COMMIT_HASH}/wshowlyrics-${COMMIT_HASH}.tar.gz" 2>&1 | tail -1)
-      HASH_SRI=$(nix hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
+      HASH_SRI=$(nix --extra-experimental-features nix-command hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
       echo "Nix SRI hash: ${HASH_SRI}"
 
-    # Clone NUR repository
-    - git clone "https://oauth2:${NUR_PAT}@github.com/unstable-code/nur-packages.git" nur-packages
-
-    # Update unstable.nix
-    - |
+      git clone "https://oauth2:${NUR_PAT}@github.com/unstable-code/nur-packages.git" nur-packages
       cd nur-packages/pkgs/wshowlyrics
       sed -i "s|version = \"[^\"]*\";|version = \"${COMMIT_DATE}\";|" unstable.nix
       sed -i "s|rev = \"[^\"]*\";|rev = \"${COMMIT_HASH}\";|" unstable.nix
       sed -i "s|hash = \"[^\"]*\";|hash = \"${HASH_SRI}\";|" unstable.nix
       grep -E "version|rev|hash" unstable.nix | head -3
 
-    # Commit and push
-    - |
-      cd nur-packages
+      cd "$CI_PROJECT_DIR/nur-packages"
       git config user.name "gitlab-ci[bot]"
       git config user.email "gitlab-ci[bot]@gitlab.com"
       git add pkgs/wshowlyrics/unstable.nix
@@ -152,27 +146,21 @@ publish:nur-stable:
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
 
-    # Calculate Nix hash from tag archive
+    # Calculate Nix hash, update default.nix, commit and push
     - |
       HASH_BASE32=$(nix-prefetch-url --unpack \
         "https://gitlab.com/wshowlyrics/wshowlyrics/-/archive/${CI_COMMIT_TAG}/wshowlyrics-${CI_COMMIT_TAG}.tar.gz" 2>&1 | tail -1)
-      HASH_SRI=$(nix hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
+      HASH_SRI=$(nix --extra-experimental-features nix-command hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
       echo "Nix SRI hash: ${HASH_SRI}"
 
-    # Clone NUR repository
-    - git clone "https://oauth2:${NUR_PAT}@github.com/unstable-code/nur-packages.git" nur-packages
-
-    # Update default.nix
-    - |
+      git clone "https://oauth2:${NUR_PAT}@github.com/unstable-code/nur-packages.git" nur-packages
       cd nur-packages/pkgs/wshowlyrics
       sed -i "s|version = \"[^\"]*\";|version = \"${VERSION}\";|" default.nix
       sed -i "s|rev = \"[^\"]*\";|rev = \"${CI_COMMIT_TAG}\";|" default.nix
       sed -i "s|hash = \"[^\"]*\";|hash = \"${HASH_SRI}\";|" default.nix
       grep -E "version|rev|hash" default.nix | head -3
 
-    # Commit and push
-    - |
-      cd nur-packages
+      cd "$CI_PROJECT_DIR/nur-packages"
       git config user.name "gitlab-ci[bot]"
       git config user.email "gitlab-ci[bot]@gitlab.com"
       git add pkgs/wshowlyrics/default.nix
@@ -467,25 +455,17 @@ publish:aur-git:
       chmod 600 ~/.ssh/aur
       ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
 
-    # Clone AUR repository
-    - GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git clone ssh://aur@aur.archlinux.org/wshowlyrics-git.git aur
-
-    # Update PKGBUILD
+    # Clone AUR, update PKGBUILD, generate .SRCINFO, commit and push
     - |
+      GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git clone ssh://aur@aur.archlinux.org/wshowlyrics-git.git aur
       cd aur
       sed -i "s/^pkgver=.*/pkgver=${VER}/" PKGBUILD
       sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
-    # Generate .SRCINFO
-    - |
-      cd aur
       useradd -m builder || true
       chown -R builder:builder .
       sudo -u builder makepkg --printsrcinfo > .SRCINFO
 
-    # Commit and push
-    - |
-      cd aur
       git config user.name "unstable-code"
       git config user.email "assa0620@gmail.com"
       git add PKGBUILD .SRCINFO
@@ -512,26 +492,18 @@ publish:aur-stable:
       chmod 600 ~/.ssh/aur
       ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
 
-    # Clone AUR repository (stable package, not -git)
-    - GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git clone ssh://aur@aur.archlinux.org/wshowlyrics.git aur
-
-    # Update PKGBUILD
+    # Clone AUR, update PKGBUILD, generate .SRCINFO, commit and push
     - |
+      GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git clone ssh://aur@aur.archlinux.org/wshowlyrics.git aur
       cd aur
       sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
       sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
-    # Update checksums and generate .SRCINFO
-    - |
-      cd aur
       useradd -m builder || true
       chown -R builder:builder .
       sudo -u builder updpkgsums
       sudo -u builder makepkg --printsrcinfo > .SRCINFO
 
-    # Commit and push
-    - |
-      cd aur
       git config user.name "unstable-code"
       git config user.email "assa0620@gmail.com"
       git add PKGBUILD .SRCINFO
