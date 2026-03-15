@@ -528,10 +528,11 @@ publish:ppa:tarball:
   script:
     - apt-get update -qq && apt-get install -y -qq git
     - VERSION="${CI_COMMIT_TAG#v}"
-    - git archive --format=tar.gz --prefix="wshowlyrics-${VERSION}/" -o "wshowlyrics_${VERSION}.orig.tar.gz" HEAD
+    - mkdir -p ppa-tarball
+    - git archive --format=tar.gz --prefix="wshowlyrics-${VERSION}/" -o "ppa-tarball/wshowlyrics_${VERSION}.orig.tar.gz" HEAD
   artifacts:
     paths:
-      - "wshowlyrics_*.orig.tar.gz"
+      - "ppa-tarball/"
     expire_in: 1 day
 
 # ─── PPA (tag, jammy + noble) ────────────────────────────────────────
@@ -656,7 +657,7 @@ publish:ppa:tarball:
       gpg-agent --daemon --allow-preset-passphrase || true
 
     # Copy orig tarball from artifact
-    - cp "wshowlyrics_${VERSION}.orig.tar.gz" ../
+    - cp "ppa-tarball/wshowlyrics_${VERSION}.orig.tar.gz" ../
 
     # Build source package
     - debuild -S -sa -d -kB4CD9B155AA3124C
