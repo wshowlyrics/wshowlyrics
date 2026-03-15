@@ -340,7 +340,7 @@ publish:copr-stable:
 
       License:        GPL-3.0-or-later
       URL:            https://github.com/wshowlyrics/wshowlyrics
-      Source0:        https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/v${VERSION}.tar.gz
+      Source0:        https://gitlab.com/wshowlyrics/wshowlyrics/-/archive/v${VERSION}/wshowlyrics-v${VERSION}.tar.gz
 
       BuildRequires:  meson >= 0.48.0
       BuildRequires:  ninja-build
@@ -383,7 +383,7 @@ publish:copr-stable:
       - System tray integration with album art
 
       %prep
-      %autosetup -n lyrics-${VERSION}
+      %autosetup -n wshowlyrics-v${VERSION}
 
       %build
       %meson
@@ -414,13 +414,13 @@ publish:copr-stable:
       - Release ${VERSION}
       SPECEOF
 
-    # Download source tarball from GitHub release
-    - wget "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/v${VERSION}.tar.gz"
+    # Download source tarball from GitLab
+    - wget "https://gitlab.com/wshowlyrics/wshowlyrics/-/archive/v${VERSION}/wshowlyrics-v${VERSION}.tar.gz"
 
     # Build SRPM
     - |
       mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-      cp "v${VERSION}.tar.gz" ~/rpmbuild/SOURCES/
+      cp "wshowlyrics-v${VERSION}.tar.gz" ~/rpmbuild/SOURCES/
       cp wshowlyrics.spec ~/rpmbuild/SPECS/
       rpmbuild -bs ~/rpmbuild/SPECS/wshowlyrics.spec
 
