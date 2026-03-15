@@ -18,7 +18,7 @@ build:makepkg:
     # Modify PKGBUILD for CI environment
     - sed -i 's|source=.*|source=()|' PKGBUILD
     - sed -i 's|sha256sums=.*|sha256sums=()|' PKGBUILD
-    - sed -i 's|cd "$srcdir/lyrics"|cd "$startdir"|g' PKGBUILD
+    - sed -i 's|cd "$srcdir/wshowlyrics"|cd "$startdir"|g' PKGBUILD
 
     # Create non-root user for makepkg
     - useradd -m builder
