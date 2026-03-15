@@ -1,7 +1,7 @@
 project(
 	'lyrics',
 	'c',
-	version: '0.9.9',
+	version: '0.10.0',
 	license: 'GPL',
 	meson_version: '>=0.51.0',
 	default_options: [
