@@ -1,8 +1,8 @@
 # wshowlyrics GitHub Pages Configuration
 title: wshowlyrics
 description: A Wayland-native lyrics overlay with MPRIS integration
-url: "https://unstable-code.github.io"
-baseurl: "/lyrics"
+url: "https://wshowlyrics.github.io"
+baseurl: "/wshowlyrics"
 
 # Build settings
 markdown: kramdown
@@ -16,8 +16,8 @@ exclude:
 
 # Site info
 author: unstable-code
-github_username: unstable-code
-repository: unstable-code/lyrics
+github_username: wshowlyrics
+repository: wshowlyrics/wshowlyrics
 
 # Social/SEO
 twitter:
@@ -25,7 +25,7 @@ twitter:
 social:
   name: wshowlyrics
   links:
-    - https://github.com/unstable-code/lyrics
+    - https://github.com/wshowlyrics/wshowlyrics
 
 # Defaults
 defaults:
