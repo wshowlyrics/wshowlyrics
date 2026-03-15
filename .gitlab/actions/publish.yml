@@ -516,6 +516,24 @@ publish:aur-stable:
       git diff --staged --quiet || git commit -m "Update to version ${VERSION}"
       GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o StrictHostKeyChecking=accept-new" git push origin master
 
+# ─── PPA orig tarball (tag) ───────────────────────────────────────────
+
+publish:ppa:tarball:
+  stage: publish
+  image: ubuntu:latest
+  extends: .tag-only-rules
+  needs:
+    - job: build:makepkg
+    - job: build:fuzz
+  script:
+    - apt-get update -qq && apt-get install -y -qq git
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - git archive --format=tar.gz --prefix="wshowlyrics-${VERSION}/" -o "wshowlyrics_${VERSION}.orig.tar.gz" HEAD
+  artifacts:
+    paths:
+      - "wshowlyrics_*.orig.tar.gz"
+    expire_in: 1 day
+
 # ─── PPA (tag, jammy + noble) ────────────────────────────────────────
 
 .ppa-script:
@@ -637,8 +655,8 @@ publish:aur-stable:
       echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
       gpg-agent --daemon --allow-preset-passphrase || true
 
-    # Create orig tarball
-    - git archive --format=tar.gz --prefix="wshowlyrics-${VERSION}/" -o "../wshowlyrics_${VERSION}.orig.tar.gz" HEAD
+    # Copy orig tarball from artifact
+    - cp "wshowlyrics_${VERSION}.orig.tar.gz" ../
 
     # Build source package
     - debuild -S -sa -d -kB4CD9B155AA3124C
@@ -670,6 +688,8 @@ publish:ppa:jammy:
   needs:
     - job: build:makepkg
     - job: build:fuzz
+    - job: publish:ppa:tarball
+      artifacts: true
   variables:
     UBUNTU_RELEASE: jammy
     DEBIAN_FRONTEND: noninteractive
@@ -682,6 +702,8 @@ publish:ppa:noble:
   needs:
     - job: build:makepkg
     - job: build:fuzz
+    - job: publish:ppa:tarball
+      artifacts: true
   variables:
     UBUNTU_RELEASE: noble
     DEBIAN_FRONTEND: noninteractive
