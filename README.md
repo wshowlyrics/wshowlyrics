@@ -1,6 +1,6 @@
 # Lyrics Overlay for Wayland
 [![Build Status](https://gitlab.com/wshowlyrics/wshowlyrics/badges/master/pipeline.svg)](https://gitlab.com/wshowlyrics/wshowlyrics/-/pipelines)
-[![GitHub release](https://img.shields.io/github/v/release/unstable-code/lyrics)](https://github.com/unstable-code/lyrics/releases)
+[![GitHub release](https://img.shields.io/github/v/release/wshowlyrics/wshowlyrics)](https://github.com/wshowlyrics/wshowlyrics/releases)
 [![AUR version](https://img.shields.io/aur/version/wshowlyrics-git)](https://aur.archlinux.org/packages/wshowlyrics-git)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://www.linux.org/)
 [![Wayland](https://img.shields.io/badge/Wayland-Only-orange.svg)](https://wayland.freedesktop.org/)
@@ -18,7 +18,7 @@
 
 A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https://github.com/unstable-code/wshowkeys) and inspired by [LyricsX](https://github.com/ddddxxx/LyricsX).
 
-> **Source**: [GitLab](https://gitlab.com/wshowlyrics/wshowlyrics) | **Mirror**: [GitHub](https://github.com/unstable-code/lyrics)
+> **Source**: [GitLab](https://gitlab.com/wshowlyrics/wshowlyrics) | **Mirror**: [GitHub](https://github.com/wshowlyrics/wshowlyrics)
 
 <p align="center">
   <a href="docs/README.ko.md">🇰🇷 한국어</a>
@@ -89,7 +89,7 @@ sudo apt update
 sudo apt install wshowlyrics
 ```
 
-Or download `.deb` from [Releases](https://github.com/unstable-code/lyrics/releases):
+Or download `.deb` from [Releases](https://github.com/wshowlyrics/wshowlyrics/releases):
 
 ```bash
 sudo dpkg -i wshowlyrics_*_amd64.deb
@@ -112,7 +112,7 @@ sudo dnf copr enable unstable-code/wshowlyrics-nightly
 sudo dnf install wshowlyrics
 ```
 
-Or download `.rpm` from [Releases](https://github.com/unstable-code/lyrics/releases):
+Or download `.rpm` from [Releases](https://github.com/wshowlyrics/wshowlyrics/releases):
 
 ```bash
 sudo dnf install wshowlyrics-*.rpm

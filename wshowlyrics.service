@@ -1,6 +1,6 @@
 [Unit]
 Description=Wayland Lyrics Overlay
-Documentation=https://github.com/unstable-code/lyrics
+Documentation=https://github.com/wshowlyrics/wshowlyrics
 After=graphical-session.target
 
 [Service]

@@ -1,6 +1,6 @@
 # Lyrics Overlay for Wayland
 [![Build Status](https://gitlab.com/wshowlyrics/wshowlyrics/badges/master/pipeline.svg)](https://gitlab.com/wshowlyrics/wshowlyrics/-/pipelines)
-[![GitHub release](https://img.shields.io/github/v/release/unstable-code/lyrics)](https://github.com/unstable-code/lyrics/releases)
+[![GitHub release](https://img.shields.io/github/v/release/wshowlyrics/wshowlyrics)](https://github.com/wshowlyrics/wshowlyrics/releases)
 [![AUR version](https://img.shields.io/aur/version/wshowlyrics-git)](https://aur.archlinux.org/packages/wshowlyrics-git)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://www.linux.org/)
 [![Wayland](https://img.shields.io/badge/Wayland-Only-orange.svg)](https://wayland.freedesktop.org/)
@@ -18,7 +18,7 @@
 
 Wayland 기반 가사 오버레이 프로그램입니다. [wshowkeys 프로젝트를 기반](https://github.com/unstable-code/wshowkeys)으로 제작되었으며, [LyricsX](https://github.com/ddddxxx/LyricsX)에서 영감을 받았습니다.
 
-> **원본**: [GitLab](https://gitlab.com/wshowlyrics/wshowlyrics) | **미러**: [GitHub](https://github.com/unstable-code/lyrics)
+> **원본**: [GitLab](https://gitlab.com/wshowlyrics/wshowlyrics) | **미러**: [GitHub](https://github.com/wshowlyrics/wshowlyrics)
 
 ## 기능
 
@@ -85,7 +85,7 @@ sudo apt update
 sudo apt install wshowlyrics
 ```
 
-또는 [릴리즈](https://github.com/unstable-code/lyrics/releases)에서 `.deb` 다운로드:
+또는 [릴리즈](https://github.com/wshowlyrics/wshowlyrics/releases)에서 `.deb` 다운로드:
 
 ```bash
 sudo dpkg -i wshowlyrics_*_amd64.deb
@@ -108,7 +108,7 @@ sudo dnf copr enable unstable-code/wshowlyrics-nightly
 sudo dnf install wshowlyrics
 ```
 
-또는 [릴리즈](https://github.com/unstable-code/lyrics/releases)에서 `.rpm` 다운로드:
+또는 [릴리즈](https://github.com/wshowlyrics/wshowlyrics/releases)에서 `.rpm` 다운로드:
 
 ```bash
 sudo dnf install wshowlyrics-*.rpm

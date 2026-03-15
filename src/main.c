@@ -63,7 +63,7 @@ static bool display_detailed_help(const char *program_name) {
     struct curl_memory_buffer buffer;
     curl_memory_buffer_init(&buffer);
 
-    const char *help_url = "https://raw.githubusercontent.com/unstable-code/lyrics/refs/heads/master/docs/help.txt";
+    const char *help_url = "https://raw.githubusercontent.com/wshowlyrics/wshowlyrics/refs/heads/master/docs/help.txt";
 
     if (curl_easy_setopt(curl, CURLOPT_URL, help_url) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
@@ -113,9 +113,9 @@ static int handle_help_option(const char *program_name) {
     // Fallback to basic help if fetch failed
     fprintf(stdout, "Wayland lyrics overlay with MPRIS integration\n\n");
     fprintf(stdout, "For detailed help and usage information, see:\n");
-    fprintf(stdout, "  https://raw.githubusercontent.com/unstable-code/lyrics/refs/heads/master/docs/help.txt\n\n");
+    fprintf(stdout, "  https://raw.githubusercontent.com/wshowlyrics/wshowlyrics/refs/heads/master/docs/help.txt\n\n");
     fprintf(stdout, "Documentation:\n");
-    fprintf(stdout, "  https://github.com/unstable-code/lyrics/blob/master/README.md\n");
+    fprintf(stdout, "  https://github.com/wshowlyrics/wshowlyrics/blob/master/README.md\n");
     return 0;
 }
 

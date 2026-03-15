@@ -71,7 +71,7 @@
         - Karaoke-style word-level timing
         - AI-powered translation support
         - System tray integration with album art
-      Homepage: https://github.com/unstable-code/lyrics
+      Homepage: https://github.com/wshowlyrics/wshowlyrics
       EOF
 
     # Create postinst
@@ -125,7 +125,7 @@
       Summary:        Wayland-native lyrics display with online fallback
 
       License:        GPL-3.0-or-later
-      URL:            https://github.com/unstable-code/lyrics
+      URL:            https://github.com/wshowlyrics/wshowlyrics
       Source0:        %{name}-%{version}.tar.gz
 
       BuildRequires:  meson >= 0.48.0

@@ -91,7 +91,7 @@ publish:github-release:
     - |
       GH_TOKEN="$GITHUB_PAT" gh release create "$CI_COMMIT_TAG" \
         release-assets/* \
-        --repo unstable-code/lyrics \
+        --repo wshowlyrics/wshowlyrics \
         --title "v${VERSION}" \
         --notes-file /tmp/release-body.md \
         --generate-notes
@@ -208,7 +208,7 @@ publish:copr-nightly:
       Summary:        Wayland-native lyrics display with online fallback (nightly build)
 
       License:        GPL-3.0-or-later
-      URL:            https://github.com/unstable-code/lyrics
+      URL:            https://github.com/wshowlyrics/wshowlyrics
       Source0:        wshowlyrics-${VER}.tar.gz
 
       BuildRequires:  meson >= 0.48.0
@@ -339,8 +339,8 @@ publish:copr-stable:
       Summary:        Wayland-native lyrics display with online fallback
 
       License:        GPL-3.0-or-later
-      URL:            https://github.com/unstable-code/lyrics
-      Source0:        https://github.com/unstable-code/lyrics/archive/refs/tags/v${VERSION}.tar.gz
+      URL:            https://github.com/wshowlyrics/wshowlyrics
+      Source0:        https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/v${VERSION}.tar.gz
 
       BuildRequires:  meson >= 0.48.0
       BuildRequires:  ninja-build
@@ -415,7 +415,7 @@ publish:copr-stable:
       SPECEOF
 
     # Download source tarball from GitHub release
-    - wget "https://github.com/unstable-code/lyrics/archive/refs/tags/v${VERSION}.tar.gz"
+    - wget "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/v${VERSION}.tar.gz"
 
     # Build SRPM
     - |
@@ -549,9 +549,9 @@ publish:aur-stable:
                      libjson-c-dev,
                      libssl-dev
       Standards-Version: 4.6.0
-      Homepage: https://github.com/unstable-code/lyrics
-      Vcs-Git: https://github.com/unstable-code/lyrics.git
-      Vcs-Browser: https://github.com/unstable-code/lyrics
+      Homepage: https://github.com/wshowlyrics/wshowlyrics
+      Vcs-Git: https://github.com/wshowlyrics/wshowlyrics.git
+      Vcs-Browser: https://github.com/wshowlyrics/wshowlyrics
 
       Package: wshowlyrics
       Architecture: any
@@ -593,7 +593,7 @@ publish:aur-stable:
       Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
       Upstream-Name: wshowlyrics
       Upstream-Contact: unstable-code <assa0620@gmail.com>
-      Source: https://github.com/unstable-code/lyrics
+      Source: https://github.com/wshowlyrics/wshowlyrics
 
       Files: *
       Copyright: 2024-2025 unstable-code <assa0620@gmail.com>
