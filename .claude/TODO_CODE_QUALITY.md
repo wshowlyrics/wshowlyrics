@@ -143,9 +143,9 @@
 
 ## 참고 자료
 
-- **SonarCloud Dashboard**: https://sonarcloud.io/project/overview?id=unstable-code_lyrics
-- **SonarCloud Issues API**: https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics
-- **Coverity Dashboard**: https://scan.coverity.com/projects/unstable-code-lyrics
+- **SonarCloud Dashboard**: https://sonarcloud.io/project/overview?id=wshowlyrics_wshowlyrics
+- **SonarCloud Issues API**: https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics
+- **Coverity Dashboard**: https://scan.coverity.com/projects/wshowlyrics
 
 ---
 

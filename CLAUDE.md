@@ -436,16 +436,16 @@ This project uses a multi-layered SAST (Static Application Security Testing) app
 | **Coverity** | Weekly (Sun) | 10-15 min | Concurrency bugs | Weekly report |
 
 **Dashboards:**
-- SonarCloud: https://sonarcloud.io/project/overview?id=unstable-code_lyrics
-- Coverity: https://scan.coverity.com/projects/unstable-code-lyrics
+- SonarCloud: https://sonarcloud.io/project/overview?id=wshowlyrics_wshowlyrics
+- Coverity: https://scan.coverity.com/projects/wshowlyrics
 - GitHub Security: Repository → Security → Code scanning
 
 ### SonarCloud Integration
 
 Continuous code quality analysis with every commit and pull request. Issues can be accessed via REST API without requiring browser MCP.
 
-**Project:** `unstable-code_lyrics`
-**Dashboard:** https://sonarcloud.io/project/overview?id=unstable-code_lyrics
+**Project:** `wshowlyrics_wshowlyrics`
+**Dashboard:** https://sonarcloud.io/project/overview?id=wshowlyrics_wshowlyrics
 
 ### Accessing Issues via API
 
@@ -455,7 +455,7 @@ https://sonarcloud.io/api/issues/search
 ```
 
 **Common Parameters:**
-- `componentKeys`: Project identifier (unstable-code_lyrics)
+- `componentKeys`: Project identifier (wshowlyrics_wshowlyrics)
 - `resolved`: false (unresolved issues only)
 - `ps`: Page size (number of issues per page)
 - `s`: Sort field (SEVERITY, FILE, LINE, etc.)
@@ -466,16 +466,16 @@ https://sonarcloud.io/api/issues/search
 
 ```bash
 # Get top 10 most severe issues
-curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics&resolved=false&ps=10&s=SEVERITY&asc=false"
+curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&resolved=false&ps=10&s=SEVERITY&asc=false"
 
 # Get all security vulnerabilities
-curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics&types=VULNERABILITY&resolved=false"
+curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&types=VULNERABILITY&resolved=false"
 
 # Get all bugs
-curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics&types=BUG&resolved=false"
+curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&types=BUG&resolved=false"
 
 # Get code smells in specific file
-curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics&types=CODE_SMELL&componentKeys=unstable-code_lyrics:src/parser/utils/parser_utils.c"
+curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&types=CODE_SMELL&componentKeys=wshowlyrics_wshowlyrics:src/parser/utils/parser_utils.c"
 ```
 
 **Response Format:**
@@ -486,7 +486,7 @@ curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics
       "key": "issue-id",
       "type": "BUG|VULNERABILITY|CODE_SMELL",
       "severity": "BLOCKER|CRITICAL|MAJOR|MINOR|INFO",
-      "component": "unstable-code_lyrics:src/path/to/file.c",
+      "component": "wshowlyrics_wshowlyrics:src/path/to/file.c",
       "line": 123,
       "message": "Issue description"
     }
@@ -518,7 +518,7 @@ curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics
 - Recommended for projects with regular release tagging
 - This project uses semantic versioning (v0.6.x)
 - Release frequency: Variable (hours to days)
-- See release history: https://github.com/unstable-code/lyrics/tags
+- See release history: https://github.com/wshowlyrics/wshowlyrics/tags
 
 **Why not "Number of days":**
 - Release intervals are inconsistent (1 hour to 7 days)
@@ -529,8 +529,8 @@ curl "https://sonarcloud.io/api/issues/search?componentKeys=unstable-code_lyrics
 
 Weekly deep analysis for advanced bug detection, particularly concurrency issues.
 
-**Project:** `unstable-code/lyrics`
-**Dashboard:** https://scan.coverity.com/projects/unstable-code-lyrics
+**Project:** `wshowlyrics`
+**Dashboard:** https://scan.coverity.com/projects/wshowlyrics
 
 **Schedule:**
 - Automated weekly scans every Sunday 00:00 UTC (09:00 KST)

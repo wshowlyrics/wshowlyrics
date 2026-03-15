@@ -37,7 +37,7 @@ jobs:
       if: steps.cache-coverity.outputs.cache-hit != 'true'
       run: |
         wget -q https://scan.coverity.com/download/linux64 \
-          --post-data "token=${{ secrets.COVERITY_SCAN_TOKEN }}&project=unstable-code%2Flyrics" \
+          --post-data "token=${{ secrets.COVERITY_SCAN_TOKEN }}&project=wshowlyrics" \
           -O coverity_tool.tgz
         mkdir -p coverity-tool
         tar xzf coverity_tool.tgz -C coverity-tool --strip-components=1
@@ -63,7 +63,7 @@ jobs:
              --form file=@lyrics.tgz \
              --form version="${GITHUB_SHA:0:8}" \
              --form description="Automated weekly scan - commit ${{ github.sha }}" \
-             https://scan.coverity.com/builds?project=unstable-code%2Flyrics)
+             https://scan.coverity.com/builds?project=wshowlyrics)
         echo "HTTP response code: $HTTP_CODE"
         cat response.txt
         if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
