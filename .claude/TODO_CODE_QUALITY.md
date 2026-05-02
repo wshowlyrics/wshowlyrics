@@ -31,25 +31,29 @@
 
 ### 요약 — 미완료 마이그레이션 / 정리 항목
 
-| ID | 위치 | 패턴 | 우선순위 |
+| ID | 위치 | 패턴 | 우선순위 / 상태 |
 |---|---|---|---|
-| R1 | main.h `lyrics_state` Wayland 필드 7개 | `wl_conn` 도입 후 옛 필드 미제거 (e0020f0) | MEDIUM |
-| R2 | main.h `lyrics_state` 42필드 | S1820 — 서브 구조체 분리 | LOW |
-| R3 | itunes_artwork.c, lrclib_provider.c | `json_utils`/`curl_utils` 추출 후 thin wrapper 잔존 | **HIGH (zero-risk)** |
-| R4 | config.c, lyrics_provider.c | `string_utils.h` 추출 후 `config_trim_whitespace` thin wrapper 잔존 | **HIGH (zero-risk)** |
-| R5 | config.c `[deepl]` section | Deprecated 섹션 (도입 aedbfac 2025-12-19) — 제거 데드라인 결정 | LOW (사용자 영향) |
-| R6 | mpris.c:455 Seeked signal | 빈 콜백만 등록 (`f26dd47` 폴링 전환 후 잔존) | LOW |
-| R7 | translator/{openai,claude,gemini,deepl}/ | `translate_single_line`/`parse_response_json`/`build_request_json` 4×3 중복 | MEDIUM |
-| R8 | parser_utils.c:374 `find_word_start` | 152줄 함수 (UTF-8 word boundary) | LOW |
-| R9 | mpris.c:931, wayland_init.c:12, lyrics_manager.c:180 | 100+줄 함수 3개 | LOW |
-| R10 | config.c:1116, deepl_translator.c:192 | Magic number 버퍼 (`body[2048]`, `request_body[4096]`) → constants.h | **TINY** |
-| R11 | config.c:357 | `XDG_CONFIG_HOME` 빈 문자열 가드 누락 (file_utils.c와 일관성) | **TINY** |
+| ~~R1~~ | main.h `lyrics_state` Wayland 필드 7개 | `wl_conn` 도입 후 옛 필드 미제거 (e0020f0) | ✅ 완료 (9007eec, 42→35 필드) |
+| R2 | main.h `lyrics_state` 35필드 | S1820 — 서브 구조체 분리 (R1 후 7필드 감소) | LOW (R1 후 결정) |
+| ~~R3~~ | itunes_artwork.c, lrclib_provider.c | thin wrapper 정리 | ✅ 완료 (c15cdb9) |
+| ~~R4~~ | config.c, lyrics_provider.c | `config_trim_whitespace` 정리 | ✅ 완료 (c15cdb9) |
+| **R5** | config.c `[deepl]` section | Deprecated 섹션 — 제거 데드라인 결정 | ⏸ 보류 (정책) |
+| ~~R6~~ | mpris.c Seeked signal | 빈 콜백 정리 | ✅ 완료 (c15cdb9) |
+| **R7** | translator/{openai,claude,gemini,deepl}/ | 4×3 함수 중복 → vtable 추상화 | **MEDIUM — 진행 예정** (Ollama 등 추가 LLM provider 지원 대비) |
+| **R8** | parser_utils.c:374 `find_word_start` | 152줄 함수 | ⏸ 보류 (가독성만 목적, 강제 아님) |
+| **R9** | mpris.c:931, wayland_init.c:12, lyrics_manager.c:180 | 100+줄 함수 3개 | ⏸ 보류 (강제 아님) |
+| ~~R10~~ | config.c, deepl_translator.c | Magic number 버퍼 | ✅ 완료 (c15cdb9) |
+| ~~R11~~ | config.c | `XDG_CONFIG_HOME` 빈 문자열 가드 + 잠재 NULL deref | ✅ 완료 (c15cdb9) |
 
-**TINY 묶음 (R3+R4+R6+R10+R11)**: 한 PR로 묶으면 ~40분 + zero-risk. 우선 처리 권장.
+**TINY 묶음 (R3+R4+R6+R10+R11)**: ✅ 완료 (c15cdb9, 2026-05-02)
 
 ---
 
 ### R1. 선행: Wayland 필드 → `wl_conn` 통합 (미완료 마이그레이션 완료)
+
+> ✅ **완료 (2026-05-03, 9007eec)**. lyrics_state 필드 42 → 35.
+> 검증: meson build clean, Sway/Hyprland 런타임 (가사/D-Bus/pause-resume/TTY 전환).
+> handle_reconnection의 동기화 8줄 삭제 — listener 등록만 wl_conn 직접 참조.
 
 **배경**: 커밋 `e0020f0` (2025-11-25, "feat: Add full Wayland reconnection with surface reinitialization") 에서 `struct wayland_connection`을 도입하고 `state->wl_conn` 필드를 추가했으나, **기존 `lyrics_state`의 Wayland 객체 7개 필드를 제거하지 않음**. 점진적 마이그레이션이 중단된 상태.
 
@@ -166,6 +170,8 @@ struct lyrics_state {
 
 ### R5. `[deepl]` deprecated config section 제거 데드라인 결정
 
+> **결정 (2026-05-03)**: 보류. 별도 릴리스 정책 결정 사이클에서 다룸.
+
 **위치**: `src/user_experience/config/config.c:217-269` (`parse_deprecated_deepl_section`), 882-908 (warning suppression)
 
 **상태**: 도입 `aedbfac` (2025-12-19, ~5개월 경과). 사용자에게 `⚠️ [deepl] section is deprecated` 경고 출력 후 호환 처리.
@@ -198,6 +204,10 @@ struct lyrics_state {
 ---
 
 ### R7. Translator provider별 함수 중복 → vtable 추상화
+
+> **결정 (2026-05-03)**: 진행 예정. Ollama 등 새로운 LLM provider 추가가 임박했고,
+> 추상화 후 추가하면 신규 provider 도입 비용이 크게 줄어듦. R1 작업과 병행 또는
+> 우선 진행 가능.
 
 **위치**: 4개 translator 모듈에 같은 시그니처가 반복
 
@@ -233,6 +243,9 @@ struct lyrics_state {
 
 ### R8. `find_word_start` 152줄 분리
 
+> **결정 (2026-05-03)**: 보류. 강제 아님 (정적 분석 통과), 가독성 개선만 목적.
+> 다음에 해당 함수를 손볼 일 생기면 그때 분리 검토.
+
 **위치**: `src/parser/utils/parser_utils.c:374`
 
 **상태**: UTF-8 word boundary 탐색 로직. SonarCloud cognitive complexity 통과 (이미 Phase 9에서 정리된 패턴이라 추정). 기능은 정확하나 사람이 읽기 부담.
@@ -247,6 +260,8 @@ struct lyrics_state {
 ---
 
 ### R9. 100+줄 함수 분리
+
+> **결정 (2026-05-03)**: 보류. R8과 같은 사유 (강제 아님, ROI 작음).
 
 **위치 / 길이**:
 - `src/utils/mpris/mpris.c:931` `setup_player_subscription` — 126줄
@@ -299,12 +314,11 @@ if (config_home && config_home[0] != '\0') {
 
 1. ~~SonarCloud 웹 마킹 작업~~ ✅ 완료 (2026-05-02)
 2. ~~HTTP S5332 검토~~ ✅ 완료 (SAFE + acknowledgement)
-3. **TINY 묶음 PR** (R3 + R4 + R6 + R10 + R11, zero-risk, ~40분)
-4. **R1**: Wayland 필드 → `wl_conn` 통합 (단독 PR)
-5. **R7**: Translator vtable 추상화 (별도 PR, 가치 평가 후)
-6. **R8 + R9**: 긴 함수 분리 (선택, ROI 평가 후)
-7. **R2**: S1820 `lyrics_state` 분리 (단독 PR, 또는 Won't Fix 처리)
-8. **R5**: 다음 메이저 릴리스 사이클에 정책 결정
+3. ~~**TINY 묶음 PR** (R3 + R4 + R6 + R10 + R11, zero-risk)~~ ✅ 완료 (c15cdb9, 2026-05-02)
+4. ~~**R1**: Wayland 필드 → `wl_conn` 통합~~ ✅ 완료 (9007eec, 2026-05-03)
+5. **R7**: Translator vtable 추상화 (단독 PR) — Ollama 추가 전 마치는 게 합리적
+6. **R2**: S1820 `lyrics_state` 분리 (단독 PR, 또는 Won't Fix 처리) — 35필드 (R1 후), 여전히 한도 20 초과
+7. ~~R5/R8/R9~~ ⏸ 보류
 
 ---
 
@@ -408,9 +422,12 @@ if (config_home && config_home[0] != '\0') {
 
 ## 상태
 
-- **최종 업데이트**: 2026-05-02 (재분석 + 마킹 처리 + R1~R11 항목 추가)
-- **현재 단계**: TINY 묶음 PR (R3+R4+R6+R10+R11) 대기 중
-- **완료**: Phase 1-14 (코드 변경) + 2026-05-02 마킹 처리
-- **남은 이슈**: SonarCloud 1건 (S1820 — R2) + 코드베이스 정리 11건 (R1~R11)
+- **최종 업데이트**: 2026-05-03 (R1 완료)
+- **현재 단계**: R7 (translator vtable) 대기
+- **완료**: Phase 1-14 + 2026-05-02 SonarCloud 마킹 + TINY 묶음 (c15cdb9) + R1 (9007eec)
+- **남은 이슈**:
+  - 진행 예정: R7
+  - 후속 결정: R2 (lyrics_state 35필드, 여전히 한도 초과 — 분리 vs Won't Fix)
+  - 보류: R5 (릴리스 정책), R8/R9 (강제 아님)
 - **목표**: A등급 유지, Quality Gate GREEN 유지, BLOCKER/CRITICAL 0개
 - **참고**: Coverity CID 643610 수정 완료 (b3a410a). SEC-A/SEC-B 검증 완료 — 모두 안전 (NULL+empty 가드 충분)
