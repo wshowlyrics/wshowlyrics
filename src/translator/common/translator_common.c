@@ -536,8 +536,13 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
     if (translation) {
         // Language validation
         if (is_same_language(stripped, translation)) {
-            log_warn("%s: [%d/%d] Skipped (same language after translation) - API cost wasted",
+            // Diagnostic: dump both source and rejected response so we can
+            // tell apart libexttextcat false positives from genuine LLM
+            // echo-the-input behavior. See issue #3.
+            log_warn("%s: [%d/%d] Skipped (same language after translation)",
                    args->provider_name, *current, translatable_count);
+            log_warn("  src : %.120s", stripped);
+            log_warn("  resp: %.120s", translation);
             free(translation);
             char *old = line->translation;
             __atomic_store_n(&line->translation, NULL, __ATOMIC_RELEASE);
