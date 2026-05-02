@@ -181,6 +181,38 @@ curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyr
 
 Quality Gate uses **"Previous version"** as new-code definition — release tagging is the cadence, not days.
 
+### Marking Issues / Hotspots (Write API)
+
+Token at `~/.config/sonarcloud/token` (chmod 600). Pass with `-u "${TOKEN}:"`. Required when bulk-marking false positives or Safe hotspots.
+
+```bash
+TOKEN="$(cat ~/.config/sonarcloud/token)"
+
+# Issue: transition = wontfix | falsepositive | resolve | reopen
+curl -u "${TOKEN}:" -X POST "https://sonarcloud.io/api/issues/do_transition" \
+  --data-urlencode "issue=<key>" --data-urlencode "transition=falsepositive"
+curl -u "${TOKEN}:" -X POST "https://sonarcloud.io/api/issues/add_comment" \
+  --data-urlencode "issue=<key>" --data-urlencode "text=<reason>"
+
+# Hotspot: resolution = FIXED | SAFE only (ACKNOWLEDGED is web-UI only — API rejects it)
+curl -u "${TOKEN}:" -X POST "https://sonarcloud.io/api/hotspots/change_status" \
+  --data-urlencode "hotspot=<key>" --data-urlencode "status=REVIEWED" \
+  --data-urlencode "resolution=SAFE" --data-urlencode "comment=<reason>"
+```
+
+**Standing marking policy** (apply when issues recur, e.g. project-key reanalysis):
+
+| Rule | Disposition | Reason |
+|---|---|---|
+| `c:S107`, `c:S995` in events/wayland_events, system_tray, dbus_control, shm, wayland_manager | wontfix | External callback signatures (Wayland/GTK/GDBus) — parameter list fixed by framework |
+| `c:S4423` (weak TLS) on any `curl_easy_setopt` site | falsepositive | Code explicitly enforces `CURL_SSLVERSION_TLSv1_2` |
+| `c:S3519` parser_utils.c UTF-8 backwards iter | falsepositive | `NOSONAR` + defensive bounds check already in place |
+| `c:S5813` `strlen` hotspot | SAFE | Inputs are NULL-terminated by call sites (Phase H verified) |
+| `c:S5849` permission/capability hotspot | SAFE | Verified in Phase S (uses `g_spawn_async`, no shell injection) |
+| `c:S4790` MD5 hotspot in file_utils | SAFE | Cache key / change detector only, no cryptographic use |
+| `c:S5332` HTTP hotspot in system_tray.c | SAFE + acknowledgement comment | URL is external (MPRIS / iTunes CDN); cannot enforce HTTPS without breaking compatibility. API does not accept ACKNOWLEDGED resolution, so use SAFE with explicit note |
+| `c:S1820` `lyrics_state` 42-field struct | **do not mark — fix in code** | Real refactor (split into sub-structs) |
+
 ### Commit Format for SAST Fixes
 
 ```
