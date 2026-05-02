@@ -246,10 +246,16 @@ translation_opacity = 0.7
 # Default: 10m (suitable for Gemini free tier)
 rate_limit = 10m
 
-# Maximum retry attempts for rate limit errors
-# When the API returns a rate limit error (HTTP 429) or overload error (HTTP 503),
-# the translator will automatically retry with exponential backoff
-# Set to 0 to disable retries
+# Maximum retry attempts (used in two places, same threshold):
+#   1. Inline retry on transient API errors (HTTP 429 / 503), with
+#      exponential backoff inside a single translation call.
+#   2. Cross-session retry budget per line. If the LLM returns a response
+#      that fails language validation (echoes the source back, etc.), the
+#      cache stores a per-line retry counter. Once the counter reaches this
+#      value the line is treated as permanently un-translatable and is no
+#      longer re-attempted on subsequent plays. A successful translation
+#      resets the counter.
+# Set to 0 to disable retries entirely.
 # Default: 3
 max_retries = 3
 

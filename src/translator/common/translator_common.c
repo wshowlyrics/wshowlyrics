@@ -100,10 +100,19 @@ int translator_count_translated_lines(struct lyrics_data *data) {
         return 0;
     }
 
+    // R15: a line counts as "done" if it either has a translation OR has
+    // exhausted its retry budget — both cases mean the worker won't touch
+    // it on the next run, so cache_complete should reflect that.
+    const struct config *cfg = config_get();
+    const int max_retries = cfg ? cfg->translation.max_retries : 3;
+
     int count = 0;
     struct lyrics_line *line = data->lines;
     while (line) {
         if (line->translation && line->translation[0] != '\0') {
+            count++;
+        } else if (line->text && line->text[0] != '\0' &&
+                   line->translation_retry_count >= max_retries) {
             count++;
         }
         line = line->next;
@@ -125,17 +134,34 @@ bool translator_save_to_cache(const char *cache_path, struct lyrics_data *data,
 
     json_object_object_add(root, "target_language", json_object_new_string(target_lang));
 
+    // R15: collect retry counts as a sparse {index: count} dict so the JSON
+    // stays small for the common case where most lines have count == 0.
+    json_object *retry_counts = json_object_new_object();
+
     struct lyrics_line *line = data->lines;
+    int idx = 0;
     while (line) {
         if (line->translation) {
             json_object_array_add(translations_array, json_object_new_string(line->translation));
         } else {
             json_object_array_add(translations_array, json_object_new_string(""));
         }
+        if (line->translation_retry_count > 0) {
+            char key[16];
+            snprintf(key, sizeof(key), "%d", idx);
+            json_object_object_add(retry_counts, key,
+                                   json_object_new_int(line->translation_retry_count));
+        }
         line = line->next;
+        idx++;
     }
 
     json_object_object_add(root, "translations", translations_array);
+    if (json_object_object_length(retry_counts) > 0) {
+        json_object_object_add(root, "retry_counts", retry_counts);
+    } else {
+        json_object_put(retry_counts);
+    }
 
     const char *json_str = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
 
@@ -209,6 +235,11 @@ bool translator_load_from_cache(const char *cache_path, struct lyrics_data *data
         return false;
     }
 
+    // R15: optional retry_counts sparse dict. Forward-compatible — old
+    // caches simply omit it and every line stays at 0.
+    json_object *retry_counts = NULL;
+    json_object_object_get_ex(root, "retry_counts", &retry_counts);
+
     int translation_count = json_object_array_length(translations_array);
     struct lyrics_line *line = data->lines;
     int index = 0;
@@ -220,6 +251,15 @@ bool translator_load_from_cache(const char *cache_path, struct lyrics_data *data
         if (translation && translation[0] != '\0') {
             free(line->translation);
             line->translation = strdup(translation);
+        }
+
+        if (retry_counts) {
+            char key[16];
+            snprintf(key, sizeof(key), "%d", index);
+            json_object *cnt_obj;
+            if (json_object_object_get_ex(retry_counts, key, &cnt_obj)) {
+                line->translation_retry_count = json_object_get_int(cnt_obj);
+            }
         }
 
         line = line->next;
@@ -509,6 +549,19 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
         return true;  // Continue
     }
 
+    // R15: skip lines that have exhausted their retry budget on previous
+    // runs. The worker would just pay for another rejected response.
+    {
+        const struct config *cfg = config_get();
+        const int max_retries = cfg ? cfg->translation.max_retries : 3;
+        if (line->translation_retry_count >= max_retries) {
+            log_info("%s: Skipped (retry budget exhausted, %d/%d): %.120s",
+                     args->provider_name, line->translation_retry_count,
+                     max_retries, line->text);
+            return true;  // Continue
+        }
+    }
+
     // Update counter
     (*current)++;
     data->translation_current = *current;
@@ -539,8 +592,10 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
             // Diagnostic: dump both source and rejected response so we can
             // tell apart libexttextcat false positives from genuine LLM
             // echo-the-input behavior. See issue #3.
-            log_warn("%s: [%d/%d] Skipped (same language after translation)",
-                   args->provider_name, *current, translatable_count);
+            line->translation_retry_count++;  // R15: count this attempt
+            log_warn("%s: [%d/%d] Skipped (same language after translation, attempt %d)",
+                   args->provider_name, *current, translatable_count,
+                   line->translation_retry_count);
             log_warn("  src : %.120s", stripped);
             log_warn("  resp: %.120s", translation);
             free(translation);
@@ -551,12 +606,15 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
             char *old = line->translation;
             __atomic_store_n(&line->translation, translation, __ATOMIC_RELEASE);
             free(old);
+            line->translation_retry_count = 0;  // R15: success resets the counter
             log_info("%s: [%d/%d] Translated: %s",
                    args->provider_name, *current, translatable_count, translation);
         }
     } else {
-        log_warn("%s: [%d/%d] Translation failed",
-               args->provider_name, *current, translatable_count);
+        line->translation_retry_count++;  // R15: count this attempt
+        log_warn("%s: [%d/%d] Translation failed (attempt %d)",
+               args->provider_name, *current, translatable_count,
+               line->translation_retry_count);
     }
 
     free(stripped);

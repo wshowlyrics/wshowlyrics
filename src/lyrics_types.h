@@ -33,6 +33,10 @@ struct lyrics_line {
     int64_t end_timestamp_us; // End timestamp in microseconds (0 if not specified, e.g., LRC format)
     char *text; // Full line text (for display)
     char *translation; // Translated line text (NULL if not translated)
+    int translation_retry_count; // R15: cross-session retry count for failed translations.
+                                 // Persisted via the cache "retry_counts" sparse dict.
+                                 // When >= cfg.translation.max_retries, this line is treated
+                                 // as permanently un-translatable and not re-attempted.
 
     // Format-specific segment data (only one will be set)
     struct ruby_segment *ruby_segments; // Ruby text segments for LRC/SRT (NULL if not used)
