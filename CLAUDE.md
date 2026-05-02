@@ -4,626 +4,224 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build System
 
-This project uses **Meson** as its build system:
+Meson with strict flags (`c_std=c11`, `warning_level=2`, `werror=true`).
 
 ```bash
-# Initial setup
 meson setup build
-
-# Compile
 meson compile -C build
-
-# Run the binary
-./build/lyrics
-
-# Clean rebuild
-rm -rf build && meson setup build && meson compile -C build
+./build/lyrics              # binary is renamed to wshowlyrics on install
 ```
 
-The main binary is `build/lyrics` and is renamed to `wshowlyrics` during installation.
+The installed binary is `wshowlyrics`; locally it is `build/lyrics`. Always rebuild with `werror=true` in mind — any new warning breaks the build.
+
+### Fuzz Targets
+
+Parsers (LRC/LRCX/SRT) have libFuzzer + ASan targets. Build separately with clang:
+
+```bash
+# ASan build (default — runtime memory error detection)
+CC=clang meson setup build-fuzz -Dfuzzing=true
+meson compile -C build-fuzz
+./build-fuzz/fuzz_lrc fuzz/corpus/lrc/ -max_total_time=60
+
+# Valgrind-compatible build (ASan disabled — they conflict)
+CC=clang meson setup build-valgrind -Dfuzzing=true -Dfuzz_sanitizer=none
+valgrind --leak-check=full ./build-valgrind/fuzz_lrc fuzz/corpus/lrc/
+```
+
+Fuzz sources are in `fuzz/`, seed corpora in `fuzz/corpus/{lrc,lrcx,srt}/`. Fuzz targets share `parser_sources` with the main binary (see `meson.build`).
+
+## CI/CD: GitLab Primary, GitHub Mirror
+
+**Source of truth is GitLab** (`gitlab.com/wshowlyrics/wshowlyrics`); GitHub is a push mirror. Use `glab` instead of `gh` for MRs.
+
+- **GitLab CI** (`.gitlab-ci.yml` + `.gitlab/actions/*.yml`) handles build, security (gitleaks, semgrep), package (AUR/PPA/COPR), publish (NUR, releases).
+- **GitHub Actions** (`.github/workflows/coverity-scan.yml`) runs Coverity Scan only — Coverity is GitHub-only.
+- Pipeline rules trigger on: `RUN_ALL=true`, version tags `v*.*.*`, MRs, or master pushes.
 
 ## Release Process
 
-### Version Synchronization
+Version strings live in two places and **must be synced before tagging**:
 
-Before creating a new release tag, ensure all version strings are synchronized:
+1. `meson.build` line 4: `version: 'X.Y.Z'`
+2. `src/constants.h`: `#define USER_AGENT_STRING "wshowlyrics/X.Y.Z"`
 
-**Files to Update**:
-1. **`meson.build`** (line 4): `version: 'X.Y.Z'`
-2. **`src/constants.h`** (line 32): `#define USER_AGENT_STRING "wshowlyrics/X.Y.Z"`
-
-**Checklist**:
 ```bash
-# 1. Update meson.build
 sed -i "s/version: '[^']*'/version: 'X.Y.Z'/" meson.build
-
-# 2. Update USER_AGENT_STRING in constants.h
-sed -i 's/#define USER_AGENT_STRING "wshowlyrics\/[^"]*"/#define USER_AGENT_STRING "wshowlyrics\/X.Y.Z"/' src/constants.h
-
-# 3. Verify changes
-grep "version:" meson.build
-grep "USER_AGENT_STRING" src/constants.h
-
-# 4. Commit version bump
-git add meson.build src/constants.h
-git commit -m "chore: Bump version to X.Y.Z"
-
-# 5. Create release tag
+sed -i 's|"wshowlyrics/[^"]*"|"wshowlyrics/X.Y.Z"|' src/constants.h
+git commit -am "chore: Bump version to X.Y.Z"
 git tag -s vX.Y.Z -m "Release vX.Y.Z"
 git push origin master --tags
 ```
 
-**Important**: Always update versions BEFORE tagging to ensure consistency across the codebase.
-
-### NUR (Nix User Repository) CD
-
-The project uses automated CD workflows to keep NUR packages in sync:
-
-**Repository:** [unstable-code/nur-packages](https://github.com/unstable-code/nur-packages)
-
-**Packages:**
-- `wshowlyrics` - Stable release (updated on version tags)
-- `wshowlyrics-unstable` - Nightly build (updated on every commit)
-
-**Workflows:**
-1. **`nur-publish.yml`** - Triggered on every push to master (without version tag)
-   - Updates `unstable.nix` with new commit hash and Nix hash
-   - Version format: `YYYY-MM-DD`
-
-2. **`nur-release.yml`** - Triggered on version tags (`v*`)
-   - Updates `default.nix` with new version and Nix hash
-   - Version matches the git tag
-
-**Package Structure:**
-```
-nur-packages/pkgs/wshowlyrics/
-├── generic.nix    # Shared builder (dependencies, postPatch, meta)
-├── default.nix    # Stable package (calls generic with release tag)
-└── unstable.nix   # Unstable package (calls generic with commit hash)
-```
-
-**GitHub Secrets Required:**
-- `NUR_PAT` - Personal Access Token with repo scope for nur-packages
+Tagging triggers downstream package workflows (AUR `wshowlyrics`, PPA, COPR stable, NUR `default.nix`). Non-tag master pushes trigger nightly publishes (COPR nightly, NUR `unstable.nix`).
 
 ## Code Architecture
 
-### Multi-Provider Lyrics System
+### Two-Tier Lyrics Provider Chain
 
-The application uses a **provider chain architecture** for lyrics retrieval:
+`src/provider/lyrics/lyrics_provider.c` searches local files first (same dir as music file → `$XDG_MUSIC_DIR` → `~/.lyrics/` → `$HOME`), then `src/provider/lrclib/lrclib_provider.c` falls back to lrclib.net. **URL decoding is mandatory** for MPRIS file URIs (Korean/Japanese/Unicode paths). Online provider only accepts synced lyrics — plain text is dropped to keep sync intact.
 
-1. **Local Provider** (`src/provider/lyrics/lyrics_provider.c`)
-   - Searches local filesystem in priority order:
-     - Same directory as music file (highest priority)
-     - Current directory (only for local builds)
-     - `$XDG_MUSIC_DIR`
-     - `~/.lyrics/`
-     - `$HOME`
-   - Supports URL decoding for Unicode paths (Korean, Japanese, etc.)
-   - Handles file-based formats: `.lrcx`, `.lrc`, `.srt`, `.vtt`
+If `[lyrics] extensions` in settings.ini is empty, local search is skipped entirely.
 
-2. **Online Provider** (`src/provider/lrclib/lrclib_provider.c`)
-   - Fallback when local files not found
-   - Fetches synchronized lyrics from lrclib.net API
-   - Only uses synced lyrics (plain text is ignored)
+### Parsers — All Live Under `src/parser/lrc/`
 
-### Parser Architecture
+Despite the directory name, **`src/parser/lrc/` holds LRC, LRCX, and the shared `lrc_common.c`**. Only SRT lives elsewhere (`src/parser/srt/`). General parser helpers (ruby/timestamp parsing) are in `src/parser/utils/parser_utils.c`.
 
-The project has **three format-specific parsers** sharing common utilities (`src/parser/utils/lrc_common.c`):
+| Format | File | Segment type | Timing |
+|--------|------|--------------|--------|
+| LRC    | `parser/lrc/lrc_parser.c`   | `ruby_segment` | line-level |
+| LRCX   | `parser/lrc/lrcx_parser.c`  | `word_segment` | word-level + unfill |
+| SRT    | `parser/srt/srt_parser.c`   | `ruby_segment` | line + end time |
 
-1. **LRCX Parser** (`src/parser/lrcx/lrcx_parser.c`)
-   - Karaoke-style word-level timing: `[00:12.00][00:12.20]First [00:12.50]word`
-   - Uses `word_segment` structure with timestamps
-   - Supports unfill effect: `[<MM:SS.xx]` for blinking/oscillating characters
-   - Progressive fill rendering
+**Format detection is by extension, not content** (`is_lyrics_format(state, ".lrcx")` in `main.c`). A `.lrc` containing word timestamps will not get karaoke rendering.
 
-2. **LRC Parser** (`src/parser/lrc/lrc_parser.c`)
-   - Standard line-level synchronized lyrics: `[00:12.00]Lyrics line`
-   - Uses `ruby_segment` structure (no timing, only text)
-   - Simpler rendering (no karaoke effects)
+Ruby/furigana syntax `主{ふり}` is parsed by `parse_ruby_segments` / `parse_word_segments_with_ruby` in `parser_utils.c` and works in all formats. SRT/VTT also support inline `{translation}` lines (no API needed).
 
-3. **SRT Parser** (`src/parser/srt/srt_parser.c`)
-   - Subtitle format with time ranges
-   - Uses `ruby_segment` structure
-   - Handles both start and end timestamps
+### Core Data Structures (`src/lyrics_types.h`)
 
-**Ruby Text Support**: All formats support furigana/pinyin syntax: `心{こころ}` renders "こころ" above "心"
+- `struct lyrics_line` holds **either** `segments` (LRCX `word_segment*`) **or** `ruby_segments` (LRC/SRT `ruby_segment*`) — never both. Free both branches when cleaning up.
+- `struct lyrics_data` owns translation thread state via atomics (`translation_in_progress`, `translation_should_cancel`, `translation_thread_active`) plus `pthread_t translation_thread`.
+- `ruby_segment` and `word_segment` both carry a `translation` slot (per-segment, used by inline SRT/VTT translation).
 
-**Shared Utilities**: `lrc_common.c` provides timestamp parsing, ruby text extraction, and validation used by all parsers
+### Rendering Pipeline — Files Are NOT Under `core/rendering/`
 
-### Core Data Structures
+Only the orchestrator lives there:
+- `src/core/rendering/rendering_manager.c` — coordinator, format detection, frame composition
+- `src/utils/render/word_render.c` — LRCX karaoke progressive fill
+- `src/utils/render/ruby_render.c` — LRC/SRT with furigana positioning
+- `src/utils/render/render_common.c` — shared utilities (background, plain text)
+- `src/utils/render/render_params.h` — shared render parameter struct
 
-Defined in `src/lyrics_types.h`:
+Wayland surface lifecycle is split:
+- `src/utils/wayland/wayland_manager.c` — connection lifecycle, reconnection (`wayland_manager_reconnect_full`), event dispatch
+- `src/utils/wayland/wayland_init.c` — surface init wrapper called from `main.c`
 
-- **`struct word_segment`**: LRCX karaoke segments with timing + ruby text
-- **`struct ruby_segment`**: LRC/SRT segments with only text + ruby text (no timing)
-- **`struct lyrics_line`**: Contains either `word_segment*` OR `ruby_segment*` (never both)
-- **`struct lyrics_data`**: Container for all lyrics with metadata and MD5 checksum
+The compositor quirk flag `state->no_buffer_detach` exists because some compositors reset surface position when `wl_surface_attach(NULL)` is used; in that case a transparent buffer is used instead.
 
-### MPRIS Integration
+### Translation System (Async)
 
-`src/utils/mpris/mpris.c` handles music player communication:
-- Uses `playerctl` to detect currently playing songs
-- Extracts metadata: title, artist, album, file location
-- Monitors playback position for sync
-- Tracks file changes to reload lyrics
+`src/translator/{openai,deepl,gemini,claude}/` — all share `src/translator/common/translator_common.c` for caching, language detection, ruby stripping, and last-line extraction (handles AI over-explanation where the model wraps the translation in commentary).
 
-### Translation System
+- **LRC only** for API-based translation. LRCX (word-level timing) and SRT/VTT (own subtitle format) are excluded.
+- Translation runs in a pthread; check `translation_in_progress` before reading per-line `translation` fields, and set `translation_should_cancel = true` then `pthread_join` when loading new lyrics.
+- **Cache lives at `~/.cache/wshowlyrics/` (or `$XDG_CACHE_HOME/wshowlyrics/`)** — JSON keyed by `{md5}_{lang}` for partial resume across runs. Cleared via `--purge=translations`.
+- `is_already_in_language()` (`src/utils/lang_detect/lang_detect.c`) skips API calls when text is already in target language. Uses libexttextcat if available (optional dep, gracefully degrades).
+- Rate limit format is intuitive: `200` (ms), `5s`, `10m` (10 req/min).
 
-Multi-provider translation with **async background processing** (`src/translator/`):
+### MPRIS, Monitoring, D-Bus Control
 
-**Supported Providers** (configured via `settings.ini`):
-- **OpenAI**: gpt-4o, gpt-4o-mini, gpt-3.5-turbo (`openai_translator.c`)
-- **DeepL**: deepl-pro, deepl-free (`deepl_translator.c`)
-- **Google Gemini**: gemini-2.5-flash, gemini-2.5-pro (`gemini_translator.c`)
-- **Anthropic Claude**: claude-sonnet-4-5, claude-haiku-4, claude-opus-4-5 (`claude_translator.c`)
-
-**Architecture**:
-- **LRC-only**: Only LRC format supports translation (LRCX has word-level timing, SRT/VTT are subtitle formats)
-- **Async threads**: Translation happens in background without blocking rendering
-- **Smart caching**: `/tmp/wshowlyrics/translated/{md5}_{lang}.json` for resume capability
-- **Language detection**: Skips API calls for text already in target language (`src/utils/lang_detect/`)
-- **Rate limiting**: Configurable delays (200ms default) between API calls
-- **Retry logic**: Exponential backoff with configurable max retries
-
-**Common Utilities** (`src/translator/common/translator_common.c`):
-- Cache loading/saving
-- Language detection
-- Ruby notation stripping
-- Last-line extraction (handles AI over-explanation)
-
-**Format**: Cache stored as JSON with line-by-line translations for partial resume
-
-### Rendering Pipeline
-
-**Modern Architecture** (`src/core/rendering/`, `src/utils/render/`):
-
-1. **Rendering Manager** (`rendering_manager.c`)
-   - Central orchestrator for all rendering operations
-   - Format detection and renderer selection
-   - Frame composition and Wayland buffer management
-
-2. **Format-Specific Renderers**:
-   - **Word Render** (`word_render.c`): LRCX karaoke with progressive fill
-   - **Ruby Render** (`ruby_render.c`): LRC/SRT with furigana positioning
-   - **Render Common** (`render_common.c`): Shared utilities (plain text, background)
-
-3. **Wayland Manager** (`src/utils/wayland/wayland_manager.c`)
-   - Handles wlr-layer-shell protocol
-   - Creates transparent overlay surfaces
-   - Manages compositor interactions
-
-4. **Main Event Loop** (`src/main.c`)
-   - Poll-based Wayland event dispatch
-   - Determines format from file extension (`.lrcx` → karaoke mode)
-   - Handles translation rendering with configurable opacity
+- `src/utils/mpris/mpris.c` — uses `playerctl` to extract metadata and playback position, tracks file changes to trigger re-search.
+- `src/monitor/file_monitor.c` — generic MD5-based hot-reload for both lyrics and config files (`file_monitor_check_and_reload`).
+- `src/utils/dbus_control/dbus_control.c` — exposes `org.wshowlyrics.Control` D-Bus service used by the `wshowlyrics-offset` shell helper. Methods: `AdjustTimingOffset(int16)`, `SetTimingOffset(int16)`, `ResetTimingOffset()`, `ToggleOverlay()`, `SetOverlay(bool)`. Range −10000..+10000 ms; session offset auto-resets on track change, global offset comes from `[lyrics] global_offset_ms`.
+- `src/utils/lock/lock_file.c` — single-instance lock at `$XDG_RUNTIME_DIR/wshowlyrics/wshowlyrics.lock` (path provided by `src/utils/runtime/runtime_dir.c`).
 
 ### System Tray
 
-`src/user_experience/system_tray/system_tray.c`:
-- Displays album art via SNI (StatusNotifierItem)
-- Uses libappindicator-gtk3
-- Shows default music icon when album art unavailable
-- Tooltip shows: "Artist - Title"
+`src/user_experience/system_tray/system_tray.c` uses libappindicator-gtk3 to publish an SNI tray icon. Album art fallback chain: MPRIS metadata → iTunes Search API (`src/provider/itunes/itunes_artwork.c`) → default theme icon. Tray menu has track info, overlay toggle, timing offset submenu, and "Edit Settings" (needs `$EDITOR` and `$TERMINAL`).
 
-## Configuration
+### Configuration
 
-Settings are loaded with the following fallback mechanism:
+Loaded from `~/.config/wshowlyrics/settings.ini`. If absent, copies from `/etc/wshowlyrics/settings.ini` (installed by meson); if that also fails, built-in defaults apply. CLI args override file. Config is hot-reloaded via MD5 checksum (`state->config_md5_checksum`).
 
-1. **User config**: `~/.config/wshowlyrics/settings.ini`
-   - If file doesn't exist, copies from `/etc/wshowlyrics/settings.ini` (if available)
-   - If copy fails (system config not found), uses built-in defaults
-2. **Command-line arguments**: Override config file settings
+Sections: `[display]`, `[lyrics]`, `[translation]`, `[monitor]`. See `settings.ini.example`.
 
-**Hot Reload**: Configuration files are monitored via MD5 checksums and automatically reloaded when changed.
+### Help Text Is Fetched at Runtime
 
-**Key Sections** (`settings.ini.example`):
-- `[display]`: Colors, fonts, positioning, opacity
-- `[lyrics]`: Format preferences, line count, alignment
-- `[translation]`: Provider, API key, target language, rate limits
-- `[monitor]`: File monitoring intervals, cache settings
-
-See `settings.ini.example` for all available options.
-
-## Testing
-
-Quick test workflow:
-
-```bash
-# 1. Place lyrics file with same name as music file
-mkdir -p ~/test-lyrics
-cp song.mp3 ~/test-lyrics/
-cp song.lrc ~/test-lyrics/
-
-# 2. Play music with MPRIS-compatible player
-mpv --force-window=yes ~/test-lyrics/song.mp3
-
-# 3. Run lyrics overlay
-./build/lyrics
-
-# 4. Verify MPRIS metadata
-playerctl metadata
-
-# 5. Check playback position (microseconds)
-playerctl metadata -f '{{position}}'
-```
-
-For detailed testing guide including Unicode path testing, see `docs/TESTING.md`.
+`--help` fetches `docs/help.txt` from GitHub raw at runtime (`display_detailed_help` in `main.c`) with a 5s timeout, falling back to a stub if offline. **Update `docs/help.txt` on master to change help output for installed users without rebuild.**
 
 ## Critical Code Patterns
 
-### Memory Management for Lyrics
-
-When freeing lyrics data, handle both segment types:
+### Free Both Segment Types
 
 ```c
-// Free word segments (LRCX)
-if (line->segments) {
-    struct word_segment *seg = line->segments;
-    while (seg) {
-        struct word_segment *next = seg->next;
-        free(seg->text);
-        free(seg->ruby); // May be NULL
-        free(seg);
-        seg = next;
-    }
-}
-
-// Free ruby segments (LRC/SRT)
-if (line->ruby_segments) {
-    struct ruby_segment *seg = line->ruby_segments;
-    while (seg) {
-        struct ruby_segment *next = seg->next;
-        free(seg->text);
-        free(seg->ruby); // May be NULL
-        free(seg);
-        seg = next;
-    }
-}
+if (line->segments) { /* word_segment list — LRCX */ }
+if (line->ruby_segments) { /* ruby_segment list — LRC/SRT */ }
 ```
 
-### Format Detection
+Both can have non-NULL `ruby` and `translation` strings.
 
-Format is determined by file extension, not content:
-
-```c
-// In src/main.c
-bool is_karaoke = is_lyrics_format(state, ".lrcx");
-```
-
-Only `.lrcx` files use karaoke rendering, even if they contain word-level timing.
-
-### Unicode Path Handling
-
-Always use URL decoding for file paths from MPRIS:
+### Cancel Translation Before Reload
 
 ```c
-// Extract directory from file:///home/user/%EC%9D%8C%EC%95%85/song.mp3
-// Result: /home/user/음악
-char *dir = extract_directory_from_url(url); // Handles URL decoding
-```
-
-### Translation Thread Safety
-
-Translation runs asynchronously - always check state before accessing:
-
-```c
-// Check if translation is in progress
-if (data->translation_in_progress) {
-    // Access translation_current/translation_total for progress
-    // Don't modify lyrics_line->translation (being written by thread)
-}
-
-// Cancel translation when loading new lyrics
 data->translation_should_cancel = true;
-pthread_join(data->translation_thread, NULL);
-```
-
-### Language Detection Pattern
-
-Use `is_already_in_language()` before expensive API calls:
-
-```c
-// In src/utils/lang_detect/lang_detect.c (requires libexttextcat)
-if (is_already_in_language(text, target_lang)) {
-    return; // Skip translation
+if (data->translation_thread_active) {
+    pthread_join(data->translation_thread, NULL);
+    data->translation_thread_active = false;
 }
 ```
 
-Falls back to simple heuristics if libexttextcat unavailable.
+### Unicode Paths from MPRIS
+
+MPRIS gives `file:///` URIs with percent-encoding. Always URL-decode before opening (`extract_directory_from_url` and friends).
+
+## Code Quality (SAST)
+
+| Tool | Where | Trigger | Focus |
+|------|-------|---------|-------|
+| Gitleaks | GitLab CI | After build | Secrets in history |
+| Semgrep | GitLab CI | After build | OWASP, C patterns (`p/security-audit`, `p/c`, `p/ci`) |
+| SonarCloud | external | Every commit/MR | General quality, PR decoration |
+| Coverity | GitHub Actions | Sundays 00:00 UTC | Race/deadlock, deep dataflow |
+
+Dashboards:
+- SonarCloud: https://sonarcloud.io/project/overview?id=wshowlyrics_wshowlyrics
+- Coverity: https://scan.coverity.com/projects/wshowlyrics
+
+### Querying SonarCloud Issues via API (no auth for public project)
+
+```bash
+# Top 10 by severity
+curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&resolved=false&ps=10&s=SEVERITY&asc=false"
+
+# Filter by type
+curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&types=BUG&resolved=false"
+curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&types=VULNERABILITY&resolved=false"
+```
+
+Quality Gate uses **"Previous version"** as new-code definition — release tagging is the cadence, not days.
+
+### Commit Format for SAST Fixes
+
+```
+fix: <brief description>
+
+<explanation>
+
+Changes:
+- <change 1>
+- <change 2>
+
+Benefits:
+- <benefit 1>
+- <benefit 2>
+
+Fixes: SonarCloud issues <key1>, <key2>      (or: Coverity defect CID-12345)
+```
+
+Always include the issue keys for traceability.
+
+## Testing
+
+```bash
+# Same-name lyrics file beats everything else
+cp song.mp3 ~/test-lyrics/
+cp song.lrc ~/test-lyrics/
+mpv --force-window=yes ~/test-lyrics/song.mp3
+./build/lyrics
+playerctl metadata                    # verify MPRIS data
+playerctl metadata -f '{{position}}'  # microseconds
+```
+
+See `docs/TESTING.md` for the Unicode-path scenarios.
 
 ## Dependencies
 
-**Build-time**:
-- cairo, pango, pangocairo (rendering)
-- wayland-client, wayland-protocols (Wayland)
-- libcurl, openssl, json-c (online lyrics + translation)
-- libappindicator-gtk3, gdk-pixbuf-2.0 (system tray)
-- fontconfig (font discovery)
-- libexttextcat (optional, language detection)
-- meson, ninja (build system)
+**Build**: cairo, pango, pangocairo, fontconfig, wayland-client, wayland-protocols, libcurl, openssl, json-c, libappindicator-gtk3 (`appindicator3-0.1`), gdk-pixbuf-2.0, gio-2.0, librt, meson, ninja. Optional: libexttextcat (language detection).
 
-**Runtime**:
-- playerctl (MPRIS integration)
-- Compositor with wlr-layer-shell support (Sway, Hyprland, etc.)
+**Runtime**: playerctl, a `wlr-layer-shell` compositor (Sway, Hyprland, KDE Plasma 5.27+).
 
-## Project Structure
+## Helper Scripts
 
-```
-src/
-├── main.c                                    # Main event loop & rendering orchestration
-├── lyrics_types.h                            # Core data structures
-├── constants.h                               # Color macros, constants
-├── core/
-│   ├── rendering/
-│   │   ├── rendering_manager.c              # Central rendering coordinator
-│   │   ├── word_render.c                    # LRCX karaoke renderer
-│   │   ├── ruby_render.c                    # LRC/SRT ruby text renderer
-│   │   └── render_common.c                  # Shared rendering utilities
-│   └── state/
-│       └── lyrics_state.c                   # Rendering state management
-├── lyrics/
-│   └── lyrics_manager.c                     # Lyrics lifecycle management
-├── parser/
-│   ├── lrc/lrc_parser.c                     # LRC format (line-level timing)
-│   ├── lrcx/lrcx_parser.c                   # LRCX format (word-level timing)
-│   ├── srt/srt_parser.c                     # SRT format (subtitle)
-│   └── utils/lrc_common.c                   # Shared parsing utilities
-├── provider/
-│   ├── lyrics/lyrics_provider.c             # Local file search (11 paths)
-│   ├── lrclib/lrclib_provider.c             # Online API fallback
-│   └── itunes/itunes_artwork.c              # Album art fallback
-├── translator/
-│   ├── openai/openai_translator.c           # OpenAI GPT models
-│   ├── deepl/deepl_translator.c             # DeepL API
-│   ├── gemini/gemini_translator.c           # Google Gemini
-│   ├── claude/claude_translator.c           # Anthropic Claude
-│   └── common/translator_common.c           # Shared translation utilities
-├── utils/
-│   ├── mpris/mpris.c                        # Music player integration
-│   ├── wayland/wayland_manager.c            # Wayland surface management
-│   ├── lang_detect/lang_detect.c            # Language detection
-│   ├── curl/curl_utils.c                    # HTTP requests
-│   ├── file/file_utils.c                    # File I/O & MD5 checksums
-│   ├── pango/pango_utils.c                  # Text layout
-│   └── shm/shm.c                            # Shared memory buffers
-├── user_experience/
-│   ├── config/config.c                      # INI file parsing & hot reload
-│   └── system_tray/system_tray.c            # Album art tray icon (SNI)
-└── events/
-    └── wayland_events.c                     # Wayland event handlers
-```
-
-## Code Quality & Analysis
-
-### Overview
-
-This project uses a multi-layered SAST (Static Application Security Testing) approach for comprehensive code quality and security monitoring:
-
-**Active Tools:**
-
-1. **Gitleaks** (Secret Scanning)
-   - Scans git history for exposed secrets
-   - Runs after CI completion
-   - Prevents credential leaks
-
-2. **Semgrep** (Security Patterns)
-   - OWASP security patterns
-   - C-specific vulnerability detection
-   - SARIF output to GitHub Security tab
-   - Config: `p/security-audit`, `p/c`, `p/ci`
-
-3. **SonarCloud** (Comprehensive Quality Analysis)
-   - Runs on every commit/PR
-   - Bug detection (memory leaks, null pointers, resource leaks)
-   - Security vulnerabilities (buffer overflow, injection)
-   - Code smells (complexity, duplications, maintainability)
-   - Technical debt calculation
-   - GitHub PR decoration with Quality Gate
-
-4. **Coverity Scan** (Deep Concurrency Analysis)
-   - Weekly scans (Sundays 00:00 UTC / 09:00 KST)
-   - Race condition and deadlock detection
-   - Industry-standard deep data flow analysis
-   - Up to 21 builds/week for 100K-500K LOC projects
-
-**Tool Comparison:**
-
-| Tool | Frequency | Speed | Focus | Integration |
-|------|-----------|-------|-------|-------------|
-| **Gitleaks** | After CI | ~10s | Secret leaks | Docker |
-| **Semgrep** | After CI | ~30s | Security patterns | GitHub Security |
-| **SonarCloud** | Every commit/PR | 2-3 min | Overall quality | PR decoration |
-| **Coverity** | Weekly (Sun) | 10-15 min | Concurrency bugs | Weekly report |
-
-**Dashboards:**
-- SonarCloud: https://sonarcloud.io/project/overview?id=wshowlyrics_wshowlyrics
-- Coverity: https://scan.coverity.com/projects/wshowlyrics
-- GitHub Security: Repository → Security → Code scanning
-
-### SonarCloud Integration
-
-Continuous code quality analysis with every commit and pull request. Issues can be accessed via REST API without requiring browser MCP.
-
-**Project:** `wshowlyrics_wshowlyrics`
-**Dashboard:** https://sonarcloud.io/project/overview?id=wshowlyrics_wshowlyrics
-
-### Accessing Issues via API
-
-**Base Endpoint:**
-```
-https://sonarcloud.io/api/issues/search
-```
-
-**Common Parameters:**
-- `componentKeys`: Project identifier (wshowlyrics_wshowlyrics)
-- `resolved`: false (unresolved issues only)
-- `ps`: Page size (number of issues per page)
-- `s`: Sort field (SEVERITY, FILE, LINE, etc.)
-- `asc`: Sort order (false = descending)
-- `types`: Issue type filter (BUG, VULNERABILITY, CODE_SMELL)
-
-**Example Queries:**
-
-```bash
-# Get top 10 most severe issues
-curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&resolved=false&ps=10&s=SEVERITY&asc=false"
-
-# Get all security vulnerabilities
-curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&types=VULNERABILITY&resolved=false"
-
-# Get all bugs
-curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&types=BUG&resolved=false"
-
-# Get code smells in specific file
-curl "https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics&types=CODE_SMELL&componentKeys=wshowlyrics_wshowlyrics:src/parser/utils/parser_utils.c"
-```
-
-**Response Format:**
-```json
-{
-  "issues": [
-    {
-      "key": "issue-id",
-      "type": "BUG|VULNERABILITY|CODE_SMELL",
-      "severity": "BLOCKER|CRITICAL|MAJOR|MINOR|INFO",
-      "component": "wshowlyrics_wshowlyrics:src/path/to/file.c",
-      "line": 123,
-      "message": "Issue description"
-    }
-  ]
-}
-```
-
-### Browser MCP vs API Comparison
-
-**SonarCloud API (Recommended):**
-- ✅ No installation required
-- ✅ Fetch all issues programmatically
-- ✅ Automation-friendly (CI/CD integration)
-- ✅ Works with WebFetch tool in Claude Code
-- ✅ No authentication required for public projects
-- ✅ Direct access to structured data (JSON)
-
-**Browser MCP:**
-- ⚠️ Requires installation and configuration
-- ⚠️ Useful for complex interactions (clicking, scrolling, form filling)
-- ⚠️ Currently unnecessary for SonarCloud issue review
-- ⚠️ Overhead for simple data retrieval
-
-**Recommendation:** Use SonarCloud API for code quality analysis. Browser MCP is only needed for complex web interactions that cannot be achieved via API.
-
-### Quality Gate Settings
-
-**New Code Definition:** "Previous version"
-- Recommended for projects with regular release tagging
-- This project uses semantic versioning (v0.6.x)
-- Release frequency: Variable (hours to days)
-- See release history: https://github.com/wshowlyrics/wshowlyrics/tags
-
-**Why not "Number of days":**
-- Release intervals are inconsistent (1 hour to 7 days)
-- Fixed day threshold would either include too much or miss rapid releases
-- Version-based tracking aligns with existing workflow
-
-### Coverity Scan Integration
-
-Weekly deep analysis for advanced bug detection, particularly concurrency issues.
-
-**Project:** `wshowlyrics`
-**Dashboard:** https://scan.coverity.com/projects/wshowlyrics
-
-**Schedule:**
-- Automated weekly scans every Sunday 00:00 UTC (09:00 KST)
-- Up to 21 builds per week (max 3 per day) for 100K-500K LOC projects
-- Manual workflow dispatch enabled for testing and retry
-
-**Workflow:** `.github/workflows/coverity-scan.yml`
-
-**GitHub Secrets Required:**
-```
-COVERITY_SCAN_TOKEN  # Project token from Coverity dashboard
-COVERITY_EMAIL       # Email for scan notifications
-```
-
-**Analysis Focus:**
-- Race conditions in translation threads
-- Deadlocks in MPRIS polling
-- Deep data flow analysis
-- Complex use-after-free scenarios
-- Resource leaks in error paths
-
-**Workflow Features:**
-- Coverity Build Tool caching (~500MB, cached after first run)
-- Automatic build log upload on failure
-- Short commit hash as version identifier
-- Result compression (cov-int → lyrics.tgz)
-
-**Viewing Results:**
-1. Visit Coverity dashboard
-2. Review "Outstanding Defects"
-3. Each defect includes:
-   - Detailed code path visualization
-   - CWE classification
-   - Severity rating
-   - Fix suggestions
-
-### Commit Message Format for SAST Fixes
-
-When fixing issues identified by SAST tools (SonarCloud, Coverity, Semgrep), use the following commit message format:
-
-```
-fix: [Brief description of the fix]
-
-[Detailed explanation of the issue and solution]
-
-Changes:
-- [Specific change 1]
-- [Specific change 2]
-- [Specific change 3]
-
-Benefits:
-- [Benefit 1]
-- [Benefit 2]
-- [Benefit 3]
-
-Fixes: [Tool] issues [issue-key-1], [issue-key-2]
-(e.g., "Fixes: SonarCloud issues AZsw3M7s...", "Fixes: Coverity defect CID-12345")
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
-```
-
-**Example:**
-```
-fix: Add explicit bounds checking to prevent buffer overflow
-
-Address SonarCloud BLOCKER issues in find_word_start() function.
-Add defensive boundary checks to ensure returned pointer is always
-within [limit, end] range, even in theoretically impossible cases.
-
-Changes:
-- Add explicit bounds check: (p >= limit && p <= end) ? p : limit
-- Applied to both return paths (space-based and kanji-based)
-- Works in both debug and release builds
-- No assertion dependency (cleaner code)
-
-Benefits:
-- Satisfies static analyzer with explicit validation
-- Prevents potential buffer overflow in edge cases
-- Defensive coding against memory corruption
-- Minimal performance impact (~0.1%, branch prediction)
-
-Fixes: SonarCloud issues AZsw3M7sHpp0TbwUWQYl, AZsw3M7sHpp0TbwUWQYm
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
-```
-
-**Key Elements:**
-- **Title prefix**: `fix:` for bug/security fixes
-- **Changes section**: Bullet points listing specific code changes
-- **Benefits section**: Explain why the fix is valuable
-- **Fixes reference**: Include SonarCloud issue keys for traceability
-- **Standard footer**: Claude Code signature and co-authorship
+- `wshowlyrics-offset` — D-Bus client for timing offset and overlay toggle (installed to `bindir`).
+- `docs/add_furigana.py`, `docs/convert_vtt_to_srt.py` — content-prep helpers (not built/installed).

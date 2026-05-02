@@ -1,48 +1,115 @@
 # TODO: Code Quality & Security Improvements
 
-## 현재 상태 (2026-02-24, Phase 14 완료)
+## 현재 상태 (2026-05-02, GitLab 마이그레이션 후 재분석)
 
-### 📊 SonarCloud 현황 (실측)
+### ⚠️ 마이그레이션 영향
 
-| 심각도 | 시작 (2/23) | 중간 (2/24) | Phase 14 전 | Phase 14 후 (예상) | 총 변동 |
-|--------|:---:|:---:|:---:|:---:|:---:|
-| BLOCKER | 1 | 0 | 0 | **0** | -1 |
-| CRITICAL | 7 | 2 | 0 | **0** | **-7** |
-| MAJOR | 36 | 14 | 3 | **1** | **-35** |
-| MINOR | 132 | 137 | 34 | **21** | -111 |
-| **합계** | **176** | **153** | **37** | **22** | **-154** |
+GitHub→GitLab 메인 전환 후 SonarCloud 프로젝트가 새 ID(`AZzxDhZL...`)로 재분석됨.
+**이전에 적용한 Won't Fix / Safe 마킹이 전부 리셋**됨. 코드 변경 없이 이슈 카운트만 증가.
 
-> MAJOR 3건 중 S107 2건은 Won't Fix 처리 완료 (외부 콜백 시그니처)
-> Won't Fix 처리 후 실질 MAJOR: **1건** (S1820 main.h)
-> MINOR 21건은 모두 외부 콜백 시그니처 S995 → Won't Fix 대상
+부분 스캔 아님 검증: `ncloc 11,807` / `files 79` / `functions 492` — 전체 재분석 완료.
+
+### 📊 SonarCloud 현황 (실측 2026-05-02)
+
+| 심각도 | Phase 14 후 | 현재 (재분석) | 변동 |
+|--------|:---:|:---:|:---:|
+| BLOCKER | 0 | 1 | +1 (마킹 리셋) |
+| CRITICAL | 0 | 8 | +8 (마킹 리셋) |
+| MAJOR | 1 | 3 | +2 (마킹 리셋 2) |
+| MINOR | 21 | 21 | 0 |
+| **합계** | **22** | **33** | **+11** |
+
+**Quality Gate**: GREEN (`alert_status = OK`)
+**Ratings**: Reliability E(5.0), Security D(4.0), Maintainability A(1.0)
+※ Reliability/Security 등급은 미마킹 false positive 때문 — 실 코드 품질은 변동 없음.
+
+**Security Hotspots**: 48건 TO_REVIEW (전부 마킹 리셋)
+- HIGH 37건: 모두 S5813 `strlen` 안전성 (NULL-terminated 보장 확인 후 Safe)
+- MEDIUM 8건: S5849 권한 설정 (`g_spawn_async`, capabilities)
+- LOW 3건: S5332 HTTP×1, S4790 weak hash×2 (MD5 — 캐시 식별용 비암호 사용)
 
 ---
 
 ## 남은 이슈
 
-### MAJOR (1건 — 코드 수정 필요)
+### 🟢 코드 변경 불필요 — SonarCloud 웹에서 재마킹만 하면 되는 것
 
-| 파일 | Rule | 문제 |
+#### BLOCKER (1건 — false positive)
+
+| 파일 | Rule | 비고 |
 |------|------|------|
-| main.h:53 | S1820 | `lyrics_state` 구조체 42개 필드 (최대 20) |
+| parser_utils.c:335 | S3519 | UTF-8 backwards iter — 이미 `NOSONAR` 주석 + 방어적 bounds check 적용. False positive 재마킹 필요. |
 
-### MINOR — Won't Fix 대상 (21건 — SonarCloud 웹 처리)
+#### CRITICAL (8건 — 전부 false positive, S4423 TLS)
 
-외부 라이브러리 콜백 시그니처로 파라미터 수정 불가:
+`CURLOPT_SSLVERSION = CURL_SSLVERSION_TLSv1_2` 설정 코드를 SonarCloud가 weak protocol로 오탐.
+TLS 1.2는 약하지 않으며 명시적으로 강제하는 보안 코드.
+
+| 파일 | Line |
+|------|:---:|
+| main.c | 58 |
+| translator/common/translator_common.c | 463, 899 |
+| translator/deepl/deepl_translator.c | 103 |
+| provider/itunes/itunes_artwork.c | 105 |
+| provider/lrclib/lrclib_provider.c | 204, 301 |
+| user_experience/system_tray/system_tray.c | 62 |
+
+→ 전부 Won't Fix(False Positive) 마킹.
+
+#### MAJOR (2건 — 외부 콜백 시그니처)
+
+| 파일 | Rule | 비고 |
+|------|------|------|
+| events/wayland_events.c:115 | S107 | Wayland 콜백 시그니처 (수정 불가) |
+| utils/dbus_control/dbus_control.c:66 | S107 | GDBus 콜백 시그니처 (수정 불가) |
+
+→ Won't Fix 마킹 (이전 정책과 동일).
+
+#### MINOR (21건 — 외부 콜백 시그니처 S995)
+
+이전 분석과 동일. 파라미터 수정 불가.
 
 | 파일 | 건수 | 사유 |
 |------|:---:|------|
-| wayland_events.c | 10 | Wayland `wl_*` 콜백 시그니처 |
-| system_tray.c | 6 | GTK `GdkPixbuf`, `GtkMenuItem` 콜백 시그니처 |
-| dbus_control.c | 3 | GDBus `GDBusConnection` 콜백 시그니처 |
-| shm.c | 1 | Wayland `wl_buffer` 콜백 시그니처 |
-| wayland_manager.c | 1 | Wayland `wl_registry` 콜백 시그니처 |
+| events/wayland_events.c | 10 | Wayland `wl_*` 콜백 |
+| user_experience/system_tray/system_tray.c | 6 | GTK 콜백 |
+| utils/dbus_control/dbus_control.c | 3 | GDBus 콜백 |
+| utils/shm/shm.c | 1 | `wl_buffer` 콜백 |
+| utils/wayland/wayland_manager.c | 1 | `wl_registry` 콜백 |
 
-### Security Hotspot (1건 — SonarCloud 웹 처리)
+→ 전부 Won't Fix 마킹.
 
-| 파일 | Rule | 문제 | 조치 |
-|------|------|------|------|
-| parser_utils.c | S5813 | `strlen` 사용 안전성 | Safe 마킹 (NULL-terminated 보장) |
+#### Security Hotspots (48건 — 재검토 후 Safe 마킹)
+
+이전 정책과 동일 처리:
+- HIGH S5813 (strlen ×37): NULL-terminated 보장된 입력만 사용 → Safe
+- MEDIUM S5849 (×8): `g_spawn_async` / 권한 설정 — Phase S에서 검증 완료 → Safe
+- LOW S5332 (HTTP ×1): system_tray.c:172 iTunes API URL — 검토 필요 (https로 변경 가능?)
+- LOW S4790 (MD5 ×2): file_utils.c — 캐시 식별 용도 비암호 사용 → Safe
+
+---
+
+### 🔴 실제 코드 변경 필요 — MAJOR 1건
+
+| 파일 | Rule | 문제 | 우선순위 |
+|------|------|------|:---:|
+| main.h:53 | S1820 | `lyrics_state` 구조체 42필드 (최대 20) | LOW |
+
+서브 구조체로 분리 (예: `wayland_objs`, `surface_state`, `playback_state`, `translation_ctx` 등).
+대규모 리팩토링이라 단독 PR로 분리 권장.
+
+---
+
+## 권장 작업 순서
+
+1. **SonarCloud 웹 마킹 작업** (코드 변경 0건, 즉시 처리 가능)
+   - BLOCKER 1건 → False Positive
+   - CRITICAL 8건 → False Positive
+   - MAJOR 2건 + MINOR 21건 → Won't Fix
+   - Security Hotspot 47건 → Safe (HTTP S5332 1건 제외)
+   - 처리 후 예상: 33건 → **1건** (S1820만 남음)
+2. **HTTP S5332 검토** — system_tray.c:172 iTunes API를 https로 변경 가능한지 확인
+3. **S1820** — `lyrics_state` 구조체 분리 (별도 리팩토링 PR)
 
 ---
 
@@ -134,26 +201,21 @@
 
 ---
 
-## 권장 작업 순서
-
-1. **Won't Fix 마킹** — MINOR S995 21건 (SonarCloud 웹) + Security Hotspot Safe 마킹
-2. **S1820** — main.h `lyrics_state` 구조체 42필드 → 서브 구조체 분리
-
----
-
 ## 참고 자료
 
 - **SonarCloud Dashboard**: https://sonarcloud.io/project/overview?id=wshowlyrics_wshowlyrics
 - **SonarCloud Issues API**: https://sonarcloud.io/api/issues/search?componentKeys=wshowlyrics_wshowlyrics
+- **SonarCloud Hotspots API**: https://sonarcloud.io/api/hotspots/search?projectKey=wshowlyrics_wshowlyrics
 - **Coverity Dashboard**: https://scan.coverity.com/projects/wshowlyrics
 
 ---
 
 ## 상태
 
-- **최종 업데이트**: 2026-02-24 (Phase 14 완료)
-- **현재 Phase**: Won't Fix 마킹 21건 → S1820 구조체 분리
-- **완료**: Phase 1-14 (BLOCKER 0, CRITICAL 0, MAJOR 대부분, MINOR 대부분)
-- **남은 이슈**: 22건 (MAJOR 1 + MINOR 21) → Won't Fix 후 **1건** (S1820)
+- **최종 업데이트**: 2026-05-02 (GitLab 마이그레이션 후 재분석 반영)
+- **현재 Phase**: SonarCloud 웹 재마킹 → 이후 S1820 구조체 분리
+- **완료**: Phase 1-14 (코드 변경 작업 모두 완료)
+- **남은 이슈**: 33건 (BLOCKER 1 + CRITICAL 8 + MAJOR 3 + MINOR 21) + Hotspot 48건
+  - 마킹 처리 후 실질 잔여: **1건** (S1820 main.h)
 - **목표**: A등급 유지, Quality Gate GREEN 유지, BLOCKER/CRITICAL 0개
 - **참고**: Coverity CID 643610 수정 완료 (b3a410a)
