@@ -2,8 +2,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 PangoLayout *get_pango_layout(cairo_t *cairo, const char *font,
         const char *text, double scale) {

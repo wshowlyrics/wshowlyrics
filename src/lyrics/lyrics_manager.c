@@ -12,7 +12,6 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
-#include <unistd.h>
 
 bool lyrics_manager_is_format(const struct lyrics_state *state, const char *extension) {
     if (!state->playback.lyrics.source_file_path) {

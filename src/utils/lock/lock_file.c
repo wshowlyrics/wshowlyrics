@@ -9,7 +9,6 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
-#include <sys/stat.h>
 
 static int lock_fd = -1;
 static char g_lock_path[600] = {0};

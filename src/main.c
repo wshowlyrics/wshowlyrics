@@ -17,11 +17,8 @@
 #include "translator/gemini/gemini_translator.h"
 #include "translator/claude/claude_translator.h"
 #include "translator/openai/openai_translator.h"
-#include <ctype.h>
-#include <strings.h>
 #include <curl/curl.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <signal.h>
 
 // Global state for signal handler

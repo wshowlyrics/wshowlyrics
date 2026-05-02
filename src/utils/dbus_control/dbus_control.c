@@ -30,7 +30,6 @@
 #include "../../user_experience/system_tray/system_tray.h"
 #include "../../user_experience/config/config.h"
 #include <gio/gio.h>
-#include <stdio.h>
 
 // D-Bus service constants
 #define CONTROL_BUS_NAME "org.wshowlyrics.Control"

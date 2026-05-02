@@ -3,14 +3,12 @@
 #include "../../user_experience/config/config.h"
 #include "../../utils/mpris/mpris.h"
 #include "../../utils/shm/shm.h"
-#include "../../utils/pango/pango_utils.h"
 #include "../../utils/render/render_common.h"
 #include "../../utils/render/ruby_render.h"
 #include "../../utils/render/word_render.h"
 #include "../../events/wayland_events.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include <stdlib.h>
-#include <strings.h>
 
 // Context for offset bar rendering (geometry, offsets, and colors)
 struct offset_bar_context {

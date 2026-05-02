@@ -13,7 +13,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <math.h>
 #include <libappindicator/app-indicator.h>
 #include <gtk/gtk.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>

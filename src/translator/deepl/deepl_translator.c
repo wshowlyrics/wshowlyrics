@@ -4,15 +4,11 @@
 #include "../../user_experience/config/config.h"
 #include "../../utils/curl/curl_utils.h"
 #include "../../utils/json/json_utils.h"
-#include "../../utils/string/string_utils.h"
 #include "../../utils/file/file_utils.h"
-#include "../../utils/lang_detect/lang_detect.h"
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
-#include <sys/stat.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>

@@ -2,7 +2,6 @@
 #include "../../constants.h"
 #include <gtk/gtk.h>
 #include <cairo.h>
-#include <string.h>
 #include <strings.h>
 
 const char* icon_utils_get_player_icon_name(const char *player_name) {

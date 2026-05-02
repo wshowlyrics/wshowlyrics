@@ -6,6 +6,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Forward declarations - actual definitions in <wayland-client.h>.
+ * Consumers that dereference these (e.g. wl_buffer_destroy) must
+ * include <wayland-client.h> themselves. */
+struct wl_shm;
+struct wl_buffer;
+
 int create_shm_file(void);
 int allocate_shm_file(size_t size);
 

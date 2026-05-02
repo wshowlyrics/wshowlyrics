@@ -1,17 +1,14 @@
 #include "claude_translator.h"
+#include <json-c/json.h>
 #include "../common/translator_common.h"
 #include "../../constants.h"
 #include "../../user_experience/config/config.h"
-#include "../../utils/file/file_utils.h"
-#include "../../utils/lang_detect/lang_detect.h"
 #include <curl/curl.h>
-#include <json-c/json.h>
-#include <pthread.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <unistd.h>
+#include <json-c/json.h>
 
 // Claude API endpoint
 #define CLAUDE_API_ENDPOINT "https://api.anthropic.com/v1/messages"

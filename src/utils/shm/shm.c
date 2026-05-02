@@ -9,8 +9,8 @@
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
-#include <wayland-client.h>
 #include "shm.h"
+#include <wayland-client.h>
 
 static void randname(char *buf) {
     struct timespec ts;

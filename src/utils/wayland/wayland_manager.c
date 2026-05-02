@@ -2,9 +2,9 @@
 #include <assert.h>
 #include "../../constants.h"
 #include <errno.h>
-#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdio.h>
 
 bool wayland_manager_init(struct wayland_connection *conn) {
     if (!conn) {

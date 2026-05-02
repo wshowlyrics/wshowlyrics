@@ -1,7 +1,6 @@
 #include "lrcx_parser.h"
 #include "lrc_common.h"
 #include "../utils/parser_utils.h"
-#include "../../constants.h"
 #include "../../utils/string/string_utils.h"
 #include <stdio.h>
 #include <stdlib.h>

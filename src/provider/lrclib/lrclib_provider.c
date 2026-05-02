@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <curl/curl.h>
 
 // Build search request URL with sanitized title and optional artist

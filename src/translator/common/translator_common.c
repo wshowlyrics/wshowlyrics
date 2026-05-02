@@ -1,12 +1,12 @@
 #define _GNU_SOURCE
 #include "translator_common.h"
+#include <json-c/json.h>
 #include "../../constants.h"
 #include "../../utils/lang_detect/lang_detect.h"
 #include "../../utils/render/render_common.h"
 #include "../../utils/file/file_utils.h"
 #include "../../user_experience/config/config.h"
 #include <curl/curl.h>
-#include <json-c/json.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <json-c/json.h>
 
 /**
  * Extract the last non-empty line from text

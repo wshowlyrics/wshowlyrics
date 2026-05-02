@@ -3,7 +3,6 @@
 #include "render_params.h"
 #include "../pango/pango_utils.h"
 #include "../../constants.h"
-#include <string.h>
 
 // Shared render context for word segment rendering functions
 struct word_render_context {
