@@ -285,39 +285,6 @@ bool translator_should_translate(struct lyrics_data *data) {
     return true;  // LRC format
 }
 
-/**
- * Prepare partial cache for resume by clearing last N translations for re-validation.
- * This ensures that incomplete translations at the end are re-done.
- */
-void translator_prepare_cache_resume(struct lyrics_data *data, int *already_translated,
-                                      int revalidate_count) {
-    if (!data || !already_translated || *already_translated <= 0) {
-        return;
-    }
-
-    // Calculate new already_translated count (subtract revalidate_count)
-    int new_already_translated = *already_translated > revalidate_count ?
-                                  *already_translated - revalidate_count : 0;
-
-    // Clear translations for lines to be re-validated
-    struct lyrics_line *line = data->lines;
-    int index = 0;
-
-    while (line) {
-        if (line->text && line->text[0] != '\0') {
-            // Clear translation if in re-validation range
-            if (index >= new_already_translated && index < *already_translated && line->translation) {
-                free(line->translation);
-                line->translation = NULL;
-            }
-            index++;
-        }
-        line = line->next;
-    }
-
-    *already_translated = new_already_translated;
-}
-
 bool translator_should_skip_translation(const char *stripped_text, const char *target_lang,
                                          char **out_translation) {
     if (!stripped_text || !target_lang || !out_translation) {
@@ -509,15 +476,13 @@ bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
         return false;  // Translation complete
     }
 
-    // Partial cache - continue translation
-    struct config *cfg = config_get();
-    int revalidate_count = cfg->translation.revalidate_count;
-    translator_prepare_cache_resume(data, already_translated, revalidate_count);
-    // Update cache access time to prevent cleanup
+    // Partial cache - resume with the remaining (untranslated) lines only.
+    // Previously the last N lines were force-cleared and re-requested for
+    // "re-validation", but that wasted API calls on already-good translations.
     touch_cache_file(args->cache_path);
     log_info("Found cached translation: %s", sanitize_path(args->cache_path));
-    log_info("%s: Loaded partial cache (%d/%d), re-validating last %d lines",
-            args->provider_name, *already_translated, translatable_count, revalidate_count);
+    log_info("%s: Loaded partial cache (%d/%d), resuming with remaining lines",
+            args->provider_name, *already_translated, translatable_count);
     data->translation_current = *already_translated;
     return true;  // Continue translation
 }

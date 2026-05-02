@@ -164,11 +164,6 @@ static void parse_translation_section(struct config *cfg, const char *key, const
         // Clamp to reasonable range [0, 10]
         if (cfg->translation.max_retries < 0) cfg->translation.max_retries = 0;
         if (cfg->translation.max_retries > 10) cfg->translation.max_retries = 10;
-    } else if (strcmp(key, "revalidate_count") == 0) {
-        cfg->translation.revalidate_count = atoi(value);
-        // Clamp to reasonable range [1, 10]
-        if (cfg->translation.revalidate_count < 1) cfg->translation.revalidate_count = 1;
-        if (cfg->translation.revalidate_count > 10) cfg->translation.revalidate_count = 10;
     } else if (strcmp(key, "cache_policy") == 0) {
         // Parse cache policy: comfort, balanced, aggressive
         if (strcasecmp(value, "comfort") == 0) {
@@ -310,7 +305,6 @@ void config_init_defaults(struct config *cfg) {
     cfg->translation.translation_opacity = 0.7;  // 70% opacity by default
     cfg->translation.rate_limit_ms = 6000;  // 6 seconds by default (suitable for Gemini free tier)
     cfg->translation.max_retries = 3;  // Maximum 3 retry attempts
-    cfg->translation.revalidate_count = 2;  // Re-validate last 2 translations on resume
     cfg->translation.cache_policy = CACHE_POLICY_BALANCED;  // 75% threshold by default
 
     // Cache defaults

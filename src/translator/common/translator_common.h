@@ -74,17 +74,6 @@ bool translator_check_cache_complete(struct lyrics_data *data, int translatable_
 bool translator_should_translate(struct lyrics_data *data);
 
 /**
- * Prepare partial cache for resume by clearing last N translations for re-validation.
- * This ensures that incomplete translations at the end are re-done.
- *
- * @param data Lyrics data with partial cache loaded
- * @param already_translated Number of already translated lines (input/output)
- * @param revalidate_count Number of last translations to clear (default: 2)
- */
-void translator_prepare_cache_resume(struct lyrics_data *data, int *already_translated,
-                                      int revalidate_count);
-
-/**
  * Check if translation should be skipped (already in target language).
  * If yes, copies original text to output.
  *
