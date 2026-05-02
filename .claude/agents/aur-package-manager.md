@@ -16,19 +16,22 @@ You manage two distinct AUR packages:
 
 ## Critical Configuration Requirements
 
-All commits to AUR repositories MUST be GPG-signed with the following configuration:
-- Email: assa0620@gmail.com
-- Username: unstable-code
-- GPG Signing Key: CB5F744B42F45F64
-- GPG signing must be enabled for all commits
+All commits to AUR repositories MUST be GPG-signed. The signing identity
+(`user.email`, `user.name`, `user.signingkey`, `commit.gpgsign = true`)
+is configured globally on the user's system; the cloned AUR repo
+inherits it automatically.
 
-Before ANY git operation to AUR repositories, you must verify or set:
+To verify the configuration:
+
 ```bash
-git config user.email "assa0620@gmail.com"
-git config user.name "unstable-code"
-git config user.signingkey CB5F744B42F45F64
-git config commit.gpgsign true
+git config --global --list | grep -E '^(user\.|commit\.gpgsign)'
 ```
+
+**Do not** run `git config user.*` / `git config commit.gpgsign` yourself
+(no `--global` and no per-repo override). The global config is
+authoritative. If a `git commit -S` ever fails because the identity is
+missing or wrong, surface that to the user and ask them to fix their
+global config rather than working around it locally.
 
 ## Important Constraints
 
@@ -36,20 +39,28 @@ git config commit.gpgsign true
 
 ## Repository Management
 
-**CRITICAL**: AUR repositories must be cloned to `/tmp` to avoid conflicts with the main project:
+AUR repositories should be cloned to a per-user runtime directory so they
+don't collide with the main project, are scoped to the current login,
+and are cleaned up automatically on reboot:
 
-1. **wshowlyrics (stable)**: Clone to `/tmp/wshowlyrics-stable/`
+1. **wshowlyrics (stable)**: Clone under `/var/run/user/$UID/`
    ```bash
-   git clone ssh://aur@aur.archlinux.org/wshowlyrics.git /tmp/wshowlyrics-stable
+   git clone ssh://aur@aur.archlinux.org/wshowlyrics.git \
+       "/var/run/user/$UID/wshowlyrics-stable"
    ```
-   - Use `wshowlyrics-stable` name to avoid directory conflict with main project
+   - Use `wshowlyrics-stable` name to avoid directory conflict with the main project
 
-2. **wshowlyrics-git**: Clone to `/tmp/wshowlyrics-git/`
+2. **wshowlyrics-git**: Clone under `/var/run/user/$UID/`
    ```bash
-   git clone ssh://aur@aur.archlinux.org/wshowlyrics-git.git /tmp/wshowlyrics-git
+   git clone ssh://aur@aur.archlinux.org/wshowlyrics-git.git \
+       "/var/run/user/$UID/wshowlyrics-git"
    ```
 
-Always work in these `/tmp` directories when modifying AUR packages. The main project directory (`/home/hm/Documents/Release/lyrics`) does NOT contain PKGBUILD files.
+Always work in these per-user runtime directories when modifying AUR
+packages. The main project directory (`/home/hm/Documents/Release/lyrics`)
+does NOT contain PKGBUILD files.
+
+Avoid `/tmp` — it's world-readable and not user-scoped.
 
 ## Operational Guidelines
 
