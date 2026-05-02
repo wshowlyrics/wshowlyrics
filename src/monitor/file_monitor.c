@@ -58,13 +58,13 @@ static bool has_string_changed(const char *old_value, const char *new_value) {
 
 // Helper: Update state colors from config
 static void update_state_colors(struct lyrics_state *state) {
-    state->background =
+    state->style.background =
         ((uint32_t)(g_config.display.color_background[0] * 255) << 24) |
         ((uint32_t)(g_config.display.color_background[1] * 255) << 16) |
         ((uint32_t)(g_config.display.color_background[2] * 255) << 8) |
         ((uint32_t)(g_config.display.color_background[3] * 255));
 
-    state->foreground =
+    state->style.foreground =
         ((uint32_t)(g_config.display.color_active[0] * 255) << 24) |
         ((uint32_t)(g_config.display.color_active[1] * 255) << 16) |
         ((uint32_t)(g_config.display.color_active[2] * 255) << 8) |
@@ -90,7 +90,7 @@ static bool check_translation_config_changed(struct lyrics_state *state,
         log_info("Translation config changed, reloading lyrics...");
 
         // Cancel current translation if in progress
-        cancel_and_wait_translation(&state->lyrics);
+        cancel_and_wait_translation(&state->playback.lyrics);
 
         // Reload lyrics with new translation config
         lyrics_manager_load_lyrics(state);

@@ -81,11 +81,11 @@ static void handle_method_call(
 
     if (strcmp(method_name, "ToggleOverlay") == 0) {
         // Toggle overlay state
-        state->overlay_enabled = !state->overlay_enabled;
-        system_tray_set_overlay_state(state->overlay_enabled);
+        state->runtime.overlay_enabled = !state->runtime.overlay_enabled;
+        system_tray_set_overlay_state(state->runtime.overlay_enabled);
         rendering_manager_set_dirty(state);
 
-        log_info("D-Bus: Overlay toggled: %s", state->overlay_enabled ? "enabled" : "disabled");
+        log_info("D-Bus: Overlay toggled: %s", state->runtime.overlay_enabled ? "enabled" : "disabled");
         g_dbus_method_invocation_return_value(invocation, NULL);
     }
     else if (strcmp(method_name, "SetOverlay") == 0) {
@@ -93,8 +93,8 @@ static void handle_method_call(
         gboolean enabled;
         g_variant_get(parameters, "(b)", &enabled);
 
-        state->overlay_enabled = enabled;
-        system_tray_set_overlay_state(state->overlay_enabled);
+        state->runtime.overlay_enabled = enabled;
+        system_tray_set_overlay_state(state->runtime.overlay_enabled);
         rendering_manager_set_dirty(state);
 
         log_info("D-Bus: Overlay set to: %s", enabled ? "enabled" : "disabled");
@@ -109,7 +109,7 @@ static void handle_method_call(
         if (offset_ms < -5000) offset_ms = -5000;
         if (offset_ms > 5000) offset_ms = 5000;
 
-        state->timing_offset_ms = offset_ms;
+        state->playback.timing_offset_ms = offset_ms;
         rendering_manager_set_dirty(state);
 
         log_info("D-Bus: Timing offset set to: %dms", offset_ms);
@@ -120,24 +120,24 @@ static void handle_method_call(
         gint32 delta_ms;
         g_variant_get(parameters, "(i)", &delta_ms);
 
-        state->timing_offset_ms += delta_ms;
+        state->playback.timing_offset_ms += delta_ms;
 
         // Clamp to reasonable range
-        if (state->timing_offset_ms < -5000) state->timing_offset_ms = -5000;
-        if (state->timing_offset_ms > 5000) state->timing_offset_ms = 5000;
+        if (state->playback.timing_offset_ms < -5000) state->playback.timing_offset_ms = -5000;
+        if (state->playback.timing_offset_ms > 5000) state->playback.timing_offset_ms = 5000;
 
         rendering_manager_set_dirty(state);
 
-        log_info("D-Bus: Timing offset adjusted by %+dms, now: %dms", delta_ms, state->timing_offset_ms);
+        log_info("D-Bus: Timing offset adjusted by %+dms, now: %dms", delta_ms, state->playback.timing_offset_ms);
         g_dbus_method_invocation_return_value(invocation, NULL);
     }
     else if (strcmp(method_name, "ResetTimingOffset") == 0) {
         // Reset timing offset to global offset
-        state->timing_offset_ms = g_config.lyrics.global_offset_ms;
+        state->playback.timing_offset_ms = g_config.lyrics.global_offset_ms;
 
         rendering_manager_set_dirty(state);
 
-        log_info("D-Bus: Timing offset reset to global offset: %dms", state->timing_offset_ms);
+        log_info("D-Bus: Timing offset reset to global offset: %dms", state->playback.timing_offset_ms);
         g_dbus_method_invocation_return_value(invocation, NULL);
     }
     else {

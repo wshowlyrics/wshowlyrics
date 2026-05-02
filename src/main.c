@@ -32,7 +32,7 @@ static void signal_handler(int signum) {
     log_info("Received signal %d, cleaning up...", signum);
 
     if (g_state) {
-        g_state->run = false;
+        g_state->runtime.run = false;
     }
 }
 
@@ -178,13 +178,13 @@ static void setup_signal_handlers(struct lyrics_state *state) {
 
 // Initialize state colors from config
 static void initialize_state_colors(struct lyrics_state *state) {
-    state->background =
+    state->style.background =
         ((uint32_t)(g_config.display.color_background[0] * 255) << 24) |
         ((uint32_t)(g_config.display.color_background[1] * 255) << 16) |
         ((uint32_t)(g_config.display.color_background[2] * 255) << 8) |
         ((uint32_t)(g_config.display.color_background[3] * 255));
 
-    state->foreground =
+    state->style.foreground =
         ((uint32_t)(g_config.display.color_active[0] * 255) << 24) |
         ((uint32_t)(g_config.display.color_active[1] * 255) << 16) |
         ((uint32_t)(g_config.display.color_active[2] * 255) << 8) |
@@ -244,15 +244,15 @@ static int parse_command_line_options(int argc, char *argv[], struct lyrics_stat
     while ((c = getopt_long(argc, argv, "hb:f:F:a:m:", long_options, &option_index)) != -1) {
         switch (c) {
         case 'b':
-            state->background = state_helpers_parse_color(optarg);
+            state->style.background = state_helpers_parse_color(optarg);
             break;
         case 'f':
-            state->foreground = state_helpers_parse_color(optarg);
+            state->style.foreground = state_helpers_parse_color(optarg);
             break;
         case 'F':
             free(*font_from_config);
             *font_from_config = NULL;
-            state->font = optarg;
+            state->style.font = optarg;
             break;
         case 'a':
             *anchor = parse_anchor_string(optarg);
@@ -287,11 +287,11 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
     // Check if lyrics or config files have changed (every 2 seconds)
     if ((*update_counter)++ % TRACK_UPDATE_CHECK_INTERVAL == 0) {
         const char *cache_base = get_cache_base_dir();
-        if (state->lyrics.source_file_path && strncmp(state->lyrics.source_file_path, cache_base, strlen(cache_base)) != 0) {
+        if (state->playback.lyrics.source_file_path && strncmp(state->playback.lyrics.source_file_path, cache_base, strlen(cache_base)) != 0) {
             file_monitor_check_and_reload(
-                state->lyrics.source_file_path,
-                state->lyrics.md5_checksum,
-                sizeof(state->lyrics.md5_checksum),
+                state->playback.lyrics.source_file_path,
+                state->playback.lyrics.md5_checksum,
+                sizeof(state->playback.lyrics.md5_checksum),
                 "Lyrics",
                 file_monitor_reload_lyrics,
                 state
@@ -299,9 +299,9 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
         }
 
         file_monitor_check_and_reload(
-            state->config_file_path,
-            state->config_md5_checksum,
-            sizeof(state->config_md5_checksum),
+            state->config.config_file_path,
+            state->config.config_md5_checksum,
+            sizeof(state->config.config_md5_checksum),
             "Config",
             file_monitor_reload_config,
             state
@@ -311,11 +311,11 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
 
 // Update current line based on playback state
 static void update_playback_state(struct lyrics_state *state) {
-    if (!state->overlay_enabled) {
-        if (state->current_line != NULL) {
-            state->current_line = NULL;
-            state->prev_line = NULL;
-            state->next_line = NULL;
+    if (!state->runtime.overlay_enabled) {
+        if (state->playback.current_line != NULL) {
+            state->playback.current_line = NULL;
+            state->playback.prev_line = NULL;
+            state->playback.next_line = NULL;
             rendering_manager_set_dirty(state);
         }
     } else if (mpris_is_playing()) {
@@ -324,10 +324,10 @@ static void update_playback_state(struct lyrics_state *state) {
             rendering_manager_set_dirty(state);
         }
     } else {
-        if (state->current_line != NULL) {
-            state->current_line = NULL;
-            state->prev_line = NULL;
-            state->next_line = NULL;
+        if (state->playback.current_line != NULL) {
+            state->playback.current_line = NULL;
+            state->playback.prev_line = NULL;
+            state->playback.next_line = NULL;
             rendering_manager_set_dirty(state);
             log_info("Playback stopped/paused - clearing lyrics");
         }
@@ -336,38 +336,38 @@ static void update_playback_state(struct lyrics_state *state) {
 
 // Handle lyrics file status during instrumental breaks
 static void handle_instrumental_break(struct lyrics_state *state) {
-    if (!state->in_instrumental_break || !state->lyrics.source_file_path) {
+    if (!state->playback.in_instrumental_break || !state->playback.lyrics.source_file_path) {
         return;
     }
 
     struct stat st;
-    bool file_exists = (stat(state->lyrics.source_file_path, &st) == 0);
+    bool file_exists = (stat(state->playback.lyrics.source_file_path, &st) == 0);
 
-    if (!state->need_lyrics_search && !file_exists) {
-        log_info("Lyrics file was deleted or moved: %s", sanitize_path(state->lyrics.source_file_path));
+    if (!state->runtime.need_lyrics_search && !file_exists) {
+        log_info("Lyrics file was deleted or moved: %s", sanitize_path(state->playback.lyrics.source_file_path));
         log_info("Will search for lyrics during next instrumental break");
-        state->need_lyrics_search = true;
-        state->in_instrumental_break = false;
-    } else if (state->need_lyrics_search) {
+        state->runtime.need_lyrics_search = true;
+        state->playback.in_instrumental_break = false;
+    } else if (state->runtime.need_lyrics_search) {
         if (file_exists) {
-            log_info("Lyrics file is back at original location: %s", sanitize_path(state->lyrics.source_file_path));
+            log_info("Lyrics file is back at original location: %s", sanitize_path(state->playback.lyrics.source_file_path));
         } else {
             log_info("Searching for lyrics again...");
-            cancel_and_wait_translation(&state->lyrics);
-            lrc_free_data(&state->lyrics);
-            memset(&state->lyrics, 0, sizeof(state->lyrics));
-            if (lyrics_find_for_track(&state->current_track, &state->lyrics)) {
+            cancel_and_wait_translation(&state->playback.lyrics);
+            lrc_free_data(&state->playback.lyrics);
+            memset(&state->playback.lyrics, 0, sizeof(state->playback.lyrics));
+            if (lyrics_find_for_track(&state->playback.current_track, &state->playback.lyrics)) {
                 log_info("Found new lyrics, replacing old ones");
-                state->current_line = NULL;
-                state->prev_line = NULL;
-                state->next_line = NULL;
+                state->playback.current_line = NULL;
+                state->playback.prev_line = NULL;
+                state->playback.next_line = NULL;
                 rendering_manager_set_dirty(state);
             } else {
                 log_info("No lyrics found, keeping existing lyrics displayed");
             }
         }
-        state->need_lyrics_search = false;
-        state->in_instrumental_break = false;
+        state->runtime.need_lyrics_search = false;
+        state->playback.in_instrumental_break = false;
     }
 }
 
@@ -379,11 +379,11 @@ static void run_main_event_loop(struct lyrics_state *state, struct wayland_conne
     int nfds = 1;
     int update_counter = 0;
 
-    while (state->run) {
-        if (state->needs_reconnect) {
+    while (state->runtime.run) {
+        if (state->runtime.needs_reconnect) {
             log_info("Reconnection needed, attempting full reconnection...");
             if (wayland_events_handle_reconnection(state, wl_conn, pollfds)) {
-                state->needs_reconnect = false;
+                state->runtime.needs_reconnect = false;
             }
             continue;
         }
@@ -431,16 +431,16 @@ static void run_main_event_loop(struct lyrics_state *state, struct wayland_conne
 
 // Cleanup all resources
 static void cleanup_resources(struct lyrics_state *state, char *font_from_config) {
-    if (state->frame_callback) {
-        wl_callback_destroy(state->frame_callback);
-        state->frame_callback = NULL;
+    if (state->surface.frame_callback) {
+        wl_callback_destroy(state->surface.frame_callback);
+        state->surface.frame_callback = NULL;
     }
 
     dbus_control_cleanup();
     system_tray_cleanup();
-    cancel_and_wait_translation(&state->lyrics);
-    lrc_free_data(&state->lyrics);
-    mpris_free_metadata(&state->current_track);
+    cancel_and_wait_translation(&state->playback.lyrics);
+    lrc_free_data(&state->playback.lyrics);
+    mpris_free_metadata(&state->playback.current_track);
     mpris_cleanup();
     lyrics_providers_cleanup();
     deepl_translator_cleanup();
@@ -450,8 +450,8 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
     lang_detect_cleanup();
 
     // Cleanup Wayland buffers before disconnecting display
-    destroy_buffer(&state->buffers[0]);
-    destroy_buffer(&state->buffers[1]);
+    destroy_buffer(&state->surface.buffers[0]);
+    destroy_buffer(&state->surface.buffers[1]);
 
     // Cleanup Wayland connection (handles proper resource destruction order:
     // layer_surface -> surface -> layer_shell -> compositor -> shm -> registry -> display)
@@ -465,7 +465,7 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
     lock_file_release();
 
     free(font_from_config);
-    free(state->config_file_path);
+    free(state->config.config_file_path);
     config_free(&g_config);
 }
 
@@ -528,13 +528,13 @@ int main(int argc, char *argv[]) {
 
     // Initialize state
     struct lyrics_state state = { 0 };
-    state.current_line_index = -1;
-    state.timing_offset_ms = 0;
-    state.overlay_enabled = true;
-    state.config_file_path = config_loaded_path;
-    state.config_md5_checksum[0] = '\0';
+    state.playback.current_line_index = -1;
+    state.playback.timing_offset_ms = 0;
+    state.runtime.overlay_enabled = true;
+    state.config.config_file_path = config_loaded_path;
+    state.config.config_md5_checksum[0] = '\0';
 
-    if (config_loaded_path && !calculate_file_md5(config_loaded_path, state.config_md5_checksum)) {
+    if (config_loaded_path && !calculate_file_md5(config_loaded_path, state.config.config_md5_checksum)) {
         log_warn("Failed to calculate MD5 for config file: %s", sanitize_path(config_loaded_path));
     }
 
@@ -554,7 +554,7 @@ int main(int argc, char *argv[]) {
 
     // Build font string from config
     char *font_from_config_alloc = build_font_string();
-    state.font = font_from_config_alloc;
+    state.style.font = font_from_config_alloc;
 
     // Parse command-line options
     if (parse_command_line_options(argc, argv, &state, &anchor, &margin,
@@ -578,7 +578,7 @@ int main(int argc, char *argv[]) {
         goto exit;
     }
 
-    state.run = true;
+    state.runtime.run = true;
     wl_conn.connected = true;
     // Note: anchor, margin, and layer are stored by wayland_init_surface()
 

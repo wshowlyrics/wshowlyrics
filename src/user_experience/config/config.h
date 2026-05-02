@@ -127,4 +127,10 @@ float config_get_cache_threshold(enum translation_cache_policy policy);
 // Get cache cleanup days from policy (returns -1 for CACHE_CLEANUP_OFF)
 int config_get_cleanup_days(enum cache_cleanup_policy policy);
 
+// Config-file hot-reload tracking (path + MD5 of last loaded file)
+struct config_state {
+    char *config_file_path;                      // Path to loaded config file
+    char config_md5_checksum[33];                // MD5 checksum of config file (32 hex + null)
+};
+
 #endif // CONFIG_H

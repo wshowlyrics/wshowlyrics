@@ -55,12 +55,12 @@ static void frame_callback_done(void *data, struct wl_callback *callback, uint32
 
     // Destroy old callback
     wl_callback_destroy(callback);
-    state->frame_callback = NULL;
-    state->frame_scheduled = false;
+    state->surface.frame_callback = NULL;
+    state->surface.frame_scheduled = false;
 
     // Render if dirty
-    if (state->dirty) {
-        state->dirty = false;
+    if (state->surface.dirty) {
+        state->surface.dirty = false;
         rendering_manager_render_frame(state);
     }
 }
@@ -69,8 +69,8 @@ static void layer_surface_configure(void *data,
         struct zwlr_layer_surface_v1 *zwlr_layer_surface_v1,
         uint32_t serial, uint32_t width, uint32_t height) {
     struct lyrics_state *state = data;
-    state->width = width;
-    state->height = height;
+    state->surface.width = width;
+    state->surface.height = height;
     zwlr_layer_surface_v1_ack_configure(zwlr_layer_surface_v1, serial);
     rendering_manager_set_dirty(state);
 }
@@ -81,13 +81,13 @@ static void layer_surface_closed(void *data,
     struct lyrics_state *state = data;
 
     // Ignore close events during reconnection (expected behavior)
-    if (state->reconnecting) {
+    if (state->runtime.reconnecting) {
         return;
     }
 
     log_warn("Layer surface closed by compositor");
     // Signal that we need to reconnect
-    state->needs_reconnect = true;
+    state->runtime.needs_reconnect = true;
     state->wl_conn->connected = false;
 }
 
@@ -95,12 +95,12 @@ static void surface_enter(void *data,
         struct wl_surface *const wl_surface, struct wl_output *output) {
     (void)wl_surface;
     struct lyrics_state *state = data;
-    struct lyrics_output *lyrics_output = state->outputs;
+    struct lyrics_output *lyrics_output = state->surface.outputs;
     while (lyrics_output && lyrics_output->output != output) {
         lyrics_output = lyrics_output->next;
     }
     if (lyrics_output) {
-        state->output = lyrics_output;
+        state->surface.output = lyrics_output;
     }
 }
 
@@ -165,8 +165,8 @@ static void registry_global(void *data, struct wl_registry *wl_registry,
                 name, &zwlr_layer_shell_v1_interface, 1);
     } else if (strncmp(interface, "org_kde_", 8) == 0) {
         // KDE compositor detected - buffer detach causes position reset
-        if (!state->no_buffer_detach) {
-            state->no_buffer_detach = true;
+        if (!state->runtime.no_buffer_detach) {
+            state->runtime.no_buffer_detach = true;
             log_info("KDE compositor detected (via %s) - using transparent buffer mode", interface);
         }
     } else if (strcmp(interface, wl_output_interface.name) == 0) {
@@ -180,7 +180,7 @@ static void registry_global(void *data, struct wl_registry *wl_registry,
         output->scale = 1;
         output->height = 0;
         output->width = 0;
-        struct lyrics_output **link = &state->outputs;
+        struct lyrics_output **link = &state->surface.outputs;
         while (*link) {
             link = &(*link)->next;
         }
@@ -188,8 +188,8 @@ static void registry_global(void *data, struct wl_registry *wl_registry,
         wl_output_add_listener(output->output, &wl_output_listener, output);
 
         // Set first output as default
-        if (!state->output) {
-            state->output = output;
+        if (!state->surface.output) {
+            state->surface.output = output;
             log_info("Set primary output");
         }
     }
@@ -230,21 +230,21 @@ const struct wl_callback_listener* wayland_events_get_frame_listener(void) {
 bool wayland_events_handle_reconnection(struct lyrics_state *state,
         struct wayland_connection *wl_conn, struct pollfd *pollfd) {
     // Mark that we're reconnecting (to ignore layer_surface_closed events)
-    state->reconnecting = true;
+    state->runtime.reconnecting = true;
 
     // Clean up old buffers before reconnecting
     // (they were created with the old wl_shm)
     for (int i = 0; i < 2; i++) {
-        if (state->buffers[i].buffer) {
-            destroy_buffer(&state->buffers[i]);
+        if (state->surface.buffers[i].buffer) {
+            destroy_buffer(&state->surface.buffers[i]);
         }
     }
-    state->current_buffer = NULL;
+    state->surface.current_buffer = NULL;
 
-    if (!wayland_manager_reconnect_full(wl_conn, state->layer,
-            "lyrics", state->anchor, state->margin)) {
+    if (!wayland_manager_reconnect_full(wl_conn, state->surface.layer,
+            "lyrics", state->surface.anchor, state->surface.margin)) {
         log_error("Full reconnection failed, will retry...");
-        state->reconnecting = false;
+        state->runtime.reconnecting = false;
         return false;
     }
 
@@ -258,26 +258,26 @@ bool wayland_events_handle_reconnection(struct lyrics_state *state,
 
     // Wait for configure event
     int retry = 0;
-    state->width = state->height = 0;
-    while ((state->width == 0 || state->height == 0) && retry < 10) {
+    state->surface.width = state->surface.height = 0;
+    while ((state->surface.width == 0 || state->surface.height == 0) && retry < 10) {
         if (wl_display_roundtrip(state->wl_conn->display) == -1) {
             log_warn("Roundtrip failed, compositor may not be available yet");
-            state->reconnecting = false;
+            state->runtime.reconnecting = false;
             return false;
         }
         retry++;
     }
 
-    if (state->width == 0 || state->height == 0) {
+    if (state->surface.width == 0 || state->surface.height == 0) {
         log_warn("Layer surface configuration failed after reconnection (compositor not ready)");
-        state->reconnecting = false;
+        state->runtime.reconnecting = false;
         return false;
     }
 
     // Update pollfd with new display fd
     pollfd->fd = wl_display_get_fd(wl_conn->display);
 
-    state->reconnecting = false;
+    state->runtime.reconnecting = false;
     log_info("Successfully reconnected - overlay should be visible again");
     rendering_manager_set_dirty(state);
     return true;

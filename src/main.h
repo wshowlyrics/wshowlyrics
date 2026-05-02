@@ -26,6 +26,7 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
 /* Project headers */
+#include "lyrics_types.h"
 #include "utils/pango/pango_utils.h"
 #include "utils/shm/shm.h"
 #include "utils/mpris/mpris.h"
@@ -34,6 +35,7 @@
 #include "parser/srt/srt_parser.h"
 #include "provider/lyrics/lyrics_provider.h"
 #include "user_experience/system_tray/system_tray.h"
+#include "user_experience/config/config.h"
 #include "utils/file/file_utils.h"
 
 /* Forward declarations */
@@ -50,11 +52,15 @@ struct lyrics_output {
     struct lyrics_output *next;
 };
 
-struct lyrics_state {
+// Visual style: colors and font
+struct style {
     uint32_t foreground;
     uint32_t background;
     const char *font;
+};
 
+// Surface / rendering state: dimensions, buffers, callbacks, layout config
+struct surface_state {
     uint32_t width;
     uint32_t height;
     bool frame_scheduled;
@@ -64,39 +70,28 @@ struct lyrics_state {
     struct pool_buffer *current_buffer;
     struct lyrics_output *output;
     struct lyrics_output *outputs;
+    uint32_t anchor;                              // Layer surface anchor
+    int32_t margin;                               // Layer surface margin
+    uint32_t layer;                               // wlr-layer-shell layer
+};
 
-    struct lyrics_data lyrics;
-    struct track_metadata current_track;
-    struct lyrics_line *current_line;
-    int current_line_index; // 0-based index of current_line in lyrics.lines (-1 if no current line)
-    struct word_segment *current_segment; // For karaoke highlighting (LRCX)
-    struct lyrics_line *prev_line;  // Previous line for multi-line display
-    struct lyrics_line *next_line;  // Next line for multi-line display
-    int64_t track_start_time_us; // When the track started (monotonic clock)
-    bool track_changed;
-    bool in_instrumental_break; // True when in instrumental break (no lyrics)
-    bool need_lyrics_search; // True when lyrics file was missing and needs re-search
-
-    // Config file hot reload tracking
-    char *config_file_path; // Path to loaded config file
-    char config_md5_checksum[33]; // MD5 checksum of config file (32 hex chars + null)
-
-    // Timing offset for sync adjustment (milliseconds)
-    int timing_offset_ms; // Runtime timing offset (-1000 to +1000 ms)
-
+// Runtime flags: lifecycle and behavior toggles
+struct runtime {
     bool run;
-    bool needs_reconnect; // Set when layer surface is closed
-    bool reconnecting; // Set during reconnection to ignore layer_surface_closed
-    bool overlay_enabled; // FIFO controlled: show/hide overlay (default: true)
-    struct wayland_connection *wl_conn; // Wayland connection manager
+    bool needs_reconnect;                         // Set when layer surface is closed
+    bool reconnecting;                            // Ignore layer_surface_closed during reconnect
+    bool overlay_enabled;                         // D-Bus controlled: show/hide overlay
+    bool need_lyrics_search;                      // Lyrics file was missing, needs re-search
+    bool no_buffer_detach;                        // KDE quirk: use transparent buffer
+};
 
-    // Surface configuration for reinitialization
-    uint32_t anchor;
-    int32_t margin;
-    uint32_t layer;  // Wayland layer shell layer
-
-    // Compositor quirks
-    bool no_buffer_detach; // Use transparent buffer instead of attach(NULL) to avoid position reset
+struct lyrics_state {
+    struct style style;
+    struct surface_state surface;
+    struct playback_state playback;
+    struct config_state config;
+    struct runtime runtime;
+    struct wayland_connection *wl_conn;           // Wayland connection (R1: single source of truth)
 };
 
 /* Main function */

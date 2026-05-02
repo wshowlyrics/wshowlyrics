@@ -119,20 +119,20 @@ static void render_karaoke_content(cairo_t *cairo, struct lyrics_state *state,
 
     // Use multi-line rendering if enabled and context lines are available
     if (g_config.display.enable_multiline_lrcx &&
-        (state->prev_line || state->next_line)) {
+        (state->playback.prev_line || state->playback.next_line)) {
         struct multiline_params params = {
-            .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-            .prev_line = state->prev_line,
-            .current_line = state->current_line,
-            .next_line = state->next_line,
+            .base = make_render_base(cairo, state->style.font, scale, state->style.foreground, &w, &h),
+            .prev_line = state->playback.prev_line,
+            .current_line = state->playback.current_line,
+            .next_line = state->playback.next_line,
             .position_us = position_us
         };
         render_karaoke_multiline(&params);
-    } else if (state->current_line) {
+    } else if (state->playback.current_line) {
         // Fallback to single-line karaoke (only if current_line exists)
         struct karaoke_params params = {
-            .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-            .segments = state->current_line->segments,
+            .base = make_render_base(cairo, state->style.font, scale, state->style.foreground, &w, &h),
+            .segments = state->playback.current_line->segments,
             .position_us = position_us
         };
         render_karaoke_segments(&params);
@@ -151,33 +151,33 @@ static void render_karaoke_content(cairo_t *cairo, struct lyrics_state *state,
 static void render_normal_content(cairo_t *cairo, struct lyrics_state *state,
                                   int scale, const char *text_to_display,
                                   bool has_lyrics, int *width, int *height) {
-    cairo_set_source_u32(cairo, state->foreground);
+    cairo_set_source_u32(cairo, state->style.foreground);
 
     // Check if this line has segments (for ruby text support)
-    bool has_word_segments = (has_lyrics && state->current_line->segments &&
-                             state->current_line->segment_count > 0);
-    bool has_ruby_segments = (has_lyrics && state->current_line->ruby_segments &&
-                             state->current_line->segment_count > 0);
+    bool has_word_segments = (has_lyrics && state->playback.current_line->segments &&
+                             state->playback.current_line->segment_count > 0);
+    bool has_ruby_segments = (has_lyrics && state->playback.current_line->ruby_segments &&
+                             state->playback.current_line->segment_count > 0);
 
     int w;
     int h;
 
     if (has_ruby_segments && !has_word_segments) {
         // Render LRC/SRT with ruby_segment (furigana only, no karaoke)
-        bool has_seg_trans = has_segment_translation(state->current_line->ruby_segments);
+        bool has_seg_trans = has_segment_translation(state->playback.current_line->ruby_segments);
         render_segments_with_optional_translation(cairo, state, scale, &w, &h,
-                                                 has_seg_trans, state->current_line_index);
+                                                 has_seg_trans, state->playback.current_line_index);
     } else if (has_lyrics && has_word_segments) {
         // Render LRCX with word_segment but without karaoke fill effect
         struct word_static_params params = {
-            .base = make_render_base(cairo, state->font, scale, state->foreground, &w, &h),
-            .segments = state->current_line->segments
+            .base = make_render_base(cairo, state->style.font, scale, state->style.foreground, &w, &h),
+            .segments = state->playback.current_line->segments
         };
         render_word_segments_static(&params);
     } else {
         // No segments - simple text rendering
-        struct render_base_params params = make_render_base(cairo, state->font, scale,
-                                                           state->foreground, &w, &h);
+        struct render_base_params params = make_render_base(cairo, state->style.font, scale,
+                                                           state->style.foreground, &w, &h);
         render_plain_text(&params, text_to_display);
     }
 
@@ -259,15 +259,15 @@ cairo_subpixel_order_t rendering_manager_to_cairo_subpixel(enum wl_output_subpix
 static void build_translation_progress_text(char *buffer, size_t buffer_size,
                                             const struct lyrics_state *state,
                                             int current_line_index) {
-    int T = state->lyrics.translation_current;
+    int T = state->playback.lyrics.translation_current;
     int C = current_line_index + 1; // 1-based current line
-    int A = state->lyrics.translation_total;
+    int A = state->playback.lyrics.translation_total;
     int R = (A > 0) ? (T * 100 / A) : 0; // Percentage
 
     float cache_threshold = config_get_cache_threshold(g_config.translation.cache_policy);
     bool show_disk = (A > 0) && ((float)T / A >= cache_threshold);
 
-    if (state->lyrics.translation_will_discard) {
+    if (state->playback.lyrics.translation_will_discard) {
         snprintf(buffer, buffer_size, "⏳ Translating... %d%% (%d/%d) 🗑️", R, T, C);
     } else if (show_disk) {
         snprintf(buffer, buffer_size, "⏳ Translating... %d%% (%d/%d) 💾", R, T, C);
@@ -280,17 +280,17 @@ static void build_translation_progress_text(char *buffer, size_t buffer_size,
 static void build_translation_display_text(char *buffer, size_t buffer_size,
                                           const struct lyrics_state *state,
                                           const char *translation) {
-    if (!state->lyrics.translation_in_progress) {
+    if (!state->playback.lyrics.translation_in_progress) {
         snprintf(buffer, buffer_size, "%s", translation);
         return;
     }
 
     float cache_threshold = config_get_cache_threshold(g_config.translation.cache_policy);
-    int T = state->lyrics.translation_current;
-    int A = state->lyrics.translation_total;
+    int T = state->playback.lyrics.translation_current;
+    int A = state->playback.lyrics.translation_total;
     bool cached = (A > 0) && ((float)T / A >= cache_threshold);
 
-    if (state->lyrics.translation_will_discard) {
+    if (state->playback.lyrics.translation_will_discard) {
         snprintf(buffer, buffer_size, "🗑️ %s", translation);
     } else if (cached) {
         snprintf(buffer, buffer_size, "💾 %s", translation);
@@ -305,14 +305,14 @@ static void render_segments_with_optional_translation(cairo_t *cairo,
                                                      int scale, int *w, int *h,
                                                      bool has_seg_trans,
                                                      int current_line_index) {
-    struct render_base_params base = make_render_base(cairo, state->font, scale,
-                                                       state->foreground, w, h);
+    struct render_base_params base = make_render_base(cairo, state->style.font, scale,
+                                                       state->style.foreground, w, h);
 
     // SRT with <sub> tags - use segment-level translation
     if (has_seg_trans) {
         struct ruby_params params = {
             .base = base,
-            .segments = state->current_line->ruby_segments
+            .segments = state->playback.current_line->ruby_segments
         };
         render_ruby_segments(&params);
         return;
@@ -326,14 +326,14 @@ static void render_segments_with_optional_translation(cairo_t *cairo,
         // No translation - render plain ruby segments
         struct ruby_params params = {
             .base = base,
-            .segments = state->current_line->ruby_segments
+            .segments = state->playback.current_line->ruby_segments
         };
         render_ruby_segments(&params);
         return;
     }
 
     // Translation is enabled — atomic load to avoid data race with translator thread
-    const char *tr = __atomic_load_n(&state->current_line->translation, __ATOMIC_ACQUIRE);
+    const char *tr = __atomic_load_n(&state->playback.current_line->translation, __ATOMIC_ACQUIRE);
     if (tr) {
         // Line has translation - show it with icon
         char translation_text[512];
@@ -342,12 +342,12 @@ static void render_segments_with_optional_translation(cairo_t *cairo,
 
         struct translation_params params = {
             .base = base,
-            .segments = state->current_line->ruby_segments,
+            .segments = state->playback.current_line->ruby_segments,
             .translation_mode = g_config.translation.translation_display,
             .translation = translation_text
         };
         render_ruby_segments_with_translation(&params);
-    } else if (state->lyrics.translation_in_progress) {
+    } else if (state->playback.lyrics.translation_in_progress) {
         // Translation in progress - show progress
         char progress_text[128];
         build_translation_progress_text(progress_text, sizeof(progress_text),
@@ -355,7 +355,7 @@ static void render_segments_with_optional_translation(cairo_t *cairo,
 
         struct translation_params params = {
             .base = base,
-            .segments = state->current_line->ruby_segments,
+            .segments = state->playback.current_line->ruby_segments,
             .translation_mode = g_config.translation.translation_display,
             .translation = progress_text
         };
@@ -364,7 +364,7 @@ static void render_segments_with_optional_translation(cairo_t *cairo,
         // No translation available - render plain ruby segments
         struct ruby_params params = {
             .base = base,
-            .segments = state->current_line->ruby_segments
+            .segments = state->playback.current_line->ruby_segments
         };
         render_ruby_segments(&params);
     }
@@ -373,18 +373,18 @@ static void render_segments_with_optional_translation(cairo_t *cairo,
 void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *state,
                                        int scale, uint32_t *width, uint32_t *height) {
     const char *text_to_display = NULL; // NULL means no content to display
-    bool has_lyrics = (state->current_line && state->current_line->text);
+    bool has_lyrics = (state->playback.current_line && state->playback.current_line->text);
     bool is_empty_line = false; // Track if current line is empty (instrumental break)
     bool is_karaoke = false; // Track if this is karaoke-style LRCX
 
     // Check for LRCX multiline context (for instrumental breaks)
     bool is_lrcx = lyrics_manager_is_format(state, ".lrcx");
     bool has_multiline_context = (is_lrcx && g_config.display.enable_multiline_lrcx &&
-                                  (state->prev_line || state->next_line));
+                                  (state->playback.prev_line || state->playback.next_line));
 
     if (has_lyrics) {
         // Check if the text is empty or only whitespace
-        const char *text = state->current_line->text;
+        const char *text = state->playback.current_line->text;
         if (text[0] == '\0') {
             // Empty string - treat as idle/instrumental break
             is_empty_line = true;
@@ -409,7 +409,7 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
     // Background is always shown when we reach here because:
     // - Either text_to_display != NULL (implies has_lyrics && !is_empty_line)
     // - Or is_karaoke from multiline context (implies has_multiline_context)
-    uint32_t background_color = state->background;
+    uint32_t background_color = state->style.background;
 
     cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
     cairo_set_source_u32(cairo, background_color);
@@ -431,9 +431,9 @@ void rendering_manager_render_to_cairo(cairo_t *cairo, struct lyrics_state *stat
     // Global offset: persistent across tracks (yellow bar)
     // Session offset: temporary per-track adjustment (white bar)
     int global_offset_ms = g_config.lyrics.global_offset_ms;
-    int session_offset_ms = state->timing_offset_ms - global_offset_ms; // Extract session-only offset
+    int session_offset_ms = state->playback.timing_offset_ms - global_offset_ms; // Extract session-only offset
     if ((global_offset_ms != 0 || session_offset_ms != 0) && has_lyrics && !is_empty_line) {
-        render_offset_bar(cairo, global_offset_ms, session_offset_ms, *width, *height, state->foreground);
+        render_offset_bar(cairo, global_offset_ms, session_offset_ms, *width, *height, state->style.foreground);
         *height += 6; // Progress bar 높이 + 여백 (4px bar + 2px spacing)
     }
 }
@@ -444,22 +444,22 @@ void rendering_manager_render_transparent(struct lyrics_state *state) {
         return;
     }
 
-    if (state->no_buffer_detach) {
+    if (state->runtime.no_buffer_detach) {
         // Some compositors (e.g., KDE) reset surface position on buffer detach
         // Use transparent buffer instead
-        const int scale = state->output ? state->output->scale : 1;
-        state->current_buffer = get_next_buffer(state->wl_conn->shm,
-                state->buffers, state->width * scale, state->height * scale);
-        if (state->current_buffer) {
-            cairo_t *shm = state->current_buffer->cairo;
+        const int scale = state->surface.output ? state->surface.output->scale : 1;
+        state->surface.current_buffer = get_next_buffer(state->wl_conn->shm,
+                state->surface.buffers, state->surface.width * scale, state->surface.height * scale);
+        if (state->surface.current_buffer) {
+            cairo_t *shm = state->surface.current_buffer->cairo;
             cairo_save(shm);
             cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
             cairo_paint(shm);
             cairo_restore(shm);
 
             wl_surface_set_buffer_scale(state->wl_conn->surface, scale);
-            wl_surface_attach(state->wl_conn->surface, state->current_buffer->buffer, 0, 0);
-            wl_surface_damage_buffer(state->wl_conn->surface, 0, 0, state->width, state->height);
+            wl_surface_attach(state->wl_conn->surface, state->surface.current_buffer->buffer, 0, 0);
+            wl_surface_damage_buffer(state->wl_conn->surface, 0, 0, state->surface.width, state->surface.height);
             wl_surface_commit(state->wl_conn->surface);
         }
     } else {
@@ -483,9 +483,9 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
     cairo_font_options_t *fo = cairo_font_options_create();
     cairo_font_options_set_hint_style(fo, CAIRO_HINT_STYLE_FULL);
     cairo_font_options_set_antialias(fo, CAIRO_ANTIALIAS_SUBPIXEL);
-    if (state->output) {
+    if (state->surface.output) {
         cairo_font_options_set_subpixel_order(
-                fo, rendering_manager_to_cairo_subpixel(state->output->subpixel));
+                fo, rendering_manager_to_cairo_subpixel(state->surface.output->subpixel));
     }
     cairo_set_font_options(cairo, fo);
     cairo_font_options_destroy(fo);
@@ -494,14 +494,14 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
     cairo_paint(cairo);
     cairo_restore(cairo);
 
-    const int scale = state->output ? state->output->scale : 1;
+    const int scale = state->surface.output ? state->surface.output->scale : 1;
     uint32_t width = 0;
     uint32_t height = 0;
     rendering_manager_render_to_cairo(cairo, state, scale, &width, &height);
 
-    if (height / scale != state->height
-            || width / scale != state->width
-            || state->width == 0) {
+    if (height / scale != state->surface.height
+            || width / scale != state->surface.width
+            || state->surface.width == 0) {
         // Size change detected - make overlay transparent during resize
         rendering_manager_render_transparent(state);
 
@@ -517,14 +517,14 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
         wl_surface_commit(state->wl_conn->surface);
     } else if (height > 0) {
         // Replay recording into shm and send it off
-        state->current_buffer = get_next_buffer(state->wl_conn->shm,
-                state->buffers, state->width * scale, state->height * scale);
-        if (!state->current_buffer) {
+        state->surface.current_buffer = get_next_buffer(state->wl_conn->shm,
+                state->surface.buffers, state->surface.width * scale, state->surface.height * scale);
+        if (!state->surface.current_buffer) {
             cairo_surface_destroy(recorder);
             cairo_destroy(cairo);
             return;
         }
-        cairo_t *shm = state->current_buffer->cairo;
+        cairo_t *shm = state->surface.current_buffer->cairo;
 
         cairo_save(shm);
         cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
@@ -536,15 +536,15 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
 
         wl_surface_set_buffer_scale(state->wl_conn->surface, scale);
         wl_surface_attach(state->wl_conn->surface,
-                state->current_buffer->buffer, 0, 0);
+                state->surface.current_buffer->buffer, 0, 0);
         wl_surface_damage_buffer(state->wl_conn->surface, 0, 0,
-                state->width, state->height);
+                state->surface.width, state->surface.height);
 
         // Request frame callback for vsync
-        state->frame_callback = wl_surface_frame(state->wl_conn->surface);
-        wl_callback_add_listener(state->frame_callback,
+        state->surface.frame_callback = wl_surface_frame(state->wl_conn->surface);
+        wl_callback_add_listener(state->surface.frame_callback,
                 wayland_events_get_frame_listener(), state);
-        state->frame_scheduled = true;
+        state->surface.frame_scheduled = true;
 
         wl_surface_commit(state->wl_conn->surface);
     }
@@ -559,8 +559,8 @@ void rendering_manager_set_dirty(struct lyrics_state *state) {
         return;
     }
 
-    if (state->frame_scheduled) {
-        state->dirty = true;
+    if (state->surface.frame_scheduled) {
+        state->surface.dirty = true;
     } else if (state->wl_conn->surface) {
         rendering_manager_render_frame(state);
     }

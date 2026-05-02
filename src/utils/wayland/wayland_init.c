@@ -102,26 +102,26 @@ bool wayland_init_surface(struct lyrics_state *state, uint32_t layer, unsigned i
 
     // Wait for configure event
     int retry_count = 0;
-    while ((state->width == 0 || state->height == 0) && retry_count < WAYLAND_CONFIGURE_RETRY_LIMIT) {
+    while ((state->surface.width == 0 || state->surface.height == 0) && retry_count < WAYLAND_CONFIGURE_RETRY_LIMIT) {
         wl_display_roundtrip(state->wl_conn->display);
         retry_count++;
     }
 
     retry_count = 0;
-    while ((state->width == 0 || state->height == 0) && retry_count < WAYLAND_CONFIGURE_RETRY_LIMIT) {
+    while ((state->surface.width == 0 || state->surface.height == 0) && retry_count < WAYLAND_CONFIGURE_RETRY_LIMIT) {
         wl_display_dispatch(state->wl_conn->display);
         retry_count++;
     }
 
-    if (state->width == 0 || state->height == 0) {
+    if (state->surface.width == 0 || state->surface.height == 0) {
         log_error("Layer surface configuration failed");
         return false;
     }
 
     // Store surface configuration for reinitialization
-    state->anchor = anchor;
-    state->margin = margin;
-    state->layer = layer;
+    state->surface.anchor = anchor;
+    state->surface.margin = margin;
+    state->surface.layer = layer;
 
     return true;
 }

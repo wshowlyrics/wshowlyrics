@@ -289,11 +289,11 @@ static void on_overlay_toggled(GtkCheckMenuItem *const item, gpointer user_data)
         return;
     }
 
-    g_tray_state->overlay_enabled = !g_tray_state->overlay_enabled;
-    system_tray_set_overlay_state(g_tray_state->overlay_enabled);
+    g_tray_state->runtime.overlay_enabled = !g_tray_state->runtime.overlay_enabled;
+    system_tray_set_overlay_state(g_tray_state->runtime.overlay_enabled);
     rendering_manager_set_dirty(g_tray_state);
 
-    log_info("Menu: Overlay %s", g_tray_state->overlay_enabled ? "enabled" : "disabled");
+    log_info("Menu: Overlay %s", g_tray_state->runtime.overlay_enabled ? "enabled" : "disabled");
 }
 
 static void on_timing_adjust(GtkMenuItem *const item, gpointer user_data) {
@@ -306,14 +306,14 @@ static void on_timing_adjust(GtkMenuItem *const item, gpointer user_data) {
 
     if (delta == 0) {
         // Reset to global offset
-        g_tray_state->timing_offset_ms = g_config.lyrics.global_offset_ms;
-        log_info("Menu: Timing offset reset to %dms", g_tray_state->timing_offset_ms);
+        g_tray_state->playback.timing_offset_ms = g_config.lyrics.global_offset_ms;
+        log_info("Menu: Timing offset reset to %dms", g_tray_state->playback.timing_offset_ms);
     } else {
-        g_tray_state->timing_offset_ms += delta;
+        g_tray_state->playback.timing_offset_ms += delta;
         // Clamp to reasonable range
-        if (g_tray_state->timing_offset_ms < -5000) g_tray_state->timing_offset_ms = -5000;
-        if (g_tray_state->timing_offset_ms > 5000) g_tray_state->timing_offset_ms = 5000;
-        log_info("Menu: Timing offset adjusted by %+dms, now: %dms", delta, g_tray_state->timing_offset_ms);
+        if (g_tray_state->playback.timing_offset_ms < -5000) g_tray_state->playback.timing_offset_ms = -5000;
+        if (g_tray_state->playback.timing_offset_ms > 5000) g_tray_state->playback.timing_offset_ms = 5000;
+        log_info("Menu: Timing offset adjusted by %+dms, now: %dms", delta, g_tray_state->playback.timing_offset_ms);
     }
 
     rendering_manager_set_dirty(g_tray_state);
@@ -363,7 +363,7 @@ static void on_quit(GtkMenuItem *const item, gpointer user_data) {
     (void)user_data;
 
     if (g_tray_state) {
-        g_tray_state->run = false;
+        g_tray_state->runtime.run = false;
         log_info("Menu: Quit requested");
     }
 }
@@ -1032,7 +1032,7 @@ void system_tray_set_state(struct lyrics_state *state) {
     if (overlay_item && state) {
         // Block signal to prevent callback during programmatic update
         g_signal_handlers_block_by_func(overlay_item, on_overlay_toggled, NULL);
-        gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(overlay_item), state->overlay_enabled);
+        gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(overlay_item), state->runtime.overlay_enabled);
         g_signal_handlers_unblock_by_func(overlay_item, on_overlay_toggled, NULL);
     }
 }

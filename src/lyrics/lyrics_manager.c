@@ -15,10 +15,10 @@
 #include <unistd.h>
 
 bool lyrics_manager_is_format(const struct lyrics_state *state, const char *extension) {
-    if (!state->lyrics.source_file_path) {
+    if (!state->playback.lyrics.source_file_path) {
         return false;
     }
-    const char *ext = strrchr(state->lyrics.source_file_path, '.');
+    const char *ext = strrchr(state->playback.lyrics.source_file_path, '.');
     return ext && strcasecmp(ext, extension) == 0;
 }
 
@@ -77,23 +77,23 @@ void cancel_and_wait_translation(struct lyrics_data *lyrics) {
 
 // Helper: Handle case when no player is found
 static void handle_no_player_found(struct lyrics_state *state) {
-    if (!state->current_track.title) {
+    if (!state->playback.current_track.title) {
         return;  // Nothing to clear
     }
 
     log_info("=== No player found, clearing lyrics ===");
 
     // Cancel ongoing translation
-    cancel_and_wait_translation(&state->lyrics);
+    cancel_and_wait_translation(&state->playback.lyrics);
 
     // Free track metadata
-    mpris_free_metadata(&state->current_track);
+    mpris_free_metadata(&state->playback.current_track);
 
     // Free lyrics
-    lrc_free_data(&state->lyrics);
-    state->current_line = NULL;
-    state->prev_line = NULL;
-    state->next_line = NULL;
+    lrc_free_data(&state->playback.lyrics);
+    state->playback.current_line = NULL;
+    state->playback.prev_line = NULL;
+    state->playback.next_line = NULL;
 
     // Reset tray icon and track info
     system_tray_reset_icon();
@@ -136,18 +136,18 @@ static void handle_track_changed(struct lyrics_state *state, const struct track_
     log_info("Art URL: %s", new_track->art_url ? new_track->art_url : "None");
 
     // Cancel ongoing translation
-    cancel_and_wait_translation(&state->lyrics);
+    cancel_and_wait_translation(&state->playback.lyrics);
 
     // Update track metadata
-    mpris_free_metadata(&state->current_track);
-    state->current_track = *new_track;
-    state->track_changed = true;
+    mpris_free_metadata(&state->playback.current_track);
+    state->playback.current_track = *new_track;
+    state->playback.track_changed = true;
 
     // Record when the track started
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-    state->track_start_time_us = now.tv_sec * 1000000 + now.tv_nsec / 1000;
-    state->track_start_time_us -= state->current_track.position_us;
+    state->playback.track_start_time_us = now.tv_sec * 1000000 + now.tv_nsec / 1000;
+    state->playback.track_start_time_us -= state->playback.current_track.position_us;
 
     // Reset tray icon and update track info
     system_tray_reset_icon();
@@ -165,7 +165,7 @@ bool lyrics_manager_update_track_info(struct lyrics_state *state) {
     }
 
     // Check if track changed
-    bool changed = detect_track_change(&new_track, &state->current_track);
+    bool changed = detect_track_change(&new_track, &state->playback.current_track);
 
     if (changed) {
         handle_track_changed(state, &new_track);
@@ -181,48 +181,48 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     // Cancel ongoing translation and wait for it to finish
     // This prevents race condition where old and new translation threads
     // write to the same cache file simultaneously
-    cancel_and_wait_translation(&state->lyrics);
+    cancel_and_wait_translation(&state->playback.lyrics);
 
     // Free previous lyrics
-    lrc_free_data(&state->lyrics);
-    state->current_line = NULL;
-    state->prev_line = NULL;
-    state->next_line = NULL;
+    lrc_free_data(&state->playback.lyrics);
+    state->playback.current_line = NULL;
+    state->playback.prev_line = NULL;
+    state->playback.next_line = NULL;
 
     // Reset timing offset to global offset for new track
-    state->timing_offset_ms = g_config.lyrics.global_offset_ms;
+    state->playback.timing_offset_ms = g_config.lyrics.global_offset_ms;
 
     // Reset overlay visibility for new track
-    if (!state->overlay_enabled) {
-        state->overlay_enabled = true;
+    if (!state->runtime.overlay_enabled) {
+        state->runtime.overlay_enabled = true;
         system_tray_set_overlay_state(true);
         log_info("Overlay auto-enabled for new track");
     }
 
     // Try to find lyrics
-    if (!lyrics_find_for_track(&state->current_track, &state->lyrics)) {
+    if (!lyrics_find_for_track(&state->playback.current_track, &state->playback.lyrics)) {
         log_info("No lyrics found for current track");
 
         // Even without lyrics, try to update album art with MPRIS metadata
         if (g_config.lyrics.enable_itunes) {
             system_tray_update_icon_with_fallback(
-                state->current_track.art_url,
-                state->current_track.artist,
-                state->current_track.album,
-                state->current_track.title
+                state->playback.current_track.art_url,
+                state->playback.current_track.artist,
+                state->playback.current_track.album,
+                state->playback.current_track.title
             );
         }
 
         // Send notification even without lyrics
         if (g_config.lyrics.enable_notifications) {
             char cleaned_title[TITLE_BUFFER_SIZE];
-            lyrics_manager_clean_title(cleaned_title, sizeof(cleaned_title), state->current_track.title);
+            lyrics_manager_clean_title(cleaned_title, sizeof(cleaned_title), state->playback.current_track.title);
 
             struct notification_info notif_info = {
                 .title = cleaned_title,
-                .artist = state->current_track.artist,
-                .album = state->current_track.album,
-                .player_name = state->current_track.player_name
+                .artist = state->playback.current_track.artist,
+                .album = state->playback.current_track.album,
+                .player_name = state->playback.current_track.player_name
             };
             system_tray_send_notification(&notif_info);
         }
@@ -231,36 +231,36 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     }
 
     // Reset translation cancel flag for new lyrics
-    state->lyrics.translation_should_cancel = false;
+    state->playback.lyrics.translation_should_cancel = false;
 
-    log_info("Loaded %d lines of lyrics", state->lyrics.line_count);
+    log_info("Loaded %d lines of lyrics", state->playback.lyrics.line_count);
 
     // Set initial line to NULL so first update will trigger line_changed
     // This ensures prev/next lines are set for multiline display
-    state->current_line = NULL;
-    state->track_changed = false;
+    state->playback.current_line = NULL;
+    state->playback.track_changed = false;
 
     // Update album art with best available metadata
     // Prefer lyrics metadata (more accurate) over MPRIS metadata
-    const char *artist = state->lyrics.metadata.artist;
-    const char *album = state->lyrics.metadata.album;
-    const char *title = state->lyrics.metadata.title;
+    const char *artist = state->playback.lyrics.metadata.artist;
+    const char *album = state->playback.lyrics.metadata.album;
+    const char *title = state->playback.lyrics.metadata.title;
 
     // Fall back to MPRIS metadata if lyrics metadata is not available
     if (!artist || artist[0] == '\0') {
-        artist = state->current_track.artist;
+        artist = state->playback.current_track.artist;
     }
     if (!album || album[0] == '\0') {
-        album = state->current_track.album;
+        album = state->playback.current_track.album;
     }
     if (!title || title[0] == '\0') {
-        title = state->current_track.title;
+        title = state->playback.current_track.title;
     }
 
     // Update album art (try MPRIS URL first, then iTunes API)
     log_info("Updating album art with metadata (artist: %s, album: %s, title: %s)",
              artist ? artist : "Unknown", album ? album : "Unknown", title ? title : "Unknown");
-    system_tray_update_icon_with_fallback(state->current_track.art_url, artist, album, title);
+    system_tray_update_icon_with_fallback(state->playback.current_track.art_url, artist, album, title);
 
     // Send desktop notification after album art is updated
     if (g_config.lyrics.enable_notifications) {
@@ -271,7 +271,7 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
             .title = cleaned_title,
             .artist = artist,
             .album = album,
-            .player_name = state->current_track.player_name
+            .player_name = state->playback.current_track.player_name
         };
         system_tray_send_notification(&notif_info);
     }
@@ -314,43 +314,43 @@ static int calculate_line_index(const struct lyrics_data *lyrics, const struct l
 // Helper: Handle line changed - update state, log, and set context lines
 static void handle_line_changed(struct lyrics_state *state, struct lyrics_line *display_line,
                                 struct lyrics_line *new_line, bool is_empty_text) {
-    state->current_line = display_line;
-    state->current_segment = NULL;
+    state->playback.current_line = display_line;
+    state->playback.current_segment = NULL;
 
     // Calculate and store line index
-    state->current_line_index = calculate_line_index(&state->lyrics, display_line);
+    state->playback.current_line_index = calculate_line_index(&state->playback.lyrics, display_line);
 
     // Update prev/next lines for multi-line display (LRCX only)
     if (lyrics_manager_is_format(state, ".lrcx") && g_config.display.enable_multiline_lrcx) {
         struct lyrics_line *context_line = display_line ? display_line : new_line;
-        lrcx_find_context_lines(&state->lyrics, context_line,
-                               &state->prev_line, &state->next_line);
+        lrcx_find_context_lines(&state->playback.lyrics, context_line,
+                               &state->playback.prev_line, &state->playback.next_line);
     } else {
-        state->prev_line = NULL;
-        state->next_line = NULL;
+        state->playback.prev_line = NULL;
+        state->playback.next_line = NULL;
     }
 
     // Log line change
     if (display_line && display_line->text) {
-        int index = lrc_get_line_index(&state->lyrics, display_line);
+        int index = lrc_get_line_index(&state->playback.lyrics, display_line);
         char *escaped_text = state_helpers_escape_newlines(display_line->text);
         if (escaped_text) {
-            log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, escaped_text);
+            log_info("Line %d/%d: %s", index + 1, state->playback.lyrics.line_count, escaped_text);
             free(escaped_text);
         } else {
-            log_info("Line %d/%d: %s", index + 1, state->lyrics.line_count, display_line->text);
+            log_info("Line %d/%d: %s", index + 1, state->playback.lyrics.line_count, display_line->text);
         }
 
         // For karaoke (LRCX), set initial segment
         if (lyrics_manager_is_format(state, ".lrcx") && display_line->segments) {
-            state->current_segment = display_line->segments;
+            state->playback.current_segment = display_line->segments;
         }
     } else {
         log_info("Instrumental break - clearing lyrics (new_line=%p, is_empty_text=%d, display_line=%p)",
             (void*)new_line, is_empty_text, (void*)display_line);
 
-        if (!state->in_instrumental_break) {
-            state->in_instrumental_break = true;
+        if (!state->playback.in_instrumental_break) {
+            state->playback.in_instrumental_break = true;
         }
     }
 
@@ -358,17 +358,17 @@ static void handle_line_changed(struct lyrics_state *state, struct lyrics_line *
 }
 
 void lyrics_manager_update_current_line(struct lyrics_state *state) {
-    if (!state->lyrics.lines) {
-        state->in_instrumental_break = false;
+    if (!state->playback.lyrics.lines) {
+        state->playback.in_instrumental_break = false;
         return;
     }
 
     // Get current playback position with timing offset applied
     int64_t position_us = mpris_get_position();
-    position_us += (int64_t)state->timing_offset_ms * 1000LL;
+    position_us += (int64_t)state->playback.timing_offset_ms * 1000LL;
 
     // Find the appropriate line for current position
-    struct lyrics_line *new_line = lrc_find_line_at_time(&state->lyrics, position_us);
+    struct lyrics_line *new_line = lrc_find_line_at_time(&state->playback.lyrics, position_us);
 
     // Check if we should clear the lyrics for SRT/WEBVTT formats
     if (new_line && new_line->end_timestamp_us > 0 &&
@@ -382,20 +382,20 @@ void lyrics_manager_update_current_line(struct lyrics_state *state) {
     struct lyrics_line *display_line = is_empty_text ? NULL : new_line;
 
     // Handle line change
-    if (display_line != state->current_line) {
+    if (display_line != state->playback.current_line) {
         handle_line_changed(state, display_line, new_line, is_empty_text);
     }
 
     // Clear instrumental break flag when lyrics are showing
-    if (state->current_line) {
-        state->in_instrumental_break = false;
+    if (state->playback.current_line) {
+        state->playback.in_instrumental_break = false;
     }
 
     // Update word segment for karaoke highlighting (LRCX only)
     if (lyrics_manager_is_format(state, ".lrcx") && new_line && new_line->segments) {
         struct word_segment *new_segment = lrcx_find_segment_at_time(new_line, position_us, NULL);
-        if (new_segment != state->current_segment) {
-            state->current_segment = new_segment;
+        if (new_segment != state->playback.current_segment) {
+            state->playback.current_segment = new_segment;
             rendering_manager_set_dirty(state);
         }
     }

@@ -6,6 +6,7 @@
 #include <stdatomic.h>
 #include <pthread.h>
 #include "constants.h"
+#include "utils/mpris/mpris.h"
 
 // Ruby segment for furigana (ruby text) support in LRC/SRT formats
 // No timing information - used only for displaying ruby text above base text
@@ -63,6 +64,21 @@ struct lyrics_data {
     pthread_t translation_thread;    // Thread handle for cancellation
     _Atomic int translation_current;
     _Atomic int translation_total;
+};
+
+// Playback state - currently playing track, current/prev/next lines, timing
+struct playback_state {
+    struct lyrics_data lyrics;
+    struct track_metadata current_track;
+    struct lyrics_line *current_line;
+    int current_line_index; // 0-based index of current_line in lyrics.lines (-1 if no current line)
+    struct word_segment *current_segment; // For karaoke highlighting (LRCX)
+    struct lyrics_line *prev_line;  // Previous line for multi-line display
+    struct lyrics_line *next_line;  // Next line for multi-line display
+    int64_t track_start_time_us;    // When the track started (monotonic clock)
+    bool track_changed;
+    bool in_instrumental_break;     // True when in instrumental break (no lyrics)
+    int timing_offset_ms;           // Runtime timing offset (-1000 to +1000 ms)
 };
 
 #endif // _LYRICS_TYPES_H
