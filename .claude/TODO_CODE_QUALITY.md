@@ -211,41 +211,39 @@ struct lyrics_state {
 
 ---
 
-### R7. Translator provider별 함수 중복 → vtable 추상화
+### R7. Translator provider 등록 테이블 (dispatcher 정리)
 
-> **결정 (2026-05-03)**: 진행 예정. Ollama 등 새로운 LLM provider 추가가 임박했고,
-> 추상화 후 추가하면 신규 provider 도입 비용이 크게 줄어듦. R1 작업과 병행 또는
-> 우선 진행 가능.
+> **결정 (2026-05-03)**: 진행 예정. Ollama 등 새로운 LLM provider 추가 대비.
+> GitLab 이슈: https://gitlab.com/wshowlyrics/wshowlyrics/-/work_items/2
+>
+> **정정 (2026-05-03)**: 초기 추정은 "translate_single_line / parse / build 3개 함수가 4× 중복 → vtable 추상화"였으나 실제 코드 확인 결과 부정확. 현재 구조가 이미 함수 포인터 기반 (각 translator가 `translate_single_line`을 `translator_translate_lyrics_generic`에 전달). `parse/build`는 각 translator의 private implementation detail. 진짜 중복은 dispatcher의 4-branch string-prefix 매칭뿐.
 
-**위치**: 4개 translator 모듈에 같은 시그니처가 반복
-
-| 함수 | openai | claude | gemini | deepl |
-|---|:---:|:---:|:---:|:---:|
-| `translate_single_line` | ✅ L89 | ✅ L100 | ✅ L84 | ✅ L174 |
-| `parse_response_json` | ✅ L57 | ✅ L60 | ✅ L56 | — (form 응답) |
-| `build_request_json` | ✅ L27 | ✅ L29 | ✅ L26 | — (query string) |
-
-**상태**: 함수 이름과 시그니처는 동일하지만 내부 구현이 provider별로 다름 (다른 API 엔드포인트, 다른 JSON 스키마). DeepL은 form-encoded라 일부 함수만 공유.
+**진짜 작업 위치**: `src/provider/lyrics/lyrics_provider.c::translate_lyrics_with_provider()`의 4-branch if/else.
 
 **작업안**:
-1. `translator_common.h`에 vtable 정의:
+1. `translator_common.h`에 provider 테이블 정의:
    ```c
-   struct translator_ops {
+   struct translator_provider {
        const char *name;
-       char* (*build_request)(const char *text, const char *target_lang, const char *model);
-       char* (*parse_response)(const char *json_str);
-       char* (*translate_line)(const char *text, const char *target_lang, ...);
+       bool (*matches)(const char *provider_string);
+       bool (*init)(void);
+       void (*cleanup)(void);
+       bool (*translate_lyrics)(struct lyrics_data *data, int64_t length_us);
    };
    ```
-2. 각 provider가 `static const struct translator_ops openai_ops = { ... };` 등록
-3. dispatcher에서 `provider->translate_line()` 호출
+2. 각 translator가 `static const struct translator_provider X_provider = { ... };` 등록 (~10줄)
+3. `translator_common.c`에 providers 배열 노출
+4. dispatcher가 테이블 순회로 변경
 
-**효과**:
-- 새 provider 추가 시 한 파일에 ops 구조체만 정의
-- common 코드(retry, rate limit, language detect)는 vtable 위에서 일원화
-- 단, deepl 같은 예외 케이스(form-encoded) 처리 여지 필요
+**작업량 (정확)**:
+- struct 정의: ~15줄
+- 4 translator × ~10줄 = ~40줄
+- dispatcher: −25 / +10
+- **총 ~50–100줄 변경, 6 파일, 1–2시간**
 
-**우선순위**: MEDIUM — 새 provider 추가 빈도와 중복 비용에 따라. 단순 중복이 아니라 진짜 다른 로직이라 가치 vs 비용 측정 필요.
+**Ollama 추가 비용 (R7 후)**: ollama_translator.c 작성 + provider struct (~10줄) + 배열에 한 줄 추가. 끝.
+
+**우선순위**: MEDIUM — 작은 변경이라 부담 적고 Ollama PR 비용 절감 효과 큼.
 
 ---
 
