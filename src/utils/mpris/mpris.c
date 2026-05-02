@@ -6,7 +6,6 @@
  *
  * Key features:
  * - PropertiesChanged signal: Auto-detects PlaybackStatus, Position, Metadata changes
- * - Seeked signal: Handles user seek operations
  * - Cached state: Instant access without D-Bus calls
  * - Thread-safe: GMutex protects shared state
  *
@@ -44,7 +43,6 @@ static struct {
     struct track_metadata *cached_metadata;  // Metadata parsed from DBus signal (avoids stale data race)
     GMutex mutex;                   // Thread safety for signal callbacks
     guint subscription_id;          // PropertiesChanged subscription ID (current player)
-    guint seeked_subscription_id;   // Seeked signal subscription ID
     guint name_owner_subscription_id; // NameOwnerChanged subscription ID
     guint all_players_subscription_id; // PropertiesChanged subscription ID (all players)
     GHashTable *unique_name_map;    // Maps D-Bus unique names (:1.xxx) to well-known names (org.mpris.MediaPlayer2.xxx)
@@ -441,20 +439,6 @@ static void on_properties_changed(
     g_variant_unref(invalidated_properties);
 }
 
-// Callback: Handle Seeked signal (no-op, position is polled directly)
-static void on_seeked(
-    G_GNUC_UNUSED GDBusConnection *connection,
-    G_GNUC_UNUSED const gchar *sender_name,
-    G_GNUC_UNUSED const gchar *object_path,
-    G_GNUC_UNUSED const gchar *interface_name,
-    G_GNUC_UNUSED const gchar *signal_name,
-    G_GNUC_UNUSED GVariant *parameters,
-    G_GNUC_UNUSED gpointer user_data)
-{
-    // Position is queried directly in mpris_get_position(), so we don't need to cache it here
-    // Seeked signal subscription is kept for potential future optimizations
-}
-
 // Helper: Map unique D-Bus name (:1.xxxxx) to well-known name (org.mpris.MediaPlayer2.xxx)
 // Returns: strdup'd well-known name or NULL if unknown player (caller must free)
 static char* resolve_player_well_known_name(const gchar *sender_name) {
@@ -685,10 +669,6 @@ static void cleanup_current_player(void) {
     if (mpris_state.subscription_id > 0) {
         g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.subscription_id);
         mpris_state.subscription_id = 0;
-    }
-    if (mpris_state.seeked_subscription_id > 0) {
-        g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.seeked_subscription_id);
-        mpris_state.seeked_subscription_id = 0;
     }
 
     g_mutex_lock(&mpris_state.mutex);
@@ -942,10 +922,6 @@ static void setup_player_subscription(char *player) {
         g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.subscription_id);
         mpris_state.subscription_id = 0;
     }
-    if (mpris_state.seeked_subscription_id > 0) {
-        g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.seeked_subscription_id);
-        mpris_state.seeked_subscription_id = 0;
-    }
 
     g_mutex_lock(&mpris_state.mutex);
     free(mpris_state.current_player);
@@ -1034,20 +1010,6 @@ static void setup_player_subscription(char *player) {
         MPRIS_PLAYER_INTERFACE,
         G_DBUS_SIGNAL_FLAGS_NONE,
         on_properties_changed,
-        NULL,
-        NULL
-    );
-
-    // Subscribe to Seeked signal
-    mpris_state.seeked_subscription_id = g_dbus_connection_signal_subscribe(
-        dbus_connection,
-        bus_name,
-        MPRIS_PLAYER_INTERFACE,
-        "Seeked",
-        MPRIS_OBJECT_PATH,
-        NULL,
-        G_DBUS_SIGNAL_FLAGS_NONE,
-        on_seeked,
         NULL,
         NULL
     );
@@ -1419,11 +1381,6 @@ void mpris_cleanup(void) {
         if (mpris_state.subscription_id > 0) {
             g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.subscription_id);
             mpris_state.subscription_id = 0;
-        }
-
-        if (mpris_state.seeked_subscription_id > 0) {
-            g_dbus_connection_signal_unsubscribe(dbus_connection, mpris_state.seeked_subscription_id);
-            mpris_state.seeked_subscription_id = 0;
         }
 
         if (mpris_state.name_owner_subscription_id > 0) {

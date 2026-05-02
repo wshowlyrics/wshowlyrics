@@ -9,16 +9,6 @@
 #include <strings.h>
 #include <curl/curl.h>
 
-// Deprecated: Use json_extract_string from json_utils.h instead
-static char* extract_json_string(const char *json, const char *key) {
-    return json_extract_string(json, key);
-}
-
-// Deprecated: Use curl_url_encode from curl_utils.h instead
-static char* url_encode(CURL *curl, const char *str) {
-    return curl_url_encode(curl, str);
-}
-
 // Helper: Build search term with available metadata
 static void build_search_term_with_metadata(char *buffer, size_t buffer_size,
                                             const char *clean_track,
@@ -58,7 +48,7 @@ static bool setup_itunes_request(CURL *curl, const char *url,
 // Helper: Extract artwork URL from iTunes API response
 static char* extract_artwork_from_response(const char *response_data) {
     // Check result count
-    char *result_count_str = extract_json_string(response_data, "resultCount");
+    char *result_count_str = json_extract_string(response_data, "resultCount");
     if (result_count_str) {
         int result_count = atoi(result_count_str);
         free(result_count_str);
@@ -70,11 +60,11 @@ static char* extract_artwork_from_response(const char *response_data) {
     }
 
     // Extract artworkUrl100 from first result
-    char *artwork_url = extract_json_string(response_data, "artworkUrl100");
+    char *artwork_url = json_extract_string(response_data, "artworkUrl100");
 
     if (!artwork_url) {
         // Try artworkUrl60 as fallback
-        artwork_url = extract_json_string(response_data, "artworkUrl60");
+        artwork_url = json_extract_string(response_data, "artworkUrl60");
     }
 
     if (artwork_url && artwork_url[0] != '\0') {
@@ -128,7 +118,7 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
     free(clean_track);
 
     // URL encode search term
-    char *term_encoded = url_encode(curl, search_term);
+    char *term_encoded = curl_url_encode(curl, search_term);
     if (!term_encoded) {
         curl_easy_cleanup(curl);
         return NULL;

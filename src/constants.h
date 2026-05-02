@@ -29,12 +29,14 @@
 #define TOOLTIP_BUFFER_SIZE 512
 #define TITLE_BUFFER_SIZE 256
 #define FONT_STRING_SIZE 256
+#define NOTIFICATION_BODY_SIZE 2048
 
 // JSON parsing
 #define JSON_PATTERN_SIZE 256
 
 // Network buffers
 #define URL_BUFFER_SIZE 2048
+#define HTTP_REQUEST_BODY_SIZE 4096
 #define USER_AGENT_STRING "wshowlyrics/0.10.0"
 
 // File size limits

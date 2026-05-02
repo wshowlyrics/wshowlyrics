@@ -11,21 +11,6 @@
 #include <strings.h>
 #include <curl/curl.h>
 
-// Deprecated: Use curl_url_encode from curl_utils.h instead
-static char* url_encode(CURL *curl, const char *str) {
-    return curl_url_encode(curl, str);
-}
-
-// Deprecated: Use json_extract_string from json_utils.h instead
-static char* extract_json_string(const char *json, const char *key) {
-    return json_extract_string(json, key);
-}
-
-// Deprecated: Use json_extract_int_from from json_utils.h instead
-static int64_t extract_json_int(const char *json, const char *key, const char *search_start) {
-    return json_extract_int_from(json, key, search_start);
-}
-
 // Build search request URL with sanitized title and optional artist
 static bool build_search_request_url(CURL *curl, const char *title, const char *artist,
                                      char *url_buffer, size_t buffer_size) {
@@ -39,7 +24,7 @@ static bool build_search_request_url(CURL *curl, const char *title, const char *
     log_info("Sanitized title: '%s' -> '%s'", title, clean_title);
 
     // Build search query - use track_name with sanitized title
-    char *title_encoded = url_encode(curl, clean_title);
+    char *title_encoded = curl_url_encode(curl, clean_title);
     free(clean_title);
 
     if (!title_encoded) {
@@ -57,7 +42,7 @@ static bool build_search_request_url(CURL *curl, const char *title, const char *
 
     // Add artist if available
     if (artist && artist[0] != '\0') {
-        char *artist_encoded = url_encode(curl, artist);
+        char *artist_encoded = curl_url_encode(curl, artist);
         if (artist_encoded) {
             snprintf(url_buffer + offset, buffer_size - offset,
                     "&artist_name=%s", artist_encoded);
@@ -119,8 +104,8 @@ static struct best_match_result find_best_match_in_results(
         search_pos = obj_end + 1;
 
         // Extract duration and syncedLyrics for this result
-        int64_t result_duration = extract_json_int(response_data, "duration", obj_start);
-        char *synced_lyrics = extract_json_string(obj_start, "syncedLyrics");
+        int64_t result_duration = json_extract_int_from(response_data, "duration", obj_start);
+        char *synced_lyrics = json_extract_string(obj_start, "syncedLyrics");
 
         // Skip entries without valid synced lyrics
         if (!synced_lyrics || synced_lyrics[0] == '\0') {
@@ -160,9 +145,9 @@ static struct best_match_result find_best_match_in_results(
 static void extract_metadata_from_result(const char *obj_start, struct lyrics_data *data) {
     if (!obj_start) return;
 
-    char *artist_name = extract_json_string(obj_start, "artistName");
-    char *album_name = extract_json_string(obj_start, "albumName");
-    char *track_name = extract_json_string(obj_start, "trackName");
+    char *artist_name = json_extract_string(obj_start, "artistName");
+    char *album_name = json_extract_string(obj_start, "albumName");
+    char *track_name = json_extract_string(obj_start, "trackName");
 
     if (artist_name && artist_name[0] != '\0') {
         free(data->metadata.artist);
@@ -305,9 +290,9 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     }
 
     // URL encode parameters
-    char *title_encoded = url_encode(curl, title);
-    char *artist_encoded = url_encode(curl, artist);
-    char *album_encoded = url_encode(curl, album);
+    char *title_encoded = curl_url_encode(curl, title);
+    char *artist_encoded = curl_url_encode(curl, artist);
+    char *album_encoded = curl_url_encode(curl, album);
 
     if (!title_encoded || !artist_encoded || !album_encoded) {
         curl_free(title_encoded);
@@ -377,8 +362,8 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
     }
 
     // Extract syncedLyrics or plainLyrics
-    char *synced_lyrics = extract_json_string(response.data, "syncedLyrics");
-    char *plain_lyrics = extract_json_string(response.data, "plainLyrics");
+    char *synced_lyrics = json_extract_string(response.data, "syncedLyrics");
+    char *plain_lyrics = json_extract_string(response.data, "plainLyrics");
 
     bool success = false;
 

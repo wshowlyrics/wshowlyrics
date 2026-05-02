@@ -189,7 +189,7 @@ static char* translate_single_line(const char *text, const char *target_lang,
         attempt++;
 
         // Build JSON request
-        char request_body[4096];
+        char request_body[HTTP_REQUEST_BODY_SIZE];
         char *escaped = json_escape_string(text);
         if (!escaped) {
             return NULL;

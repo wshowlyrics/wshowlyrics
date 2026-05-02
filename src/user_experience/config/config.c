@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <ctype.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -269,12 +268,6 @@ static bool parse_hex_color(const char *hex, double rgba[4]) {
     return true;
 }
 
-// Deprecated: Use trim_whitespace from string_utils.h instead
-// Kept for backwards compatibility with existing code
-char* config_trim_whitespace(char *str) {
-    return trim_whitespace(str);
-}
-
 void config_init_defaults(struct config *cfg) {
     memset(cfg, 0, sizeof(*cfg));
 
@@ -346,7 +339,10 @@ static char* config_get_user_path(void) {
     const char *config_home = getenv("XDG_CONFIG_HOME");
     const char *home = getenv("HOME");
 
-    if (!config_home && !home) {
+    const bool has_config_home = config_home && config_home[0] != '\0';
+    const bool has_home = home && home[0] != '\0';
+
+    if (!has_config_home && !has_home) {
         return NULL;
     }
 
@@ -354,7 +350,7 @@ static char* config_get_user_path(void) {
     if (!path) return NULL;
 
     int result;
-    if (config_home) {
+    if (has_config_home) {
         result = build_config_path(path, CONFIG_PATH_SIZE, config_home);
     } else {
         result = snprintf(path, CONFIG_PATH_SIZE, "%s/.config/wshowlyrics/settings.ini", home);
@@ -475,7 +471,7 @@ bool config_load(struct config *cfg, const char *path) {
     char section[SMALL_BUFFER_SIZE] = {0};
 
     while (fgets(line, sizeof(line), f)) {
-        char *trimmed = config_trim_whitespace(line);
+        char *trimmed = trim_whitespace(line);
 
         // Skip empty lines and comments
         if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
@@ -497,14 +493,14 @@ bool config_load(struct config *cfg, const char *path) {
         if (!equals) continue;
 
         *equals = '\0';
-        const char *key = config_trim_whitespace(trimmed);
-        char *value = config_trim_whitespace(equals + 1);
+        const char *key = trim_whitespace(trimmed);
+        char *value = trim_whitespace(equals + 1);
 
         // Remove inline comments (# after value)
         char *comment = strchr(value, '#');
         if (comment) {
             *comment = '\0';
-            value = config_trim_whitespace(value);
+            value = trim_whitespace(value);
         }
 
         // Parse based on section using helper functions
@@ -545,7 +541,7 @@ bool config_is_extension_enabled(const char *ext) {
     char *saveptr;
     char *token = strtok_r(exts, ",", &saveptr);
     while (token) {
-        const char *trimmed = config_trim_whitespace(token);
+        const char *trimmed = trim_whitespace(token);
         if (strcasecmp(trimmed, ext) == 0) {
             found = true;
             break;
@@ -581,7 +577,7 @@ static struct config_key* parse_config_keys_from_file(FILE *f) {
     char section[64] = {0};
 
     while (fgets(line, sizeof(line), f)) {
-        char *trimmed = config_trim_whitespace(line);
+        char *trimmed = trim_whitespace(line);
 
         // Skip empty lines and comments
         if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
@@ -603,7 +599,7 @@ static struct config_key* parse_config_keys_from_file(FILE *f) {
         if (!equals || section[0] == '\0') continue;
 
         *equals = '\0';
-        char *key = config_trim_whitespace(trimmed);
+        char *key = trim_whitespace(trimmed);
 
         // Add to list
         struct config_key *node = malloc(sizeof(struct config_key));
@@ -653,7 +649,7 @@ static bool key_exists_in_file(const char *user_path, const char *section, const
     bool found = false;
 
     while (fgets(line, sizeof(line), f)) {
-        char *trimmed = config_trim_whitespace(line);
+        char *trimmed = trim_whitespace(line);
 
         // Skip empty lines and comments
         if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
@@ -675,7 +671,7 @@ static bool key_exists_in_file(const char *user_path, const char *section, const
         if (!equals) continue;
 
         *equals = '\0';
-        const char *file_key = config_trim_whitespace(trimmed);
+        const char *file_key = trim_whitespace(trimmed);
 
         if (strcmp(current_section, section) == 0 && strcmp(file_key, key) == 0) {
             found = true;
@@ -828,7 +824,7 @@ static char* try_parse_section_header(char *trimmed_line) {
     }
 
     *end = '\0';
-    return config_trim_whitespace(trimmed_line + 1);
+    return trim_whitespace(trimmed_line + 1);
 }
 
 // Parse user config to extract all sections (including empty ones)
@@ -848,7 +844,7 @@ static struct section_list* parse_user_config_sections(const char *user_path) {
     char line[CONFIG_LINE_SIZE];
 
     while (fgets(line, sizeof(line), f)) {
-        char *trimmed = config_trim_whitespace(line);
+        char *trimmed = trim_whitespace(line);
 
         // Skip empty lines and comments
         if (trimmed[0] == '\0' || trimmed[0] == '#' || trimmed[0] == ';') {
@@ -1113,7 +1109,7 @@ static void display_missing_keys_warning(struct config_key *missing_keys, const 
     }
 
     if (should_notify) {
-        char body[2048];
+        char body[NOTIFICATION_BODY_SIZE];
         snprintf(body, sizeof(body),
             "Your config is missing new settings:\n%s\nCheck: %s",
             missing_keys_list, sanitize_path(example_path));

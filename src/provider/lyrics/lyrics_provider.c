@@ -11,6 +11,7 @@
 #include "../../translator/openai/openai_translator.h"
 #include "../../constants.h"
 #include "../../utils/file/file_utils.h"
+#include "../../utils/string/string_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -249,7 +250,7 @@ static char** parse_custom_extensions(const char *extensions) {
     char *saveptr;
     char *token = strtok_r(exts_copy, ",", &saveptr);
     while (token && idx < count) {
-        const char *trimmed = config_trim_whitespace(token);
+        const char *trimmed = trim_whitespace(token);
         result[idx] = strdup(trimmed);
         if (!result[idx]) {
             cleanup_partial_extensions(result, idx);
@@ -399,7 +400,7 @@ static bool is_track_ignored(const char *music_file_dir) {
     char *token = strtok_r(ignore_copy, ":", &saveptr);
 
     while (token) {
-        const char *trimmed = config_trim_whitespace(token);
+        const char *trimmed = trim_whitespace(token);
         char *expanded = expand_path_token(trimmed, music_file_dir);
         if (!expanded) {
             token = strtok_r(NULL, ":", &saveptr);
@@ -443,7 +444,7 @@ static int build_custom_search_dirs(const char **search_dirs, int max_dirs,
     char *token = strtok_r(dirs_copy, ":", &saveptr);
 
     while (token && dir_count < max_dirs) {
-        const char *trimmed = config_trim_whitespace(token);
+        const char *trimmed = trim_whitespace(token);
         char *expanded = expand_path_token(trimmed, current_dir);
 
         if (expanded && expanded[0] != '\0') {
