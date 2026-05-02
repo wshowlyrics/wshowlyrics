@@ -1,4 +1,5 @@
 #include "wayland_init.h"
+#include "wayland_manager.h"
 #include "../../events/wayland_events.h"
 #include "../../constants.h"
 #include "../../provider/lyrics/lyrics_provider.h"
@@ -42,26 +43,26 @@ bool wayland_init_surface(struct lyrics_state *state, uint32_t layer, unsigned i
     }
 
     // Connect to Wayland display
-    state->display = wl_display_connect(NULL);
-    if (!state->display) {
+    state->wl_conn->display = wl_display_connect(NULL);
+    if (!state->wl_conn->display) {
         log_error("wl_display_connect: %s", strerror(errno));
         return false;
     }
 
     // Get registry and add listener
-    state->registry = wl_display_get_registry(state->display);
-    assert(state->registry);
-    wl_registry_add_listener(state->registry, wayland_events_get_registry_listener(), state);
-    wl_display_roundtrip(state->display);
+    state->wl_conn->registry = wl_display_get_registry(state->wl_conn->display);
+    assert(state->wl_conn->registry);
+    wl_registry_add_listener(state->wl_conn->registry, wayland_events_get_registry_listener(), state);
+    wl_display_roundtrip(state->wl_conn->display);
 
     // Check for required globals
     const struct {
         const char *name;
         void *ptr;
     } need_globals[] = {
-        {"wl_compositor", state->compositor},
-        {"wl_shm", state->shm},
-        {"wlr_layer_shell", state->layer_shell},
+        {"wl_compositor", state->wl_conn->compositor},
+        {"wl_shm", state->wl_conn->shm},
+        {"wlr_layer_shell", state->wl_conn->layer_shell},
     };
     for (size_t i = 0; i < sizeof(need_globals) / sizeof(need_globals[0]); ++i) {
         if (!need_globals[i].ptr) {
@@ -71,44 +72,44 @@ bool wayland_init_surface(struct lyrics_state *state, uint32_t layer, unsigned i
     }
 
     // Create surface and layer surface
-    state->surface = wl_compositor_create_surface(state->compositor);
-    assert(state->surface);
+    state->wl_conn->surface = wl_compositor_create_surface(state->wl_conn->compositor);
+    assert(state->wl_conn->surface);
 
-    state->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-            state->layer_shell, state->surface, NULL,
+    state->wl_conn->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
+            state->wl_conn->layer_shell, state->wl_conn->surface, NULL,
             layer, "lyrics");
-    assert(state->layer_surface);
+    assert(state->wl_conn->layer_surface);
 
     // Add listeners
-    wl_surface_add_listener(state->surface, wayland_events_get_surface_listener(), state);
+    wl_surface_add_listener(state->wl_conn->surface, wayland_events_get_surface_listener(), state);
     zwlr_layer_surface_v1_add_listener(
-            state->layer_surface, wayland_events_get_layer_surface_listener(), state);
+            state->wl_conn->layer_surface, wayland_events_get_layer_surface_listener(), state);
 
     // Configure layer surface
-    zwlr_layer_surface_v1_set_size(state->layer_surface, 1, 1);
-    zwlr_layer_surface_v1_set_anchor(state->layer_surface, anchor);
-    zwlr_layer_surface_v1_set_margin(state->layer_surface,
+    zwlr_layer_surface_v1_set_size(state->wl_conn->layer_surface, 1, 1);
+    zwlr_layer_surface_v1_set_anchor(state->wl_conn->layer_surface, anchor);
+    zwlr_layer_surface_v1_set_margin(state->wl_conn->layer_surface,
             margin, margin, margin, margin);
-    zwlr_layer_surface_v1_set_exclusive_zone(state->layer_surface, -1);
-    zwlr_layer_surface_v1_set_keyboard_interactivity(state->layer_surface, 0);
+    zwlr_layer_surface_v1_set_exclusive_zone(state->wl_conn->layer_surface, -1);
+    zwlr_layer_surface_v1_set_keyboard_interactivity(state->wl_conn->layer_surface, 0);
 
     // Set empty input region to allow clicks to pass through
-    struct wl_region *region = wl_compositor_create_region(state->compositor);
-    wl_surface_set_input_region(state->surface, region);
+    struct wl_region *region = wl_compositor_create_region(state->wl_conn->compositor);
+    wl_surface_set_input_region(state->wl_conn->surface, region);
     wl_region_destroy(region);
 
-    wl_surface_commit(state->surface);
+    wl_surface_commit(state->wl_conn->surface);
 
     // Wait for configure event
     int retry_count = 0;
     while ((state->width == 0 || state->height == 0) && retry_count < WAYLAND_CONFIGURE_RETRY_LIMIT) {
-        wl_display_roundtrip(state->display);
+        wl_display_roundtrip(state->wl_conn->display);
         retry_count++;
     }
 
     retry_count = 0;
     while ((state->width == 0 || state->height == 0) && retry_count < WAYLAND_CONFIGURE_RETRY_LIMIT) {
-        wl_display_dispatch(state->display);
+        wl_display_dispatch(state->wl_conn->display);
         retry_count++;
     }
 

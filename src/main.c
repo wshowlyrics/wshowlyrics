@@ -374,7 +374,7 @@ static void handle_instrumental_break(struct lyrics_state *state) {
 // Main event loop
 static void run_main_event_loop(struct lyrics_state *state, struct wayland_connection *wl_conn) {
     struct pollfd pollfds[] = {
-        { .fd = wl_display_get_fd(state->display), .events = POLLIN, },
+        { .fd = wl_display_get_fd(state->wl_conn->display), .events = POLLIN, },
     };
     int nfds = 1;
     int update_counter = 0;
@@ -568,6 +568,10 @@ int main(int argc, char *argv[]) {
     // Initialize subsystems
     initialize_subsystems(&state);
 
+    // Wayland connection manager (set up before init so it can populate the fields)
+    struct wayland_connection wl_conn = { 0 };
+    state.wl_conn = &wl_conn;
+
     // Initialize Wayland surface and connections
     if (!wayland_init_surface(&state, layer, anchor, margin)) {
         ret = 1;
@@ -575,21 +579,7 @@ int main(int argc, char *argv[]) {
     }
 
     state.run = true;
-
-    // Wayland connection manager
-    struct wayland_connection wl_conn = {
-        .display = state.display,
-        .registry = state.registry,
-        .compositor = state.compositor,
-        .shm = state.shm,
-        .layer_shell = state.layer_shell,
-        .surface = state.surface,
-        .layer_surface = state.layer_surface,
-        .configured = false,
-        .connected = true
-    };
-
-    state.wl_conn = &wl_conn;
+    wl_conn.connected = true;
     // Note: anchor, margin, and layer are stored by wayland_init_surface()
 
     // Run main event loop

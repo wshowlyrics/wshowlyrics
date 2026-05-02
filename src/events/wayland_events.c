@@ -156,12 +156,12 @@ static void registry_global(void *data, struct wl_registry *wl_registry,
         uint32_t name, const char *interface, uint32_t version) {
     struct lyrics_state *state = data;
     if (strcmp(interface, wl_compositor_interface.name) == 0) {
-        state->compositor = wl_registry_bind(wl_registry,
+        state->wl_conn->compositor = wl_registry_bind(wl_registry,
                 name, &wl_compositor_interface, 4);
     } else if (strcmp(interface, wl_shm_interface.name) == 0) {
-        state->shm = wl_registry_bind(wl_registry, name, &wl_shm_interface, 1);
+        state->wl_conn->shm = wl_registry_bind(wl_registry, name, &wl_shm_interface, 1);
     } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
-        state->layer_shell = wl_registry_bind(wl_registry,
+        state->wl_conn->layer_shell = wl_registry_bind(wl_registry,
                 name, &zwlr_layer_shell_v1_interface, 1);
     } else if (strncmp(interface, "org_kde_", 8) == 0) {
         // KDE compositor detected - buffer detach causes position reset
@@ -248,28 +248,19 @@ bool wayland_events_handle_reconnection(struct lyrics_state *state,
         return false;
     }
 
-    // Update state pointers
-    state->display = wl_conn->display;
-    state->registry = wl_conn->registry;
-    state->compositor = wl_conn->compositor;
-    state->shm = wl_conn->shm;
-    state->layer_shell = wl_conn->layer_shell;
-    state->surface = wl_conn->surface;
-    state->layer_surface = wl_conn->layer_surface;
-
     // Add listeners to new surfaces
-    wl_surface_add_listener(state->surface, &wl_surface_listener, state);
-    zwlr_layer_surface_v1_add_listener(state->layer_surface,
+    wl_surface_add_listener(state->wl_conn->surface, &wl_surface_listener, state);
+    zwlr_layer_surface_v1_add_listener(state->wl_conn->layer_surface,
             &layer_surface_listener, state);
 
     // Commit the surface
-    wl_surface_commit(state->surface);
+    wl_surface_commit(state->wl_conn->surface);
 
     // Wait for configure event
     int retry = 0;
     state->width = state->height = 0;
     while ((state->width == 0 || state->height == 0) && retry < 10) {
-        if (wl_display_roundtrip(state->display) == -1) {
+        if (wl_display_roundtrip(state->wl_conn->display) == -1) {
             log_warn("Roundtrip failed, compositor may not be available yet");
             state->reconnecting = false;
             return false;

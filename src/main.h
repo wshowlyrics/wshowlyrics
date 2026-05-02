@@ -55,14 +55,6 @@ struct lyrics_state {
     uint32_t background;
     const char *font;
 
-    struct wl_display *display;
-    struct wl_registry *registry;
-    struct wl_compositor *compositor;
-    struct wl_shm *shm;
-    struct zwlr_layer_shell_v1 *layer_shell;
-
-    struct wl_surface *surface;
-    struct zwlr_layer_surface_v1 *layer_surface;
     uint32_t width;
     uint32_t height;
     bool frame_scheduled;

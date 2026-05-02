@@ -448,7 +448,7 @@ void rendering_manager_render_transparent(struct lyrics_state *state) {
         // Some compositors (e.g., KDE) reset surface position on buffer detach
         // Use transparent buffer instead
         const int scale = state->output ? state->output->scale : 1;
-        state->current_buffer = get_next_buffer(state->shm,
+        state->current_buffer = get_next_buffer(state->wl_conn->shm,
                 state->buffers, state->width * scale, state->height * scale);
         if (state->current_buffer) {
             cairo_t *shm = state->current_buffer->cairo;
@@ -457,16 +457,16 @@ void rendering_manager_render_transparent(struct lyrics_state *state) {
             cairo_paint(shm);
             cairo_restore(shm);
 
-            wl_surface_set_buffer_scale(state->surface, scale);
-            wl_surface_attach(state->surface, state->current_buffer->buffer, 0, 0);
-            wl_surface_damage_buffer(state->surface, 0, 0, state->width, state->height);
-            wl_surface_commit(state->surface);
+            wl_surface_set_buffer_scale(state->wl_conn->surface, scale);
+            wl_surface_attach(state->wl_conn->surface, state->current_buffer->buffer, 0, 0);
+            wl_surface_damage_buffer(state->wl_conn->surface, 0, 0, state->width, state->height);
+            wl_surface_commit(state->wl_conn->surface);
         }
     } else {
         // Detach buffer to make surface fully transparent
         // This avoids buffer/surface size mismatch during resize
-        wl_surface_attach(state->surface, NULL, 0, 0);
-        wl_surface_commit(state->surface);
+        wl_surface_attach(state->wl_conn->surface, NULL, 0, 0);
+        wl_surface_commit(state->wl_conn->surface);
     }
 }
 
@@ -508,16 +508,16 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
         // Reconfigure surface size
         if (width == 0 || height == 0) {
             // No content - keep minimal 1x1 surface (buffer already detached above)
-            zwlr_layer_surface_v1_set_size(state->layer_surface, 1, 1);
+            zwlr_layer_surface_v1_set_size(state->wl_conn->layer_surface, 1, 1);
         } else {
             zwlr_layer_surface_v1_set_size(
-                    state->layer_surface, width / scale, height / scale);
+                    state->wl_conn->layer_surface, width / scale, height / scale);
         }
 
-        wl_surface_commit(state->surface);
+        wl_surface_commit(state->wl_conn->surface);
     } else if (height > 0) {
         // Replay recording into shm and send it off
-        state->current_buffer = get_next_buffer(state->shm,
+        state->current_buffer = get_next_buffer(state->wl_conn->shm,
                 state->buffers, state->width * scale, state->height * scale);
         if (!state->current_buffer) {
             cairo_surface_destroy(recorder);
@@ -534,19 +534,19 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
         cairo_set_source_surface(shm, recorder, 0.0, 0.0);
         cairo_paint(shm);
 
-        wl_surface_set_buffer_scale(state->surface, scale);
-        wl_surface_attach(state->surface,
+        wl_surface_set_buffer_scale(state->wl_conn->surface, scale);
+        wl_surface_attach(state->wl_conn->surface,
                 state->current_buffer->buffer, 0, 0);
-        wl_surface_damage_buffer(state->surface, 0, 0,
+        wl_surface_damage_buffer(state->wl_conn->surface, 0, 0,
                 state->width, state->height);
 
         // Request frame callback for vsync
-        state->frame_callback = wl_surface_frame(state->surface);
+        state->frame_callback = wl_surface_frame(state->wl_conn->surface);
         wl_callback_add_listener(state->frame_callback,
                 wayland_events_get_frame_listener(), state);
         state->frame_scheduled = true;
 
-        wl_surface_commit(state->surface);
+        wl_surface_commit(state->wl_conn->surface);
     }
 
     cairo_surface_destroy(recorder);
@@ -561,7 +561,7 @@ void rendering_manager_set_dirty(struct lyrics_state *state) {
 
     if (state->frame_scheduled) {
         state->dirty = true;
-    } else if (state->surface) {
+    } else if (state->wl_conn->surface) {
         rendering_manager_render_frame(state);
     }
 }
