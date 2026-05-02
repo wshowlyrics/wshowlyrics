@@ -44,7 +44,8 @@
 | **R9** | mpris.c:931, wayland_init.c:12, lyrics_manager.c:180 | 100+줄 함수 3개 | ⏸ 보류 (강제 아님) |
 | ~~R10~~ | config.c, deepl_translator.c | Magic number 버퍼 | ✅ 완료 (c15cdb9) |
 | ~~R11~~ | config.c | `XDG_CONFIG_HOME` 빈 문자열 가드 + 잠재 NULL deref | ✅ 완료 (c15cdb9) |
-| **R12** | main.h, main.c, wayland_init.c, rendering_manager.c, deepl_translator.c 등 | Unused includes 정리 (clangd 보고 + 가능시 iwyu 스캔) — R1 후 main.h 슬림화로 부각됨 | **TINY (zero-risk)** |
+| ~~R12-A~~ | 22 파일 | clang-tidy `misc-include-cleaner` 기준 unused #include 제거 (37 줄 순감) | ✅ 완료 (43a6366) |
+| **R12-B** | main.h | main.h 슬림화 (~30 .c가 stdint.h 등 직접 include 필요) | ⏸ 보류 (B 옵션 — 가독성 트레이드오프) |
 
 **TINY 묶음 (R3+R4+R6+R10+R11)**: ✅ 완료 (c15cdb9, 2026-05-02)
 
@@ -319,25 +320,12 @@ if (config_home && config_home[0] != '\0') {
 
 ### R12. Unused includes 정리
 
-**배경**: R1 작업 중 clangd가 보고한 unused includes들. R1으로 main.h가 7개 필드 만큼 슬림해지면서 더 이상 필요 없는 transitive include들이 부각됨.
-
-**clangd가 보고한 위치 (확인된 것)**:
-- `src/main.h`: errno.h, stdio.h, stdlib.h, string.h, time.h, pango_utils.h, lrc_parser.h, lrcx_parser.h, srt_parser.h, lyrics_provider.h
-- `src/main.c`: ctype.h
-- `src/utils/wayland/wayland_init.c`: errno.h
-- `src/core/rendering/rendering_manager.c`: pango_utils.h
-- `src/translator/deepl/deepl_translator.c`: string_utils.h, lang_detect.h
-
-**작업 옵션**:
-- (a) clangd 보고 위치만 정리 (확인된 것만, ~5개 파일) — 즉시 처리 가능
-- (b) `include-what-you-use` (iwyu) 도구로 전체 코드베이스 스캔 후 정리 — 범위 넓음
-
-**주의**:
-- clangd "unused" ≠ 컴파일 에러. GCC `-Werror`는 unused header 안 잡음.
-- 일부 헤더는 transitive include로 다른 모듈이 의존할 수 있음. 제거 후 빌드 깨짐 확인 필수.
-- main.h가 너무 많이 노출하던 헤더를 정리하면 다른 .c 파일에서 직접 include 추가 필요할 수 있음.
-
-**우선순위**: TINY — 정확히 무엇을 제거할지는 R12 작업 시점에 빌드 검증으로 확인.
+> **A 단계 ✅ 완료 (2026-05-03, 43a6366)**: 22 파일에서 unused #include 37줄 순감.
+> - 도구: `clang-tidy --checks="-*,misc-include-cleaner"` (compile_commands.json 활용)
+> - False positive 5건 복구 (json-c/json.h ×4, shm.h forward dec 추가, stdio.h ×1)
+> - 검증: meson build clean, Sway/Hyprland 런타임 (가사/D-Bus/pause-resume/instrumental/TTY)
+>
+> **B 단계 ⏸ 보류**: main.h 자체 슬림화. clang-tidy 분석 시 528건 missing include 발견되어 거대 변경 필요. 가독성 트레이드오프 (각 .c 파일이 stdint.h, string.h 등 다 직접 include) — 사용자 결정으로 보류.
 
 ---
 
@@ -347,10 +335,10 @@ if (config_home && config_home[0] != '\0') {
 2. ~~HTTP S5332 검토~~ ✅ 완료 (SAFE + acknowledgement)
 3. ~~**TINY 묶음 PR** (R3 + R4 + R6 + R10 + R11, zero-risk)~~ ✅ 완료 (c15cdb9, 2026-05-02)
 4. ~~**R1**: Wayland 필드 → `wl_conn` 통합~~ ✅ 완료 (9007eec, 2026-05-03)
-5. ~~**R2**: S1820 `lyrics_state` 분리 (A 단계: sub-struct)~~ ✅ 완료 (6b55f10, 2026-05-03)
-6. **R12**: Unused includes 정리 (zero-risk)
+5. ~~**R2-A**: S1820 `lyrics_state` 분리 (sub-struct)~~ ✅ 완료 (6b55f10, 2026-05-03)
+6. ~~**R12-A**: misc-include-cleaner 기반 unused 제거~~ ✅ 완료 (43a6366, 2026-05-03)
 7. **R7**: Translator vtable 추상화 — Ollama 추가 전 마치는 게 합리적
-8. **R2-B**: 시그니처 분해 — 작은 함수가 sub-struct만 받도록 점진적 (후속, 가치 평가 후)
+8. ~~R2-B / R12-B~~ ⏸ 보류 (둘 다 가치 트레이드오프로 deferred)
 9. ~~R5/R8/R9~~ ⏸ 보류
 
 ---
@@ -455,12 +443,11 @@ if (config_home && config_home[0] != '\0') {
 
 ## 상태
 
-- **최종 업데이트**: 2026-05-03 (R2 A 단계 완료)
-- **현재 단계**: R12 (unused includes) 또는 R7 (translator vtable) 대기
-- **완료**: Phase 1-14 + 2026-05-02 SonarCloud 마킹 + TINY 묶음 (c15cdb9) + R1 (9007eec) + R2-A (6b55f10, 35→6 필드)
+- **최종 업데이트**: 2026-05-03 (R12-A 완료)
+- **현재 단계**: R7 (translator vtable) 대기
+- **완료**: Phase 1-14 + 2026-05-02 SonarCloud 마킹 + TINY 묶음 (c15cdb9) + R1 (9007eec) + R2-A (6b55f10) + R12-A (43a6366)
 - **남은 이슈**:
-  - 진행 예정: R12, R7 (zero-risk · 순서 무관)
-  - 후속 (가치 평가 후): R2-B (시그니처 분해, 작은 함수가 sub-struct만 받음)
-  - 보류: R5 (릴리스 정책), R8/R9 (강제 아님)
+  - 진행 예정: R7
+  - 보류: R2-B (시그니처 분해, ROI 작음), R12-B (main.h 슬림화, 가독성 트레이드오프), R5 (릴리스 정책), R8/R9 (강제 아님)
 - **목표**: A등급 유지, Quality Gate GREEN 유지, BLOCKER/CRITICAL 0개
 - **참고**: Coverity CID 643610 수정 완료 (b3a410a). SEC-A/SEC-B 검증 완료 — 모두 안전 (NULL+empty 가드 충분)
