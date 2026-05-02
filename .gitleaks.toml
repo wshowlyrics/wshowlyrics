@@ -1,0 +1,15 @@
+title = "wshowlyrics gitleaks config"
+
+# Inherit gitleaks' default rule set
+[extend]
+useDefault = true
+
+# Allowlists: patterns that are noise in this repo, not real secrets
+[[allowlists]]
+description = "Shell variable interpolation in markdown docs (e.g. ${TOKEN}, $TOKEN) is a placeholder, not a real secret"
+paths = [
+    '''.*\.md$''',
+]
+regexes = [
+    '''\$\{?[A-Z_][A-Z0-9_]*\}?''',
+]
