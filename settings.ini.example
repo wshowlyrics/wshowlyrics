@@ -182,13 +182,22 @@ position_fix_wait_ms = 2000
 
 # Translation provider and model
 # Format: provider or provider-model
+# The string here is used verbatim as the API model ID, so it must match
+# the exact ID exposed by the provider's ListModels endpoint - NOT the
+# friendly display name shown in dashboards.
 # Examples:
-#   provider = deepl                 (DeepL API)
-#   provider = gemini-2.5-flash      (Google Gemini API, free tier)
-#   provider = claude-sonnet-4-5     (Anthropic Claude API)
-#   provider = gpt-4o-mini           (OpenAI API, recommended)
-#   provider = gpt-4o                (OpenAI API, high quality)
-#   provider = false                 (disable translation)
+#   provider = deepl                            (DeepL API)
+#   provider = gemini-2.5-flash-lite            (Gemini API, GA, free tier)
+#   provider = gemini-3.1-flash-lite-preview    (Gemini API, preview - "-preview" suffix required)
+#   provider = claude-sonnet-4-5                (Anthropic Claude API)
+#   provider = gpt-4o-mini                      (OpenAI API, recommended)
+#   provider = gpt-4o                           (OpenAI API, high quality)
+#   provider = false                            (disable translation)
+# Note for Gemini: preview/experimental models keep their suffix in the
+# API ID (e.g. "-preview", "-exp"). The dashboard shows "Gemini 3.1 Flash
+# Lite" but the API ID is "gemini-3.1-flash-lite-preview". Verify with:
+#   curl "https://generativelanguage.googleapis.com/v1beta/models?key=$KEY" \
+#     | jq -r '.models[] | "\(.name) | \(.displayName)"'
 # See more models:
 #   Gemini: https://ai.google.dev/gemini-api/docs/models
 #   Claude: https://claude.com/pricing#api
@@ -243,6 +252,10 @@ translation_opacity = 0.7
 #   Gemini free tier: 10m (10 requests/minute)
 #   Gemini paid tier: 60m or higher (depending on your quota)
 #   Claude: 50m or higher (depending on your tier)
+# Note: This is the delay AFTER each response, not the target RPM. Real
+# request rate is bounded by HTTP RTT (~300-1500ms per call), so the
+# observed RPM in your provider dashboard will usually be lower than the
+# value implied here. Setting this below the typical RTT has no effect.
 # Default: 10m (suitable for Gemini free tier)
 rate_limit = 10m
 
