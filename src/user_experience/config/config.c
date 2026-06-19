@@ -774,7 +774,22 @@ static bool validate_config_path(const char *path) {
         return false;
     }
 
-    return is_path_in_safe_location(resolved_path);
+    if (is_path_in_safe_location(resolved_path)) {
+        return true;
+    }
+
+    // Fallback: trust the user-facing config path even when it is a symlink
+    // into a backend store. Secret managers (e.g. sops-nix, agenix) expose the
+    // config under ~/.config but realpath() resolves it into an opaque runtime
+    // location ($XDG_RUNTIME_DIR/secrets.d/..., /run/secrets/...) that is not in
+    // the safe-location list. Accept the original path when it is absolute, has
+    // no ".." traversal, and itself lives in a safe directory.
+    if (path[0] == '/' && !strstr(path, "..") &&
+        is_path_in_safe_location(path)) {
+        return true;
+    }
+
+    return false;
 }
 
 // Helper: Check if section exists in list
