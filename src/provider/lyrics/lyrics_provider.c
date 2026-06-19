@@ -356,10 +356,11 @@ static bool is_local_build_executable(void) {
     }
 
     exe_path[len] = '\0';
-    // Check if executable path contains "build/" or ends with "/lyrics" in local directory
-    return (strstr(exe_path, "/build/") != NULL ||
-            (strstr(exe_path, "/lyrics") != NULL && exe_path[0] != '/' &&
-             strncmp(exe_path, "/usr/", 5) != 0));
+    // Local builds run from the meson build dir (build/lyrics) or are the
+    // dev-named "lyrics" binary; the installed binary is renamed "wshowlyrics".
+    const char *base = strrchr(exe_path, '/');
+    bool dev_named = base != NULL && strcmp(base, "/lyrics") == 0;
+    return strstr(exe_path, "/build/") != NULL || dev_named;
 }
 
 // Expand path token: ~ → $HOME, {music_dir} → music file directory
