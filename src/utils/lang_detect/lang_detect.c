@@ -53,9 +53,14 @@ static char* normalize_language_code(const char *bcp47_code) {
 
 bool lang_detect_init(void) {
 #ifdef HAVE_LIBEXTTEXTCAT
+	// Data dir is resolved from libexttextcat's pkg-config at build time so it
+	// works on both FHS and non-FHS (Nix) layouts; fall back to the FHS path.
+#ifndef LIBEXTTEXTCAT_DATADIR
+#define LIBEXTTEXTCAT_DATADIR "/usr/share/libexttextcat"
+#endif
 	// Try to initialize libexttextcat with prefix
-	const char *config_path = "/usr/share/libexttextcat/fpdb.conf";
-	const char *prefix = "/usr/share/libexttextcat/";
+	const char *config_path = LIBEXTTEXTCAT_DATADIR "/fpdb.conf";
+	const char *prefix = LIBEXTTEXTCAT_DATADIR "/";
 	textcat_handle = special_textcat_Init(config_path, prefix);
 
 	if (textcat_handle) {

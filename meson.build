@@ -54,6 +54,14 @@ exttextcat_dep = dependency('libexttextcat', required: false)
 # Configure config.h with optional features
 conf_data = configuration_data()
 conf_data.set('HAVE_LIBEXTTEXTCAT', exttextcat_dep.found())
+if exttextcat_dep.found()
+	# Resolve the data dir (holding fpdb.conf) from libexttextcat itself so the
+	# path is correct on both FHS distros (/usr/share/libexttextcat) and
+	# non-FHS layouts like Nix (/nix/store/.../share/libexttextcat).
+	conf_data.set_quoted('LIBEXTTEXTCAT_DATADIR',
+		exttextcat_dep.get_variable(pkgconfig: 'pkgdatadir',
+			default_value: '/usr/share/libexttextcat'))
+endif
 
 configure_file(
 	output: 'config.h',
