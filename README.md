@@ -4,9 +4,7 @@
 [![AUR version](https://img.shields.io/aur/version/wshowlyrics-git)](https://aur.archlinux.org/packages/wshowlyrics-git)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://www.linux.org/)
 [![Wayland](https://img.shields.io/badge/Wayland-Only-orange.svg)](https://wayland.freedesktop.org/)
-<!-- Coverity Scan upload returning HTTP 413 since 2026-05-17; re-enable when service comes back
 [![Coverity Scan](https://scan.coverity.com/projects/32954/badge.svg?flat=1)](https://scan.coverity.com/projects/wshowlyrics)
--->
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=wshowlyrics_wshowlyrics&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=wshowlyrics_wshowlyrics)
 
 <p align="center">
