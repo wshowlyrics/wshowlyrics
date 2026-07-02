@@ -656,8 +656,13 @@ publish:ppa:tarball:
       echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
       gpg-agent --daemon --allow-preset-passphrase || true
 
-    # Copy orig tarball from artifact
-    - cp "ppa-tarball/wshowlyrics_${VERSION}.orig.tar.gz" ../
+    # Move the shared orig tarball out to the parent dir (where dpkg-source
+    # expects it) and remove the now-empty artifact dir. dpkg-source diffs
+    # the whole working tree against the orig, so anything left inside it
+    # (the tarball) fails with "cannot represent change ... binary file
+    # contents changed". Leaves only the upstream source + debian/ in the tree.
+    - mv "ppa-tarball/wshowlyrics_${VERSION}.orig.tar.gz" ../
+    - rm -rf ppa-tarball
 
     # Build source package
     - debuild -S -sa -d -kB4CD9B155AA3124C
