@@ -457,7 +457,9 @@ void rendering_manager_render_transparent(struct lyrics_state *state) {
 
             wl_surface_set_buffer_scale(state->wl_conn->surface, scale);
             wl_surface_attach(state->wl_conn->surface, state->surface.current_buffer->buffer, 0, 0);
-            wl_surface_damage_buffer(state->wl_conn->surface, 0, 0, state->surface.width, state->surface.height);
+            // damage_buffer takes buffer coordinates (buffer is width*scale x height*scale)
+            wl_surface_damage_buffer(state->wl_conn->surface, 0, 0,
+                    state->surface.width * scale, state->surface.height * scale);
             wl_surface_commit(state->wl_conn->surface);
         }
     } else {
@@ -535,8 +537,11 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
         wl_surface_set_buffer_scale(state->wl_conn->surface, scale);
         wl_surface_attach(state->wl_conn->surface,
                 state->surface.current_buffer->buffer, 0, 0);
+        // damage_buffer takes buffer coordinates, so scale up from surface size
+        // (buffer is width*scale x height*scale). Without this, scale>1 outputs
+        // only refresh the top-left 1/scale^2 region and the overlay appears frozen.
         wl_surface_damage_buffer(state->wl_conn->surface, 0, 0,
-                state->surface.width, state->surface.height);
+                state->surface.width * scale, state->surface.height * scale);
 
         // Request frame callback for vsync
         state->surface.frame_callback = wl_surface_frame(state->wl_conn->surface);
