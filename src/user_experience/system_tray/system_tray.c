@@ -735,6 +735,46 @@ static bool cache_current_artwork(const char *cache_path) {
     return false;
 }
 
+// Point the tray indicator at the per-track album-art cache file, using the
+// metadata md5 as the icon name. Because the icon name changes whenever the
+// track changes, this forces the SNI host to invalidate its name-keyed icon
+// cache and re-read the PNG — unlike the fixed ICON_NAME, which the host keeps
+// cached even after album-art.png is overwritten on disk.
+// Returns true if the indicator was set to the cache icon.
+static bool set_indicator_icon_cached(const char *metadata_hash) {
+    if (!indicator || !metadata_hash || metadata_hash[0] == '\0') {
+        return false;
+    }
+
+    // Resolve the cache file path ({album_art_dir}/{md5}.png)
+    char cache_path[512];
+    if (build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
+        return false;
+    }
+
+    // The cache file must exist for the theme lookup to succeed
+    struct stat st;
+    if (stat(cache_path, &st) != 0) {
+        return false;
+    }
+
+    // Derive the theme directory by stripping "/{md5}.png"
+    char theme_dir[512];
+    snprintf(theme_dir, sizeof(theme_dir), "%s", cache_path);
+    char *slash = strrchr(theme_dir, '/');
+    if (!slash) {
+        return false;
+    }
+    *slash = '\0';
+
+    // Icon name is the md5 (basename without extension); theme path is its dir
+    app_indicator_set_icon_theme_path(indicator, theme_dir);
+    app_indicator_set_icon_full(indicator, metadata_hash, "Album Art");
+
+    log_info("Tray icon set from cache (name=%s)", metadata_hash);
+    return true;
+}
+
 // Load cached album art and set as icon
 static bool load_cached_album_art(const char *cache_path, const char *metadata_hash) {
     struct stat st;
@@ -854,16 +894,19 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
 
     // Priority 1: Try cache first (fastest, no network request)
     if (cache_path[0] != '\0' && load_cached_album_art(cache_path, metadata_hash)) {
+        set_indicator_icon_cached(metadata_hash);
         return true;
     }
 
     // Priority 2: Try MPRIS art URL (network request if cache miss)
     if (try_mpris_artwork(art_url, cache_path, metadata_hash)) {
+        set_indicator_icon_cached(metadata_hash);
         return true;
     }
 
     // Priority 3: Try iTunes API (network request)
     if (try_itunes_artwork(artist, album, track, cache_path, metadata_hash)) {
+        set_indicator_icon_cached(metadata_hash);
         return true;
     }
 
