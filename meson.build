@@ -1,7 +1,7 @@
 project(
 	'lyrics',
 	'c',
-	version: '0.10.0',
+	version: '0.10.1',
 	license: 'GPL',
 	meson_version: '>=0.51.0',
 	default_options: [
@@ -195,3 +195,4 @@ if get_option('fuzzing')
 		)
 	endforeach
 endif
+
