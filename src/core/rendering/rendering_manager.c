@@ -520,6 +520,11 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
         state->surface.current_buffer = get_next_buffer(state->wl_conn->shm,
                 state->surface.buffers, state->surface.width * scale, state->surface.height * scale);
         if (!state->surface.current_buffer) {
+            // Both pool buffers are still busy (compositor has not released them).
+            // The frame is dropped; a later set_dirty (poll for LRCX, line change
+            // for LRC/SRT) will retry. Log so a "frozen overlay" is diagnosable.
+            log_warn("render: shm buffer pool exhausted (%ux%u), dropping frame",
+                    state->surface.width * scale, state->surface.height * scale);
             cairo_surface_destroy(recorder);
             cairo_destroy(cairo);
             return;
