@@ -595,21 +595,33 @@ static char* trim_whitespace_inplace(char *str) {
     return str;
 }
 
+// Helper: Match a running player against a preferred_players entry
+// Handles instance suffixes: "mpv" matches "mpv" and "mpv.instance-XXXX".
+// The suffix must be delimited by '.' so "mpv" does not match "mpvfoo".
+static bool player_matches_preferred(const char *player_name, const char *preferred) {
+    size_t plen = strlen(preferred);
+    if (strncmp(player_name, preferred, plen) != 0) {
+        return false;
+    }
+    return player_name[plen] == '\0' || player_name[plen] == '.';
+}
+
 // Helper: Check if preferred player matches and handle it
 // Returns: strdup'd player name if playing, NULL otherwise
 static char* check_preferred_player_match(const char *preferred, const char *player_name,
                                           char **fallback_out) {
-    if (strcmp(player_name, preferred) != 0) {
+    if (!player_matches_preferred(player_name, preferred)) {
         return NULL;  // Not a match
     }
 
-    if (is_player_playing(preferred)) {
-        return strdup(preferred);  // Found playing preferred player
+    // Use the actual running name (e.g. mpv.instance-XXXX), not the config token
+    if (is_player_playing(player_name)) {
+        return strdup(player_name);  // Found playing preferred player
     }
 
     // Remember first available (but not playing) as fallback
     if (!*fallback_out) {
-        *fallback_out = strdup(preferred);
+        *fallback_out = strdup(player_name);
     }
 
     return NULL;
@@ -643,8 +655,8 @@ static bool should_switch_to_player(const char *player_name) {
                 continue;
             }
 
-            bool matches_new = (strcmp(player_name, preferred) == 0);
-            bool matches_current = (strcmp(mpris_state.current_player, preferred) == 0);
+            bool matches_new = player_matches_preferred(player_name, preferred);
+            bool matches_current = player_matches_preferred(mpris_state.current_player, preferred);
 
             if (matches_new) {
                 should_switch = true;
@@ -844,18 +856,16 @@ static char* find_preferred_player(const char *preferred_players_str, char **all
             continue;
         }
 
-        // Check if this preferred player is available
+        // Scan ALL players for this preferred entry. One entry (e.g. "mpv") can
+        // match several running players ("mpv", "mpv.instance-XXXX"), so we must
+        // not stop at the first match — keep looking for a *playing* sibling.
+        // check_preferred_player_match() records the first match as fallback.
         for (int i = 0; i < player_count; i++) {
             char *result = check_preferred_player_match(preferred, all_players[i], fallback_out);
             if (result) {
                 // Found playing preferred player
                 free(players_copy);
                 return result;
-            }
-
-            // If matched (but not playing), break out of loop
-            if (strcmp(all_players[i], preferred) == 0) {
-                break;
             }
         }
 
