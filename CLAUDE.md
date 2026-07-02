@@ -14,6 +14,8 @@ meson compile -C build
 
 The installed binary is `wshowlyrics`; locally it is `build/lyrics`. Always rebuild with `werror=true` in mind — any new warning breaks the build.
 
+On NixOS, `nix-shell` (root `shell.nix`) provides all build/fuzz deps — enter it first, then run the meson commands above. It sets `hardeningDisable = [ "fortify" ]` because nixpkgs injects `-D_FORTIFY_SOURCE=2`, which warns under the default debug (`-O0`) build and `werror=true` promotes that to an error.
+
 ### Fuzz Targets
 
 Parsers (LRC/LRCX/SRT) have libFuzzer + ASan targets. Build separately with clang:
