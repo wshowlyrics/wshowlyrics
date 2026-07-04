@@ -25,55 +25,109 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-# Check if wshowlyrics is running
-if ! busctl --user status "$DBUS_SERVICE" &>/dev/null; then
-    echo "Error: wshowlyrics is not running (D-Bus service not found)"
+# Pick an available D-Bus client. gdbus (glib) is preferred but ships in a
+# separate package on some distros (NixOS glib.bin, Debian libglib2.0-bin);
+# busctl (systemd) and dbus-send (reference dbus) are the portable fallbacks.
+if command -v gdbus >/dev/null 2>&1; then
+    DBUS_BACKEND="gdbus"
+elif command -v busctl >/dev/null 2>&1; then
+    DBUS_BACKEND="busctl"
+elif command -v dbus-send >/dev/null 2>&1; then
+    DBUS_BACKEND="dbus-send"
+else
+    echo "Error: no D-Bus client found (need one of: gdbus, busctl, dbus-send)" >&2
     exit 1
 fi
+
+# Invoke a method on the control interface. Errors are surfaced (not swallowed)
+# so a missing service or bad argument is actually reported to the user.
+#   dbus_invoke <method> [<type> <value>]   type is 'i' (int32) or 'b' (bool)
+dbus_invoke() {
+    local method="$1" type="$2" value="$3" out rc
+
+    case "$DBUS_BACKEND" in
+        gdbus)
+            if [ -n "$type" ]; then
+                out=$(gdbus call --session --dest "$DBUS_SERVICE" \
+                    --object-path "$DBUS_PATH" \
+                    --method "$DBUS_INTERFACE.$method" -- "$value" 2>&1)
+            else
+                out=$(gdbus call --session --dest "$DBUS_SERVICE" \
+                    --object-path "$DBUS_PATH" \
+                    --method "$DBUS_INTERFACE.$method" 2>&1)
+            fi
+            ;;
+        busctl)
+            if [ -n "$type" ]; then
+                # '--' stops option parsing so negative values (e.g. -50) are
+                # treated as arguments, not busctl flags.
+                out=$(busctl --user call "$DBUS_SERVICE" "$DBUS_PATH" \
+                    "$DBUS_INTERFACE" "$method" -- "$type" "$value" 2>&1)
+            else
+                out=$(busctl --user call "$DBUS_SERVICE" "$DBUS_PATH" \
+                    "$DBUS_INTERFACE" "$method" 2>&1)
+            fi
+            ;;
+        dbus-send)
+            local dbtype
+            case "$type" in
+                i) dbtype="int32:$value" ;;
+                b) dbtype="boolean:$value" ;;
+                *) dbtype="" ;;
+            esac
+            out=$(dbus-send --session --dest="$DBUS_SERVICE" \
+                "$DBUS_PATH" "$DBUS_INTERFACE.$method" $dbtype 2>&1)
+            ;;
+    esac
+    rc=$?
+
+    if [ $rc -ne 0 ]; then
+        echo "Error: D-Bus call '$method' failed (is wshowlyrics running?)" >&2
+        [ -n "$out" ] && echo "  $out" >&2
+        exit 1
+    fi
+}
 
 # Handle special commands
 case "$1" in
     toggle)
-        gdbus call --session --dest "$DBUS_SERVICE" \
-            --object-path "$DBUS_PATH" \
-            --method "$DBUS_INTERFACE.ToggleOverlay" &>/dev/null
+        dbus_invoke "ToggleOverlay"
         echo "Overlay toggled"
         exit 0
         ;;
     show)
-        gdbus call --session --dest "$DBUS_SERVICE" \
-            --object-path "$DBUS_PATH" \
-            --method "$DBUS_INTERFACE.SetOverlay" true &>/dev/null
+        dbus_invoke "SetOverlay" b true
         echo "Overlay shown"
         exit 0
         ;;
     hide)
-        gdbus call --session --dest "$DBUS_SERVICE" \
-            --object-path "$DBUS_PATH" \
-            --method "$DBUS_INTERFACE.SetOverlay" false &>/dev/null
+        dbus_invoke "SetOverlay" b false
         echo "Overlay hidden"
         exit 0
         ;;
     reset)
-        gdbus call --session --dest "$DBUS_SERVICE" \
-            --object-path "$DBUS_PATH" \
-            --method "$DBUS_INTERFACE.ResetTimingOffset" &>/dev/null
+        dbus_invoke "ResetTimingOffset"
         echo "Timing offset reset to global offset"
         exit 0
         ;;
 esac
 
-# Handle timing offset adjustment
+# Timing offset adjustment. Strip a leading '+' so every backend parses the
+# integer (gdbus/GVariant rejects the '+100' form).
+value="${1#+}"
+
+# Validate the argument is a signed integer before hitting D-Bus.
+if ! [[ "$value" =~ ^-?[0-9]+$ ]]; then
+    echo "Error: '$1' is not a valid offset (expected an integer, reset, toggle, show, or hide)" >&2
+    exit 1
+fi
+
 if [[ "$1" =~ ^[+-] ]]; then
     # Cumulative mode: +100, -100
-    gdbus call --session --dest "$DBUS_SERVICE" \
-        --object-path "$DBUS_PATH" \
-        --method "$DBUS_INTERFACE.AdjustTimingOffset" -- "$1" &>/dev/null
+    dbus_invoke "AdjustTimingOffset" i "$value"
     echo "Timing offset adjusted by: $1 ms"
 else
-    # Absolute mode: 0, 500, -200
-    gdbus call --session --dest "$DBUS_SERVICE" \
-        --object-path "$DBUS_PATH" \
-        --method "$DBUS_INTERFACE.SetTimingOffset" -- "$1" &>/dev/null
+    # Absolute mode: 0, 500
+    dbus_invoke "SetTimingOffset" i "$value"
     echo "Timing offset set to: $1 ms"
 fi
