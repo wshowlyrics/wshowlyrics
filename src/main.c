@@ -20,6 +20,7 @@
 #include <curl/curl.h>
 #include <sys/stat.h>
 #include <signal.h>
+#include <time.h>
 
 // Global state for signal handler
 static struct lyrics_state *g_state = NULL;
@@ -267,6 +268,51 @@ static int parse_command_line_options(int argc, char *argv[], struct lyrics_stat
     return 0;
 }
 
+// Keep the currently playing track's cache files "warm" so long single-track
+// playback (e.g. mpv --loop-file=inf) does not let the atime-based auto cleanup
+// delete a cache entry that is actively in use. detect_track_change() suppresses
+// reloads for an unchanged URL, so the cache load path (which touches on access)
+// never re-fires during a loop; without this the atime stays frozen at first load.
+static void touch_active_track_cache(struct lyrics_state *state) {
+    // Only meaningful while actually playing a loaded track.
+    if (!mpris_is_playing() || !state->playback.lyrics.source_file_path) {
+        return;
+    }
+
+    // Throttle: cleanup granularity is days, so refreshing every few minutes
+    // is ample and avoids needless I/O on every tick.
+    static time_t last_touch_sec = 0;
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        return;
+    }
+    if (last_touch_sec != 0 && (now.tv_sec - last_touch_sec) < CACHE_TOUCH_INTERVAL_SEC) {
+        return;
+    }
+    last_touch_sec = now.tv_sec;
+
+    // Lyrics cache file — only when the lyrics themselves live in the cache.
+    // Local .lrc files sit outside the cache and are never auto-cleaned.
+    const char *lyrics_path = state->playback.lyrics.source_file_path;
+    const char *cache_base = get_cache_base_dir();
+    if (strncmp(lyrics_path, cache_base, strlen(cache_base)) == 0) {
+        touch_cache_file(lyrics_path);
+    }
+
+    // Translation cache ({md5}_{lang}.json) always lives in the cache dir,
+    // regardless of whether the lyrics came from a local file or the online
+    // cache — so touch it independently of the check above. No-op (ENOENT)
+    // when this track has no cached translation.
+    const char *target_lang = g_config.translation.target_language;
+    const char *md5 = state->playback.lyrics.md5_checksum;
+    if (target_lang && target_lang[0] != '\0' && md5[0] != '\0') {
+        char tr_path[768];
+        if (build_translation_cache_path(tr_path, sizeof(tr_path), md5, target_lang) > 0) {
+            touch_cache_file(tr_path);
+        }
+    }
+}
+
 // Monitor and update system state in main loop
 static void monitor_track_and_files(struct lyrics_state *state, int *update_counter) {
     // Check for track changes
@@ -303,6 +349,9 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
             file_monitor_reload_config,
             state
         );
+
+        // Keep an in-use cache entry warm during long single-track playback.
+        touch_active_track_cache(state);
     }
 }
 

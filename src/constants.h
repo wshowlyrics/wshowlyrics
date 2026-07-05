@@ -123,6 +123,12 @@ static inline void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
 // 20 polls × 100ms = 2 seconds
 #define TRACK_UPDATE_CHECK_INTERVAL 20
 
+// How often to refresh (touch) the access time of cache files for the
+// currently playing track, so long single-track playback (e.g. loop-file=inf)
+// does not let the atime-based auto cleanup delete an in-use cache entry.
+// Cleanup granularity is days, so a few minutes is more than enough.
+#define CACHE_TOUCH_INTERVAL_SEC 300
+
 // Maximum retry attempts for operations
 #define RETRY_MAX_COUNT 10
 
