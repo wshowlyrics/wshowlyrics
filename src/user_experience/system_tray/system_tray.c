@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "system_tray.h"
 #include "../../main.h"
 #include "../../utils/curl/curl_utils.h"
@@ -11,6 +12,7 @@
 #include "../../constants.h"
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <libappindicator/app-indicator.h>
@@ -50,6 +52,56 @@ static void init_icon_paths(void) {
     snprintf(g_disabled_icon_path, sizeof(g_disabled_icon_path), "%s/disabled-icon.png", runtime);
 }
 
+// Album art is a small square image; cap downloads well above any realistic
+// cover size to bound memory if a rogue art source streams unbounded data.
+#define MAX_ARTWORK_DOWNLOAD_BYTES (8 * 1024 * 1024)
+
+// Accept only common, well-tested raster image formats by sniffing the actual
+// bytes. art_url may come from a rogue MPRIS player, and the file extension is
+// meaningless here (the cache is always re-encoded to .png regardless of the
+// source format). This covers every format real cover art ships as (JPEG/PNG/
+// WebP/GIF/BMP) while still keeping bytes out of gdk-pixbuf's more obscure,
+// historically CVE-prone loaders (ICO/ANI/XPM/TGA/...) and the SVG loader
+// (XML/external-resource surface), which album art never legitimately uses.
+static bool is_allowed_image_format(const unsigned char *data, size_t len) {
+    if (!data) {
+        return false;
+    }
+    if (len >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF) {
+        return true;  // JPEG
+    }
+    if (len >= 8 && data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E &&
+        data[3] == 0x47 && data[4] == 0x0D && data[5] == 0x0A &&
+        data[6] == 0x1A && data[7] == 0x0A) {
+        return true;  // PNG
+    }
+    if (len >= 12 && memcmp(data, "RIFF", 4) == 0 && memcmp(data + 8, "WEBP", 4) == 0) {
+        return true;  // WebP
+    }
+    if (len >= 6 && memcmp(data, "GIF8", 4) == 0 &&
+        (data[4] == '7' || data[4] == '9') && data[5] == 'a') {
+        return true;  // GIF (87a / 89a)
+    }
+    if (len >= 2 && data[0] == 'B' && data[1] == 'M') {
+        return true;  // BMP
+    }
+    return false;
+}
+
+// Capped write callback: abort the transfer if artwork exceeds the ceiling
+// (defends against a server that streams without a Content-Length).
+static size_t artwork_write_capped(void *contents, size_t size, size_t nmemb, void *userp) {
+    struct curl_memory_buffer *mem = (struct curl_memory_buffer *)userp;
+    size_t realsize = size * nmemb;
+    if (realsize > MAX_ARTWORK_DOWNLOAD_BYTES ||
+        mem->size > MAX_ARTWORK_DOWNLOAD_BYTES - realsize) {
+        log_warn("system_tray: artwork exceeds %d bytes, aborting download",
+                 MAX_ARTWORK_DOWNLOAD_BYTES);
+        return 0;
+    }
+    return curl_write_to_memory(contents, size, nmemb, userp);
+}
+
 // Download image from URL to memory
 static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
     CURL *curl = curl_easy_init();
@@ -67,8 +119,9 @@ static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
     curl_memory_buffer_init(buffer);
 
     if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, artwork_write_capped) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)buffer) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_MAXFILESIZE, (long)MAX_ARTWORK_DOWNLOAD_BYTES) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK) {
         log_error("system_tray: Failed to set CURL options");
@@ -151,21 +204,99 @@ static bool save_default_icon(const char *output_path) {
     return true;
 }
 
+// Decode an in-memory image, enforcing the format allowlist. Critically, the
+// magic-byte check and the decode read the SAME buffer, so a rogue source
+// cannot swap the underlying file between validation and decode (TOCTOU) — the
+// only bytes gdk-pixbuf ever sees are the ones we already vetted. Returns a new
+// reference (caller unrefs) or NULL.
+static GdkPixbuf* decode_allowed_image(const unsigned char *data, size_t size) {
+    if (!is_allowed_image_format(data, size)) {
+        log_warn("system_tray: artwork is not an allowed image format, ignoring");
+        return NULL;
+    }
+
+    GError *error = NULL;
+    GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
+    if (!gdk_pixbuf_loader_write(loader, (const guchar *)data, size, &error)) {
+        log_error("Failed to load image data: %s", error ? error->message : "unknown");
+        if (error) g_error_free(error);
+        g_object_unref(loader);
+        return NULL;
+    }
+
+    GError *close_error = NULL;
+    if (!gdk_pixbuf_loader_close(loader, &close_error) && close_error) {
+        log_warn("Failed to close pixbuf loader: %s", close_error->message);
+        g_error_free(close_error);
+    }
+
+    GdkPixbuf *pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
+    if (pixbuf) {
+        g_object_ref(pixbuf);
+    }
+    g_object_unref(loader);
+    return pixbuf;
+}
+
+// Read a vetted regular file fully into memory (bounded). Returns a malloc'd
+// buffer (caller frees) and stores the length in *out_len, or NULL on error.
+static unsigned char* read_art_file(const char *resolved, size_t *out_len) {
+    struct stat st;
+    if (stat(resolved, &st) != 0 || !S_ISREG(st.st_mode)) {
+        log_warn("system_tray: art file is not a regular file, ignoring");
+        return NULL;
+    }
+    if (st.st_size <= 0 || (uintmax_t)st.st_size > MAX_ARTWORK_DOWNLOAD_BYTES) {
+        log_warn("system_tray: art file size out of range, ignoring");
+        return NULL;
+    }
+
+    FILE *fp = fopen(resolved, "rb");
+    if (!fp) {
+        log_warn("system_tray: cannot open art file, ignoring");
+        return NULL;
+    }
+
+    size_t cap = (size_t)st.st_size;
+    unsigned char *data = malloc(cap);
+    if (!data) {
+        fclose(fp);
+        return NULL;
+    }
+    size_t nread = fread(data, 1, cap, fp);
+    fclose(fp);
+
+    *out_len = nread;
+    return data;
+}
+
 // Load image from URL (http:// or file://)
 static GdkPixbuf* load_image_from_url(const char *url) {
-    GError *error = NULL;
     GdkPixbuf *pixbuf = NULL;
 
     // Handle file:// URLs
     if (strncmp(url, "file://", 7) == 0) {
         const char *file_path = url + 7;
-        pixbuf = gdk_pixbuf_new_from_file(file_path, &error);
 
-        if (error) {
-            log_error("Failed to load image from file: %s", error->message);
-            g_error_free(error);
+        // art_url may come from a rogue MPRIS player. Canonicalize (resolving
+        // symlinks and ..) and require a regular file so a device/FIFO/pseudo-
+        // file is never opened (CWE-73). Read the bytes once, then sniff and
+        // decode from that same copy so the file cannot be swapped between the
+        // format check and the decode.
+        char resolved[PATH_MAX];
+        if (!realpath(file_path, resolved)) {
+            log_warn("system_tray: cannot resolve art file path, ignoring");
             return NULL;
         }
+
+        size_t data_len = 0;
+        unsigned char *data = read_art_file(resolved, &data_len);
+        if (!data) {
+            return NULL;
+        }
+
+        pixbuf = decode_allowed_image(data, data_len);
+        free(data);
     }
     // Handle http:// or https:// URLs
     else if (strncmp(url, "http://", 7) == 0 || strncmp(url, "https://", 8) == 0) {
@@ -177,28 +308,9 @@ static GdkPixbuf* load_image_from_url(const char *url) {
             return NULL;
         }
 
-        GdkPixbufLoader *loader = gdk_pixbuf_loader_new();
-
-        if (!gdk_pixbuf_loader_write(loader, (const guchar *)buffer.data, buffer.size, &error)) {
-            log_error("Failed to load image data: %s", error->message);
-            g_error_free(error);
-            g_object_unref(loader);
-            curl_memory_buffer_free(&buffer);
-            return NULL;
-        }
-
-        GError *close_error = NULL;
-        if (!gdk_pixbuf_loader_close(loader, &close_error) && close_error) {
-            log_warn("Failed to close pixbuf loader: %s", close_error->message);
-            g_error_free(close_error);
-        }
-        pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
-
-        if (pixbuf) {
-            g_object_ref(pixbuf);
-        }
-
-        g_object_unref(loader);
+        // art_url is untrusted; decode_allowed_image sniffs the format and
+        // decodes from the same downloaded buffer.
+        pixbuf = decode_allowed_image((const unsigned char *)buffer.data, buffer.size);
         curl_memory_buffer_free(&buffer);
     }
 
