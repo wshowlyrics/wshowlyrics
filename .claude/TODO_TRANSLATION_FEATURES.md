@@ -118,3 +118,64 @@ bool translation_will_discard;
 - `f565d91`: feat: Add visual indicator for translation discard warning
 - `30e3a05`: fix: Support UINT64 type for mpris:length in MPRIS metadata
 - `347e1a5`: feat: Add translation time feasibility check before starting translation
+
+---
+
+## Ollama Translator Provider (Self-Hosted LLM)
+
+> `.claude/TODO_CODE_QUALITY.md`의 R7(코드 정리)에서 이관됨. R7은 dispatcher를
+> vtable 레지스트리로 바꿔 **통합 표면만** 준비했고, 실제 Ollama 번역 구현은
+> 번역 기능 작업이라 여기서 추적한다.
+
+### Feature Description
+로컬/자체호스팅 Ollama 서버(기본 `http://localhost:11434`)를 번역 provider로
+추가. 클라우드 API 키 없이 온프레미스 LLM으로 가사를 번역하려는 사용자를 위한 기능.
+
+### 선행 인프라 (완료)
+R7 (커밋 `1d3800a`)로 translator provider 레지스트리가 이미 존재:
+- `struct translator_provider { name, matches, init, cleanup, translate_lyrics }`
+  (`src/translator/common/translator_common.h`)
+- 각 모듈이 자기 `X_provider`를 self-register, `translator_providers[]` 배열 순회로
+  dispatch + init + cleanup 처리.
+- → **새 provider 추가 시 dispatcher / main.c 수정 불필요.**
+
+### 남은 실제 작업 (미착수)
+1. **새 모듈** `src/translator/ollama/ollama_translator.{c,h}`:
+   - `ollama_translate_lyrics(struct lyrics_data*, int64_t)` — 기존
+     `translator_translate_lyrics_generic()`에 `translate_single_line` 함수
+     포인터를 넘기는 패턴 재사용 (gemini/claude/openai와 동일 구조).
+   - `ollama_translator_init()` / `ollama_translator_cleanup()`.
+   - HTTP 요청/응답 파싱: Ollama `POST /api/chat` (또는 `/api/generate`),
+     `{"model": ..., "messages": [...], "stream": false}` → 응답 JSON에서
+     번역 텍스트 추출 (json-c). TLS 불필요(로컬 평문 http)하나 원격 호스트
+     허용 시 옵션 고려.
+2. **등록** (2줄):
+   - `translator_common.h`에 `extern const struct translator_provider ollama_provider;`
+   - `translator_common.c`의 `translator_providers[]`에 `&ollama_provider,` 한 줄
+3. **provider struct + matches** (모듈 내 ~10줄):
+   - `ollama_matches(p)` = `strncmp(p, "ollama", 6) == 0` (예: `ollama-llama3.1`)
+   - `const struct translator_provider ollama_provider = { ... };`
+4. **설정**: `[translation] provider = ollama-<model>` + Ollama 서버 URL/모델
+   설정 키 (`config.h` / `settings.ini.example`). 기본 `http://localhost:11434`.
+
+### Technical Considerations
+- **모델명 파싱**: provider 문자열 `ollama-<model>`에서 `<model>` 추출해 API `model`
+  필드로 전달 (gemini의 `gemini-<model>` 관례와 동일).
+- **엔드포인트/URL 설정**: 로컬 기본값 + 사용자 지정 호스트 허용. 원격 http 허용
+  시 보안 고려(SEC-2의 로컬 동일유저 위협모델 논의 참고 — 사용자 자신의 서버).
+- **응답 지연**: 로컬 LLM은 모델/하드웨어에 따라 느릴 수 있음 → adaptive
+  feasibility check(위 기능)와 잘 맞물림. `max_retries` / rate-limit 로직 재사용.
+- **LRC only**: 기존 API translator와 동일하게 LRC만 (LRCX/SRT/VTT 제외).
+
+### Related Files
+- `src/translator/common/translator_common.{c,h}`: provider 레지스트리 + `translate_single_line` 제네릭 러너
+- `src/translator/gemini/gemini_translator.c`: 가장 가까운 참고 구현 (prefix 매칭 + 제네릭 러너)
+- `src/provider/lyrics/lyrics_provider.c`: dispatcher (수정 불필요)
+- `src/user_experience/config/config.{c,h}`, `settings.ini.example`: provider/URL 설정
+
+### Priority
+**Medium** — R7로 통합 비용이 크게 낮아졌고 자체호스팅 수요 대응. 실제 구현
+(HTTP/JSON 파싱)은 새로 작성 필요.
+
+### Related Issues
+- GitLab wshowlyrics#2 (R7 vtable) — 인프라 선행 완료

@@ -17,7 +17,7 @@
 
 **Quality Gate**: GREEN (`alert_status = OK`) — bugs 0, vulnerabilities 0
 **Ratings**: Reliability **A(1.0)**, Security **A(1.0)**, Maintainability **A(1.0)**
-**참고**: 기존 잔여 MAJOR였던 S1820(lyrics_state 42필드)은 R1+R2-A 구조체 분리로 해소됨. 위 "현재 (07-06)" 5건(S1121 ×4, S995 ×1)은 **R13으로 코드상 전부 해소됨 (6d9d7c8, 2026-07-06)** — 다음 재분석 시 0건 복귀 예상. 표의 수치는 재분석 전 SonarCloud 리포트 기준.
+**참고**: 기존 잔여 MAJOR였던 S1820(lyrics_state 42필드)은 R1+R2-A 구조체 분리로 해소됨. 위 "현재 (07-06)" 5건(S1121 ×4, S995 ×1)은 **R13으로 코드상 전부 해소됨 (6fcfc72, 2026-07-06)** — 다음 재분석 시 0건 복귀 예상. 표의 수치는 재분석 전 SonarCloud 리포트 기준.
 
 ### 처리 이력
 - 2026-05-02: GitLab 메인 전환으로 SonarCloud 프로젝트 새 ID(`AZzxDhZL...`)로 재분석.
@@ -25,7 +25,7 @@
 - 2026-05-02: 일괄 마킹 스크립트로 32 issues + 47 hotspots 처리. 정책은 CLAUDE.md "Marking Issues / Hotspots" 표 참조.
 - 2026-05-02: S5332 HTTP 1건은 SAFE + acknowledgement 코멘트로 처리 (외부 URL 통제 불가, API가 ACKNOWLEDGED 미지원).
 - 2026-07-06: 43a6366 이후 변경분(15커밋) 중심 리팩토링 + 보안 재감사. 보안 MEDIUM 2건(SEC-1, SEC-2) 및 신규 리팩토링 5건(R13–R17) 발견. `wshowlyrics-offset` / dbus_control / translator 캐시 / lock_file / runtime_dir / 파서는 클린 판정.
-- 2026-07-06: 감사 발견 항목 전량 처리 (6커밋). SEC-1 (ba1ecbf) → R13+R17 (6d9d7c8) → SEC-2 (0aae9ae) → R14~R16 (0228c44) → SEC-3/4 (e72c4fd) → R7 (ecb8aa6). 매 단계 `werror=true` 빌드 클린, SEC-1/SEC-2/R7은 실행 검증. **SEC-2 IP 차단은 로컬 동일유저 위협모델 분석 결과 실효 없음 + 자체호스팅(LAN/Tailscale/localhost) 파괴로 의도적 제외**, 대신 매직바이트 포맷 allowlist로 디코더 표면 축소. R7은 GitLab 이슈 #2 vtable 설계.
+- 2026-07-06: 감사 발견 항목 전량 처리 (6커밋). SEC-1 (38d1a85) → R13+R17 (6fcfc72) → SEC-2 (89530c9) → R14~R16 (bb8b0cc) → SEC-3/4 (f992c86) → R7 (1d3800a). 매 단계 `werror=true` 빌드 클린, SEC-1/SEC-2/R7은 실행 검증. **SEC-2 IP 차단은 로컬 동일유저 위협모델 분석 결과 실효 없음 + 자체호스팅(LAN/Tailscale/localhost) 파괴로 의도적 제외**, 대신 매직바이트 포맷 allowlist로 디코더 표면 축소. R7은 GitLab 이슈 #2 vtable 설계.
 - 2026-07-07: fuzz 커버리지 확장 — `url_decode_string`(MPRIS URI 퍼센트 디코더, SEC-4에서 수정)을 `src/utils/url/url_utils.{c,h}`로 추출하고 `fuzz_url_decode` libFuzzer 타겟 + 시드 코퍼스 추가. ASan로 ~1,900만 exec 크래시·누수 0 확인. 아울러 세션 8커밋의 `Co-Authored-By`를 하드코딩된 "Claude Fable 5" → 실제 모델명(Claude Opus 4.8 (1M context))으로 재작성(filter-branch, 해시 변경 — 위 해시들은 재작성 후 기준).
 
 ---
@@ -36,10 +36,10 @@
 
 | ID | 심각도 | 위치 | 문제 | 상태 |
 |---|---|---|---|---|
-| ~~SEC-1~~ | MEDIUM | mpris.c | 악성 MPRIS 메타데이터로 NULL deref DoS (GVariant 타입 미검증) | ✅ 완료 (ba1ecbf) — `dup_string_variant` 헬퍼 + PlaybackStatus 타입 가드 |
-| ~~SEC-2~~ | MEDIUM | system_tray.c | artUrl 경유 SSRF + `file://` 임의 파일 디코드 | ✅ 완료 (0aae9ae) — 매직바이트 포맷 allowlist + realpath/S_ISREG + 크기상한. **IP 차단은 의도적 제외** (로컬 동일유저 위협모델에선 무의미 + 자체호스팅 파괴) |
-| ~~SEC-3~~ | LOW | config.c | symlink 폴백이 resolved-path 검증 우회 + prefix 경계 미검사 | ✅ 완료 (e72c4fd) — `path_has_dir_prefix` 경계검사 + 폴백을 `is_secret_store_path`(resolved가 /run·$XDG_RUNTIME_DIR)로 제한 |
-| ~~SEC-4~~ | LOW | lyrics_provider.c | `%00` 디코딩 시 embedded NUL 허용 (경로 절단) | ✅ 완료 (e72c4fd) — `val != 0` 조건으로 `%00` 리터럴 유지 |
+| ~~SEC-1~~ | MEDIUM | mpris.c | 악성 MPRIS 메타데이터로 NULL deref DoS (GVariant 타입 미검증) | ✅ 완료 (38d1a85) — `dup_string_variant` 헬퍼 + PlaybackStatus 타입 가드 |
+| ~~SEC-2~~ | MEDIUM | system_tray.c | artUrl 경유 SSRF + `file://` 임의 파일 디코드 | ✅ 완료 (89530c9) — 매직바이트 포맷 allowlist + realpath/S_ISREG + 크기상한. **IP 차단은 의도적 제외** (로컬 동일유저 위협모델에선 무의미 + 자체호스팅 파괴) |
+| ~~SEC-3~~ | LOW | config.c | symlink 폴백이 resolved-path 검증 우회 + prefix 경계 미검사 | ✅ 완료 (f992c86) — `path_has_dir_prefix` 경계검사 + 폴백을 `is_secret_store_path`(resolved가 /run·$XDG_RUNTIME_DIR)로 제한 |
+| ~~SEC-4~~ | LOW | lyrics_provider.c | `%00` 디코딩 시 embedded NUL 허용 (경로 절단) | ✅ 완료 (f992c86) — `val != 0` 조건으로 `%00` 리터럴 유지 |
 
 ### 요약 — 미완료 마이그레이션 / 정리 항목
 
@@ -51,22 +51,23 @@
 | ~~R4~~ | config.c, lyrics_provider.c | `config_trim_whitespace` 정리 | ✅ 완료 (c15cdb9) |
 | **R5** | config.c `[deepl]` section | Deprecated 섹션 — 제거 데드라인 결정 | ⏸ 보류 (정책) — 07-06 확인: 코드 위치 config.c:211-215, 893-908로 이동만, 변동 없음 |
 | ~~R6~~ | mpris.c Seeked signal | 빈 콜백 정리 | ✅ 완료 (c15cdb9) |
-| ~~R7~~ | lyrics_provider.c dispatcher | 4-branch if/else → provider 테이블 | ✅ 완료 (ecb8aa6) — 이슈 #2 vtable 설계. `struct translator_provider` 레지스트리로 dispatch + main.c init/cleanup 3곳 통합. Ollama = 새 모듈 + 배열 한 줄 |
+| ~~R7~~ | lyrics_provider.c dispatcher | 4-branch if/else → provider 테이블 | ✅ 완료 (1d3800a) — 이슈 #2 vtable 설계. `struct translator_provider` 레지스트리로 dispatch + main.c init/cleanup 3곳 통합. Ollama = 새 모듈 + 배열 한 줄 |
 | **R8** | parser_utils.c:374 `find_word_start` | 152줄 함수 (07-06 재측정: 정확히 152줄 유지) | ⏸ 보류 (가독성만 목적, 강제 아님) |
 | **R9** | mpris.c:921, wayland_init.c:13, lyrics_manager.c:179 | 100+줄 함수 3개 (07-06 재측정: 108/115/101줄 — `setup_player_subscription`은 126→108줄로 축소) | ⏸ 보류 (강제 아님) |
 | ~~R10~~ | config.c, deepl_translator.c | Magic number 버퍼 | ✅ 완료 (c15cdb9) |
 | ~~R11~~ | config.c | `XDG_CONFIG_HOME` 빈 문자열 가드 + 잠재 NULL deref | ✅ 완료 (c15cdb9) |
 | ~~R12-A~~ | 22 파일 | clang-tidy `misc-include-cleaner` 기준 unused #include 제거 (37 줄 순감) | ✅ 완료 (43a6366) |
 | **R12-B** | main.h | main.h 슬림화 (~30 .c가 stdint.h 등 직접 include 필요) | ⏸ 보류 (B 옵션 — 가독성 트레이드오프) |
-| ~~R13~~ | wayland_events.c:261, config.c:607/817/954, main.c:276 | SonarCloud 신규 5건 (S1121 ×4 체인 할당, S995 ×1 const 누락) | ✅ 완료 (6d9d7c8) — 체인 할당 문장 분리 + const 파라미터 |
-| ~~R14~~ | system_tray.c | 아이콘 폴백 3-tier에서 `set_indicator_icon_cached(); return true;` 3중 복붙 | ✅ 완료 (0228c44) — 단락평가 `||` 하나로 통합 |
-| ~~R15~~ | translator_common.c | `max_retries` 조회 + 기본값 `3` 중복 | ✅ 완료 (0228c44) — `translator_get_max_retries()` 추출 |
-| ~~R16~~ | main.c ×2, file_utils.c/.h | 캐시 경로 prefix 검사 중복 + 빈 cache_base 시 오판 | ✅ 완료 (0228c44) — `path_is_in_cache_dir()` 추출. 참고: `get_cache_base_dir()`은 static char[]라 NULL이 아닌 빈 문자열 반환 → `strncmp(...,0)` 항상매치로 로컬 핫리로드 막히던 버그를 가드로 해소 |
-| ~~R17~~ | main.c:309 | `char tr_path[768]` — R10에서 정리한 magic number 패턴 회귀 | ✅ 완료 (6d9d7c8) — `PATH_BUFFER_SIZE` |
-| **Ollama** | 신규 `src/translator/ollama/` | R7 vtable 위에 `ollama_translator.c`(HTTP 요청/응답 파싱) 작성 + `ollama_provider` 등록 (translator_common.h extern + 배열 한 줄) | ⏸ **미착수 — 실제 기능 작업**. R7로 통합 표면만 준비됨 (dispatch/init/cleanup 무수정) |
+| ~~R13~~ | wayland_events.c:261, config.c:607/817/954, main.c:276 | SonarCloud 신규 5건 (S1121 ×4 체인 할당, S995 ×1 const 누락) | ✅ 완료 (6fcfc72) — 체인 할당 문장 분리 + const 파라미터 |
+| ~~R14~~ | system_tray.c | 아이콘 폴백 3-tier에서 `set_indicator_icon_cached(); return true;` 3중 복붙 | ✅ 완료 (bb8b0cc) — 단락평가 `||` 하나로 통합 |
+| ~~R15~~ | translator_common.c | `max_retries` 조회 + 기본값 `3` 중복 | ✅ 완료 (bb8b0cc) — `translator_get_max_retries()` 추출 |
+| ~~R16~~ | main.c ×2, file_utils.c/.h | 캐시 경로 prefix 검사 중복 + 빈 cache_base 시 오판 | ✅ 완료 (bb8b0cc) — `path_is_in_cache_dir()` 추출. 참고: `get_cache_base_dir()`은 static char[]라 NULL이 아닌 빈 문자열 반환 → `strncmp(...,0)` 항상매치로 로컬 핫리로드 막히던 버그를 가드로 해소 |
+| ~~R17~~ | main.c:309 | `char tr_path[768]` — R10에서 정리한 magic number 패턴 회귀 | ✅ 완료 (6fcfc72) — `PATH_BUFFER_SIZE` |
+
+> **Ollama translator 구현**은 코드 품질 항목이 아니라 번역 기능 작업이므로 `.claude/TODO_TRANSLATION_FEATURES.md`로 이관됨 (R7 vtable이 통합 표면을 제공).
 
 **TINY 묶음 (R3+R4+R6+R10+R11)**: ✅ 완료 (c15cdb9, 2026-05-02)
-**TINY 묶음 2 (R13+R17)**: ✅ 완료 (6d9d7c8, 2026-07-06) — SonarCloud 5건 전부 해소 + magic number
+**TINY 묶음 2 (R13+R17)**: ✅ 완료 (6fcfc72, 2026-07-06) — SonarCloud 5건 전부 해소 + magic number
 
 ---
 
@@ -204,16 +205,16 @@ struct lyrics_state {
 4. ~~**R1**: Wayland 필드 → `wl_conn` 통합~~ ✅ 완료 (9007eec, 2026-05-03)
 5. ~~**R2-A**: S1820 `lyrics_state` 분리 (sub-struct)~~ ✅ 완료 (6b55f10, 2026-05-03)
 6. ~~**R12-A**: misc-include-cleaner 기반 unused 제거~~ ✅ 완료 (43a6366, 2026-05-03)
-7. ~~**SEC-1**: MPRIS GVariant 타입 가드~~ ✅ 완료 (ba1ecbf, 2026-07-06)
-8. ~~**TINY 묶음 2** (R13 + R17): SonarCloud 5건 + magic number~~ ✅ 완료 (6d9d7c8, 2026-07-06)
-9. ~~**SEC-2**: artUrl 포맷검사 + `file://` 하드닝~~ ✅ 완료 (0aae9ae, 2026-07-06) — IP 차단은 의도적 제외
-10. ~~**Small 정리** (R14 + R15 + R16): 중복 제거 + 가드~~ ✅ 완료 (0228c44, 2026-07-06)
-11. ~~**SEC-3 / SEC-4**: 하드닝 (경계 검사, `%00` 거부)~~ ✅ 완료 (e72c4fd, 2026-07-06)
-12. ~~**R7**: Translator vtable 레지스트리~~ ✅ 완료 (ecb8aa6, 2026-07-06) — 이슈 #2. **Ollama 통합 인프라만 완료** (실제 `ollama_translator.c` 구현은 별도 작업, 위 표 참조)
+7. ~~**SEC-1**: MPRIS GVariant 타입 가드~~ ✅ 완료 (38d1a85, 2026-07-06)
+8. ~~**TINY 묶음 2** (R13 + R17): SonarCloud 5건 + magic number~~ ✅ 완료 (6fcfc72, 2026-07-06)
+9. ~~**SEC-2**: artUrl 포맷검사 + `file://` 하드닝~~ ✅ 완료 (89530c9, 2026-07-06) — IP 차단은 의도적 제외
+10. ~~**Small 정리** (R14 + R15 + R16): 중복 제거 + 가드~~ ✅ 완료 (bb8b0cc, 2026-07-06)
+11. ~~**SEC-3 / SEC-4**: 하드닝 (경계 검사, `%00` 거부)~~ ✅ 완료 (f992c86, 2026-07-06)
+12. ~~**R7**: Translator vtable 레지스트리~~ ✅ 완료 (1d3800a, 2026-07-06) — 이슈 #2. **Ollama 통합 인프라만 완료** (실제 `ollama_translator.c` 구현은 `TODO_TRANSLATION_FEATURES.md`로 이관)
 13. ~~R2-B / R12-B~~ ⏸ 보류 (둘 다 가치 트레이드오프로 deferred)
 14. ~~R5/R8/R9~~ ⏸ 보류
 
-**2026-07-06 세션 완료**: SEC-1~4 + R13/R14/R15/R16/R17 + R7 전부 처리. 로컬 master 커밋됨 (미푸시). 감사/정리(cleanup) 작업은 모두 종료 — 남은 건 기능 작업(Ollama 구현)과 ⏸ 보류(정책/트레이드오프) 항목뿐.
+**2026-07-06 세션 완료**: SEC-1~4 + R13/R14/R15/R16/R17 + R7 전부 처리. 로컬 master 커밋됨 (미푸시). 감사/정리(cleanup) 작업은 모두 종료 — 남은 건 ⏸ 보류(정책/트레이드오프) 항목뿐. (Ollama 등 번역 기능 작업은 `TODO_TRANSLATION_FEATURES.md` 참조.)
 
 ---
 
@@ -230,11 +231,11 @@ struct lyrics_state {
 ## 상태
 
 - **최종 업데이트**: 2026-07-07 (감사 항목 전량 처리 + fuzz 확장; 세션 커밋 co-author 정정으로 해시 재작성됨)
-- **현재 단계**: 2026-07-06 감사/정리분(SEC-1~4, R13~R17, R7) 전부 완료, 로컬 master 커밋 (미푸시). 남은 기능 작업: **Ollama translator 구현** (R7 인프라 위에서 진행)
+- **현재 단계**: 2026-07-06 감사/정리분(SEC-1~4, R13~R17, R7) 전부 완료, 로컬 master 커밋 (미푸시). 코드 품질 측면 활성 작업 없음 (번역 기능 작업은 `TODO_TRANSLATION_FEATURES.md`)
 - **완료**: Phase 1-14 + 2026-05-02 SonarCloud 마킹 + TINY 묶음 (c15cdb9) + R1 (9007eec) + R2-A (6b55f10) + R12-A (43a6366)
-  - **2026-07-06 세션**: SEC-1 (ba1ecbf) · R13+R17 (6d9d7c8) · SEC-2 (0aae9ae) · R14~R16 (0228c44) · SEC-3/4 (e72c4fd) · R7 (ecb8aa6)
-- **남은 이슈**:
-  - 기능 작업: **Ollama translator 구현** (R7 vtable 위에 새 모듈 + provider 등록)
-  - ⏸ 보류: R2-B (시그니처 분해, ROI 작음), R12-B (main.h 슬림화, 가독성 트레이드오프), R5 (릴리스 정책), R8/R9 (강제 아님)
+  - **2026-07-06 세션**: SEC-1 (38d1a85) · R13+R17 (6fcfc72) · SEC-2 (89530c9) · R14~R16 (bb8b0cc) · SEC-3/4 (f992c86) · R7 (1d3800a)
+- **남은 이슈**: (전부 ⏸ 보류 — 코드 품질 활성 작업 없음)
+  - R2-B (시그니처 분해, ROI 작음), R12-B (main.h 슬림화, 가독성 트레이드오프), R5 (릴리스 정책), R8/R9 (강제 아님)
+  - 번역 기능 작업(Ollama translator 등)은 `TODO_TRANSLATION_FEATURES.md`로 이관
 - **목표**: A등급 유지, Quality Gate GREEN 유지, BLOCKER/CRITICAL 0개, SonarCloud 이슈 0건 복귀 (R13으로 5건 해소 → 재분석 시 0건 복귀 예상)
 - **참고**: Coverity CID 643610 수정 완료 (b3a410a). SEC-A/SEC-B 검증 완료 — 모두 안전 (NULL+empty 가드 충분). 2026-07-06 감사에서 `wshowlyrics-offset`/dbus_control/translator 캐시/lock_file/runtime_dir/파서 클린 판정
