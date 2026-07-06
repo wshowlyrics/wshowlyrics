@@ -117,6 +117,12 @@ void destroy_buffer(struct pool_buffer *buffer) {
 
 struct pool_buffer *get_next_buffer(struct wl_shm *shm,
         struct pool_buffer pool[2], const uint32_t width, const uint32_t height) {
+    // A zero dimension yields a zero-sized SHM pool, which is a fatal Wayland
+    // protocol error. Callers must have a sized surface before requesting a buffer.
+    if (width == 0 || height == 0) {
+        return NULL;
+    }
+
     struct pool_buffer *buffer = NULL;
 
     for (size_t i = 0; i < 2; ++i) {

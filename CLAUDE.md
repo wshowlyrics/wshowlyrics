@@ -99,7 +99,7 @@ Wayland surface lifecycle is split:
 - `src/utils/wayland/wayland_manager.c` — connection lifecycle, reconnection (`wayland_manager_reconnect_full`), event dispatch
 - `src/utils/wayland/wayland_init.c` — surface init wrapper called from `main.c`
 
-The compositor quirk flag `state->no_buffer_detach` exists because some compositors reset surface position when `wl_surface_attach(NULL)` is used; in that case a transparent buffer is used instead.
+To hide the overlay (e.g. during an instrumental break), `rendering_manager_render_transparent` attaches a **fully-transparent cleared buffer** rather than `wl_surface_attach(NULL)`. Attaching NULL unmaps the layer surface, and compositors (KWin, and wlroots' layer-shell on Hyprland/Sway) do not reliably re-map or restore position when a buffer is re-attached afterwards — the overlay would stay gone. Keeping the surface mapped with a cleared buffer works uniformly across compositors (no per-compositor detection).
 
 ### Translation System (Async)
 

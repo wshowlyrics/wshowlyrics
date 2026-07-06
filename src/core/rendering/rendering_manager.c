@@ -442,30 +442,35 @@ void rendering_manager_render_transparent(struct lyrics_state *state) {
         return;
     }
 
-    if (state->runtime.no_buffer_detach) {
-        // Some compositors (e.g., KDE) reset surface position on buffer detach
-        // Use transparent buffer instead
-        const int scale = state->surface.output ? state->surface.output->scale : 1;
-        state->surface.current_buffer = get_next_buffer(state->wl_conn->shm,
-                state->surface.buffers, state->surface.width * scale, state->surface.height * scale);
-        if (state->surface.current_buffer) {
-            cairo_t *shm = state->surface.current_buffer->cairo;
-            cairo_save(shm);
-            cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
-            cairo_paint(shm);
-            cairo_restore(shm);
+    // The surface has no size yet (before the first layer-surface configure, or
+    // after a reconnect resets it). A zero-sized SHM buffer is a fatal Wayland
+    // protocol error (wl_shm_create_pool rejects size 0), and there is nothing
+    // mapped to clear anyway, so skip. The caller keeps the surface at 1x1.
+    if (state->surface.width == 0 || state->surface.height == 0) {
+        return;
+    }
 
-            wl_surface_set_buffer_scale(state->wl_conn->surface, scale);
-            wl_surface_attach(state->wl_conn->surface, state->surface.current_buffer->buffer, 0, 0);
-            // damage_buffer takes buffer coordinates (buffer is width*scale x height*scale)
-            wl_surface_damage_buffer(state->wl_conn->surface, 0, 0,
-                    state->surface.width * scale, state->surface.height * scale);
-            wl_surface_commit(state->wl_conn->surface);
-        }
-    } else {
-        // Detach buffer to make surface fully transparent
-        // This avoids buffer/surface size mismatch during resize
-        wl_surface_attach(state->wl_conn->surface, NULL, 0, 0);
+    // Render a fully-transparent buffer rather than attaching NULL. Attaching a
+    // NULL buffer unmaps the layer surface, and compositors (KWin, and wlroots'
+    // layer-shell on Hyprland/Sway) do not reliably re-map or restore position
+    // when a buffer is re-attached afterwards — the overlay would stay gone
+    // after an instrumental break. Keeping the surface mapped with a cleared
+    // buffer lets content freely appear/disappear/reappear on every compositor.
+    const int scale = state->surface.output ? state->surface.output->scale : 1;
+    state->surface.current_buffer = get_next_buffer(state->wl_conn->shm,
+            state->surface.buffers, state->surface.width * scale, state->surface.height * scale);
+    if (state->surface.current_buffer) {
+        cairo_t *shm = state->surface.current_buffer->cairo;
+        cairo_save(shm);
+        cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(shm);
+        cairo_restore(shm);
+
+        wl_surface_set_buffer_scale(state->wl_conn->surface, scale);
+        wl_surface_attach(state->wl_conn->surface, state->surface.current_buffer->buffer, 0, 0);
+        // damage_buffer takes buffer coordinates (buffer is width*scale x height*scale)
+        wl_surface_damage_buffer(state->wl_conn->surface, 0, 0,
+                state->surface.width * scale, state->surface.height * scale);
         wl_surface_commit(state->wl_conn->surface);
     }
 }
@@ -507,7 +512,8 @@ void rendering_manager_render_frame(struct lyrics_state *state) {
 
         // Reconfigure surface size
         if (width == 0 || height == 0) {
-            // No content - keep minimal 1x1 surface (buffer already detached above)
+            // No content - keep minimal 1x1 surface. render_transparent above
+            // either cleared the mapped buffer or no-oped (surface not yet sized).
             zwlr_layer_surface_v1_set_size(state->wl_conn->layer_surface, 1, 1);
         } else {
             zwlr_layer_surface_v1_set_size(

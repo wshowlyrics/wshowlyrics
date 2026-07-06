@@ -82,7 +82,6 @@ struct runtime {
     bool reconnecting;                            // Ignore layer_surface_closed during reconnect
     bool overlay_enabled;                         // D-Bus controlled: show/hide overlay
     bool need_lyrics_search;                      // Lyrics file was missing, needs re-search
-    bool no_buffer_detach;                        // KDE quirk: use transparent buffer
 };
 
 struct lyrics_state {
