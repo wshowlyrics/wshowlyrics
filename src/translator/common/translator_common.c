@@ -92,6 +92,14 @@ int translator_count_translatable_lines(struct lyrics_data *data) {
     return count;
 }
 
+// Configured translation retry budget, falling back to the built-in default
+// when config is unavailable. Centralizes the default so it is not duplicated
+// across the call sites that gate work on the retry budget.
+static int translator_get_max_retries(void) {
+    const struct config *cfg = config_get();
+    return cfg ? cfg->translation.max_retries : 3;
+}
+
 /**
  * Count already translated lines in lyrics data
  */
@@ -100,11 +108,10 @@ int translator_count_translated_lines(struct lyrics_data *data) {
         return 0;
     }
 
-    // R15: a line counts as "done" if it either has a translation OR has
-    // exhausted its retry budget — both cases mean the worker won't touch
-    // it on the next run, so cache_complete should reflect that.
-    const struct config *cfg = config_get();
-    const int max_retries = cfg ? cfg->translation.max_retries : 3;
+    // A line counts as "done" if it either has a translation OR has exhausted
+    // its retry budget — both cases mean the worker won't touch it on the next
+    // run, so cache_complete should reflect that.
+    const int max_retries = translator_get_max_retries();
 
     int count = 0;
     struct lyrics_line *line = data->lines;
@@ -549,17 +556,14 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
         return true;  // Continue
     }
 
-    // R15: skip lines that have exhausted their retry budget on previous
-    // runs. The worker would just pay for another rejected response.
-    {
-        const struct config *cfg = config_get();
-        const int max_retries = cfg ? cfg->translation.max_retries : 3;
-        if (line->translation_retry_count >= max_retries) {
-            log_info("%s: Skipped (retry budget exhausted, %d/%d): %.120s",
-                     args->provider_name, line->translation_retry_count,
-                     max_retries, line->text);
-            return true;  // Continue
-        }
+    // Skip lines that have exhausted their retry budget on previous runs.
+    // The worker would just pay for another rejected response.
+    const int max_retries = translator_get_max_retries();
+    if (line->translation_retry_count >= max_retries) {
+        log_info("%s: Skipped (retry budget exhausted, %d/%d): %.120s",
+                 args->provider_name, line->translation_retry_count,
+                 max_retries, line->text);
+        return true;  // Continue
     }
 
     // Update counter

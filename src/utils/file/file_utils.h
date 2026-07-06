@@ -45,6 +45,10 @@ bool is_cache_enabled(void);
 // Returns $XDG_CACHE_HOME/wshowlyrics or $HOME/.cache/wshowlyrics
 const char* get_cache_base_dir(void);
 
+// Return true if `path` is located under the cache base directory.
+// Safe against a NULL path or an undeterminable (empty) cache base.
+bool path_is_in_cache_dir(const char *path);
+
 // Sanitize file path for logging: replaces username in $HOME with numeric UID
 // e.g., /home/username/Music/song.lrc -> /home/1000/Music/song.lrc
 // Also handles file:// URLs: file:///home/username/... -> file:///home/1000/...

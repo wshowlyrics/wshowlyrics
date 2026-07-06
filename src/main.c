@@ -294,8 +294,7 @@ static void touch_active_track_cache(const struct lyrics_state *state) {
     // Lyrics cache file — only when the lyrics themselves live in the cache.
     // Local .lrc files sit outside the cache and are never auto-cleaned.
     const char *lyrics_path = state->playback.lyrics.source_file_path;
-    const char *cache_base = get_cache_base_dir();
-    if (strncmp(lyrics_path, cache_base, strlen(cache_base)) == 0) {
+    if (path_is_in_cache_dir(lyrics_path)) {
         touch_cache_file(lyrics_path);
     }
 
@@ -329,8 +328,8 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
 
     // Check if lyrics or config files have changed (every 2 seconds)
     if ((*update_counter)++ % TRACK_UPDATE_CHECK_INTERVAL == 0) {
-        const char *cache_base = get_cache_base_dir();
-        if (state->playback.lyrics.source_file_path && strncmp(state->playback.lyrics.source_file_path, cache_base, strlen(cache_base)) != 0) {
+        if (state->playback.lyrics.source_file_path &&
+            !path_is_in_cache_dir(state->playback.lyrics.source_file_path)) {
             file_monitor_check_and_reload(
                 state->playback.lyrics.source_file_path,
                 state->playback.lyrics.md5_checksum,

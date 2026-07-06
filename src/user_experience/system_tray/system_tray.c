@@ -1004,20 +1004,13 @@ bool system_tray_update_icon_with_fallback(const char *art_url, const char *arti
         cache_path[0] = '\0';  // No cache path available
     }
 
-    // Priority 1: Try cache first (fastest, no network request)
-    if (cache_path[0] != '\0' && load_cached_album_art(cache_path, metadata_hash)) {
-        set_indicator_icon_cached(metadata_hash);
-        return true;
-    }
-
-    // Priority 2: Try MPRIS art URL (network request if cache miss)
-    if (try_mpris_artwork(art_url, cache_path, metadata_hash)) {
-        set_indicator_icon_cached(metadata_hash);
-        return true;
-    }
-
-    // Priority 3: Try iTunes API (network request)
-    if (try_itunes_artwork(artist, album, track, cache_path, metadata_hash)) {
+    // Try sources in priority order — local cache (fastest, no network) →
+    // MPRIS art URL → iTunes API. The first hit leaves the artwork cached, so
+    // a single call sets the tray icon from that cache. Short-circuiting ||
+    // preserves the sequential-fallback semantics.
+    if ((cache_path[0] != '\0' && load_cached_album_art(cache_path, metadata_hash)) ||
+        try_mpris_artwork(art_url, cache_path, metadata_hash) ||
+        try_itunes_artwork(artist, album, track, cache_path, metadata_hash)) {
         set_indicator_icon_cached(metadata_hash);
         return true;
     }

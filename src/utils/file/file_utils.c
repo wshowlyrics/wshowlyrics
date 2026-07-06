@@ -90,6 +90,34 @@ const char* get_cache_base_dir(void) {
     return g_cache_base_dir;
 }
 
+// Return true if `path` lives under the cache base directory. Guards against a
+// NULL path and an undeterminable (empty) cache base — an empty base would make
+// strncmp match every path — so callers need no base-dir lookup of their own.
+bool path_is_in_cache_dir(const char *path) {
+    if (!path) {
+        return false;
+    }
+    const char *cache_base = get_cache_base_dir();
+    if (!cache_base || cache_base[0] == '\0') {
+        return false;
+    }
+    // Treat the base as a directory boundary. A plain strncmp would also match a
+    // sibling like ".../wshowlyrics-tmp/..." against base ".../wshowlyrics";
+    // ignore a trailing slash on the base and require the next path character to
+    // be '/' or end-of-string.
+    size_t base_len = strlen(cache_base);
+    while (base_len > 0 && cache_base[base_len - 1] == '/') {
+        base_len--;
+    }
+    if (base_len == 0) {
+        return false;
+    }
+    if (strncmp(path, cache_base, base_len) != 0) {
+        return false;
+    }
+    return path[base_len] == '/' || path[base_len] == '\0';
+}
+
 // Get translated cache directory path
 const char* get_cache_translated_dir(void) {
     init_cache_directories();
