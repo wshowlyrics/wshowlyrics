@@ -604,7 +604,8 @@ static struct config_key* parse_config_keys_from_file(FILE *f) {
         node->next = NULL;
 
         if (!head) {
-            head = tail = node;
+            head = node;
+            tail = node;
         } else {
             tail->next = node;
             tail = node;
@@ -814,7 +815,8 @@ static void add_section_node(struct section_list **head, struct section_list **t
     node->next = NULL;
 
     if (!*head) {
-        *head = *tail = node;
+        *head = node;
+        *tail = node;
     } else {
         (*tail)->next = node;
         *tail = node;
@@ -951,7 +953,8 @@ static void add_config_key_node(struct config_key **head, struct config_key **ta
     node->next = NULL;
 
     if (!*head) {
-        *head = *tail = node;
+        *head = node;
+        *tail = node;
     } else {
         (*tail)->next = node;
         *tail = node;

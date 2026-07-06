@@ -258,7 +258,8 @@ bool wayland_events_handle_reconnection(struct lyrics_state *state,
 
     // Wait for configure event
     int retry = 0;
-    state->surface.width = state->surface.height = 0;
+    state->surface.width = 0;
+    state->surface.height = 0;
     while ((state->surface.width == 0 || state->surface.height == 0) && retry < 10) {
         if (wl_display_roundtrip(state->wl_conn->display) == -1) {
             log_warn("Roundtrip failed, compositor may not be available yet");

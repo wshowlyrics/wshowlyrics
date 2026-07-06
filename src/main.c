@@ -273,7 +273,7 @@ static int parse_command_line_options(int argc, char *argv[], struct lyrics_stat
 // delete a cache entry that is actively in use. detect_track_change() suppresses
 // reloads for an unchanged URL, so the cache load path (which touches on access)
 // never re-fires during a loop; without this the atime stays frozen at first load.
-static void touch_active_track_cache(struct lyrics_state *state) {
+static void touch_active_track_cache(const struct lyrics_state *state) {
     // Only meaningful while actually playing a loaded track.
     if (!mpris_is_playing() || !state->playback.lyrics.source_file_path) {
         return;
@@ -306,7 +306,7 @@ static void touch_active_track_cache(struct lyrics_state *state) {
     const char *target_lang = g_config.translation.target_language;
     const char *md5 = state->playback.lyrics.md5_checksum;
     if (target_lang && target_lang[0] != '\0' && md5[0] != '\0') {
-        char tr_path[768];
+        char tr_path[PATH_BUFFER_SIZE];
         if (build_translation_cache_path(tr_path, sizeof(tr_path), md5, target_lang) > 0) {
             touch_cache_file(tr_path);
         }
