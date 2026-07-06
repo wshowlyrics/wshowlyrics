@@ -766,9 +766,13 @@ static bool is_path_in_safe_location(const char *resolved_path) {
         return true;
     }
 
-    // Check system directories
-    if (path_has_dir_prefix(resolved_path, "/etc") ||
-        path_has_dir_prefix(resolved_path, "/usr/share")) {
+    // Check system directories. The trailing slashes are load-bearing beyond
+    // style: the Nix package (nur-packages generic.nix) patches the literals
+    // "/etc/" and "/usr/share/" to the store paths via `substituteInPlace
+    // --replace-fail`, which errors if the pattern is absent. path_has_dir_prefix
+    // strips the trailing slash anyway, so matching is unchanged either way.
+    if (path_has_dir_prefix(resolved_path, "/etc/") ||
+        path_has_dir_prefix(resolved_path, "/usr/share/")) {
         return true;
     }
 
