@@ -538,16 +538,20 @@ static bool try_exact_filename(const char *dir, const char *filename,
 }
 
 // Try to find lyrics using title-based patterns
+// skip_bare_title: skip the plain "<title>.<ext>" pattern because the caller
+// already tried an identical path via try_exact_filename (happens when the
+// MPRIS title equals the URL filename, e.g. video files).
 static bool try_title_patterns(const char *dir, const char *title_safe,
                                 const char *artist_safe, char **extensions,
-                                struct lyrics_data *data) {
+                                struct lyrics_data *data, bool skip_bare_title) {
     char path[PATH_BUFFER_SIZE];
 
     for (int ext_idx = 0; extensions[ext_idx]; ext_idx++) {
         const char *ext = extensions[ext_idx];
 
         // Search: <title>.<extension>
-        if (build_path_with_ext(path, sizeof(path), dir, title_safe, ext) >= 0) {
+        if (!skip_bare_title &&
+            build_path_with_ext(path, sizeof(path), dir, title_safe, ext) >= 0) {
             log_info("Trying: %s", sanitize_path(path));
             if (try_load_lyrics_file(path, data)) {
                 return true;
@@ -628,14 +632,23 @@ static bool local_search(const char *title, const char *artist, const char *albu
     int dir_count = build_search_directories(search_dirs, 10, current_dir, lyrics_dir, sizeof(lyrics_dir),
                                              allocated_dirs, &alloc_count);
 
+    // In the file's own directory, try_exact_filename already covers the URL
+    // filename. If the MPRIS title matches that filename (common for video
+    // files where the player uses the filename as the title), the bare
+    // "<title>.<ext>" pattern would retry identical paths — skip it there.
+    bool title_matches_url_name = (title_safe && filename_from_url &&
+                                   strcmp(title_safe, filename_from_url) == 0);
+
     // Search all directories
     bool found = false;
     for (int i = 0; i < dir_count; i++) {
         if (!search_dirs[i]) continue;
 
         // Try exact filename first (only in first directory - file's own directory)
-        found = (i == 0 && try_exact_filename(search_dirs[i], filename_from_url, extensions, data)) ||
-                try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data);
+        bool tried_exact = (i == 0 && try_exact_filename(search_dirs[i], filename_from_url, extensions, data));
+        bool skip_bare_title = (i == 0 && title_matches_url_name);
+        found = tried_exact ||
+                try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data, skip_bare_title);
         if (found) break;
     }
 
