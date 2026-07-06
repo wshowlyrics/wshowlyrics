@@ -175,7 +175,10 @@ static char* url_decode_string(const char *str) {
             char hex[3] = { str[i+1], str[i+2], '\0' };
             char *endptr;
             long val = strtol(hex, &endptr, 16);
-            if (*endptr == '\0') {
+            // Reject %00: decoding it to a NUL would truncate the path/filename
+            // (CWE-158). Leave the literal "%00" so the lookup simply fails
+            // instead of silently searching a shortened path.
+            if (*endptr == '\0' && val != 0) {
                 decoded[j++] = (char)val;
                 i += 3;
                 continue;

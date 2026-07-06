@@ -729,6 +729,25 @@ static bool resolve_path_or_directory(const char *path, char *resolved_path) {
     return true;
 }
 
+// Helper: true if `path` equals `prefix` or sits directly beneath it, treating
+// the prefix as a directory boundary. A plain strncmp would let HOME=/home/hm
+// match /home/hmEVIL/...; requiring the next character to be '/' or end-of-
+// string prevents that. A trailing slash on the prefix is ignored so "/etc/"
+// and "/etc" behave the same.
+static bool path_has_dir_prefix(const char *path, const char *prefix) {
+    size_t plen = strlen(prefix);
+    while (plen > 0 && prefix[plen - 1] == '/') {
+        plen--;
+    }
+    if (plen == 0) {
+        return false;
+    }
+    if (strncmp(path, prefix, plen) != 0) {
+        return false;
+    }
+    return path[plen] == '/' || path[plen] == '\0';
+}
+
 // Helper: Check if resolved path is in a safe location
 // Config files must be in one of these safe directories:
 // 1. User's home directory or XDG config (for user configs)
@@ -738,29 +757,49 @@ static bool resolve_path_or_directory(const char *path, char *resolved_path) {
 static bool is_path_in_safe_location(const char *resolved_path) {
     // Check user directories
     const char *home = getenv("HOME");
-    if (home && strncmp(resolved_path, home, strlen(home)) == 0) {
+    if (home && path_has_dir_prefix(resolved_path, home)) {
         return true;
     }
 
     const char *xdg_config = getenv("XDG_CONFIG_HOME");
-    if (xdg_config && strncmp(resolved_path, xdg_config, strlen(xdg_config)) == 0) {
+    if (xdg_config && path_has_dir_prefix(resolved_path, xdg_config)) {
         return true;
     }
 
     // Check system directories
-    if (strncmp(resolved_path, "/etc/", 5) == 0) {
-        return true;
-    }
-    if (strncmp(resolved_path, "/usr/share/", 11) == 0) {
+    if (path_has_dir_prefix(resolved_path, "/etc") ||
+        path_has_dir_prefix(resolved_path, "/usr/share")) {
         return true;
     }
 
     // Check current directory (only for local builds)
     char cwd[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd)) && strncmp(resolved_path, cwd, strlen(cwd)) == 0) {
+    if (getcwd(cwd, sizeof(cwd)) && path_has_dir_prefix(resolved_path, cwd)) {
         return true;
     }
 
+    return false;
+}
+
+// Helper: true if `resolved_path` is a volatile runtime store where secret
+// managers expose decrypted config. Used to bound the symlinked-config fallback
+// below so a symlink cannot redirect config reads to an arbitrary persistent
+// file. The accepted roots are all RAM-backed and cleared per boot, which is
+// what keeps the fallback safe:
+//   - /run           sops-nix (/run/secrets), agenix (/run/agenix),
+//                     systemd LoadCredential (/run/credentials), /run/user/UID
+//   - $XDG_RUNTIME_DIR  per-user runtime dir (usually /run/user/UID, but honor
+//                     it explicitly in case it points elsewhere)
+//   - /dev/shm        POSIX shared-memory tmpfs used by pass/gopass and others
+static bool is_secret_store_path(const char *resolved_path) {
+    if (path_has_dir_prefix(resolved_path, "/run") ||
+        path_has_dir_prefix(resolved_path, "/dev/shm")) {
+        return true;
+    }
+    const char *runtime = getenv("XDG_RUNTIME_DIR");
+    if (runtime && runtime[0] != '\0' && path_has_dir_prefix(resolved_path, runtime)) {
+        return true;
+    }
     return false;
 }
 
@@ -779,14 +818,17 @@ static bool validate_config_path(const char *path) {
         return true;
     }
 
-    // Fallback: trust the user-facing config path even when it is a symlink
-    // into a backend store. Secret managers (e.g. sops-nix, agenix) expose the
-    // config under ~/.config but realpath() resolves it into an opaque runtime
-    // location ($XDG_RUNTIME_DIR/secrets.d/..., /run/secrets/...) that is not in
-    // the safe-location list. Accept the original path when it is absolute, has
-    // no ".." traversal, and itself lives in a safe directory.
+    // Fallback: a user-facing config path (~/.config/...) is often a symlink
+    // into a secret manager's runtime store. Secret managers (e.g. sops-nix,
+    // agenix) expose the config under ~/.config but realpath() resolves it into
+    // a runtime location ($XDG_RUNTIME_DIR/secrets.d/..., /run/secrets/...) that
+    // is not in the safe-location list. Accept only when the *resolved* target
+    // is such a runtime secret store AND the original path is absolute, free of
+    // ".." traversal, and itself in a safe directory — so the symlink cannot
+    // redirect config reads to an arbitrary file (e.g. ~/.ssh, /etc/shadow).
     if (path[0] == '/' && !strstr(path, "..") &&
-        is_path_in_safe_location(path)) {
+        is_path_in_safe_location(path) &&
+        is_secret_store_path(resolved_path)) {
         return true;
     }
 
