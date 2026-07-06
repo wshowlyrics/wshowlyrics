@@ -1,33 +1,43 @@
 # TODO: Code Quality & Security Improvements
 
-## 현재 상태 (2026-05-02, 마킹 처리 완료)
+## 현재 상태 (2026-07-06, 전체 코드 재감사 완료)
 
 ### 📊 SonarCloud 현황
 
-| 심각도 | Phase 14 후 | 재분석 직후 | 마킹 처리 후 |
-|--------|:---:|:---:|:---:|
-| BLOCKER | 0 | 1 | 0 |
-| CRITICAL | 0 | 8 | 0 |
-| MAJOR | 1 | 3 | **1** (S1820) |
-| MINOR | 21 | 21 | 0 |
-| **합계** | **22** | **33** | **1** |
+| 심각도 | 마킹 처리 후 (05-02) | 현재 (07-06) |
+|--------|:---:|:---:|
+| BLOCKER | 0 | 0 |
+| CRITICAL | 0 | 0 |
+| MAJOR | 1 (S1820) | **4** (S1121 ×4, 신규 유입) |
+| MINOR | 0 | **1** (S995) |
+| **합계** | **1** | **5** |
 
-| Hotspots | 재분석 직후 | 마킹 처리 후 |
-|---|:---:|:---:|
-| TO_REVIEW | 48 | **0** |
+| Hotspots TO_REVIEW | 0 |
+|---|:---:|
 
-**Quality Gate**: GREEN (`alert_status = OK`)
+**Quality Gate**: GREEN (`alert_status = OK`) — bugs 0, vulnerabilities 0
 **Ratings**: Reliability **A(1.0)**, Security **A(1.0)**, Maintainability **A(1.0)**
+**참고**: 기존 잔여 MAJOR였던 S1820(lyrics_state 42필드)은 R1+R2-A 구조체 분리로 해소됨. 현재 5건은 전부 2026-05-03 이후 커밋에서 유입된 신규 이슈 (→ R13).
 
 ### 처리 이력
 - 2026-05-02: GitLab 메인 전환으로 SonarCloud 프로젝트 새 ID(`AZzxDhZL...`)로 재분석.
   Won't Fix / SAFE 마킹 전부 리셋. 코드 변경 없이 카운트만 33+48 증가.
 - 2026-05-02: 일괄 마킹 스크립트로 32 issues + 47 hotspots 처리. 정책은 CLAUDE.md "Marking Issues / Hotspots" 표 참조.
 - 2026-05-02: S5332 HTTP 1건은 SAFE + acknowledgement 코멘트로 처리 (외부 URL 통제 불가, API가 ACKNOWLEDGED 미지원).
+- 2026-07-06: 43a6366 이후 변경분(15커밋) 중심 리팩토링 + 보안 재감사. 보안 MEDIUM 2건(SEC-1, SEC-2) 및 신규 리팩토링 5건(R13–R17) 발견. `wshowlyrics-offset` / dbus_control / translator 캐시 / lock_file / runtime_dir / 파서는 클린 판정.
 
 ---
 
 ## 남은 작업 — 실제 코드 변경 필요
+
+### 🔒 보안 — 2026-07-06 감사 발견 (신규)
+
+| ID | 심각도 | 위치 | 문제 | 상태 |
+|---|---|---|---|---|
+| **SEC-1** | **MEDIUM** | mpris.c:127,141,148,155,162,819,963 | 악성 MPRIS 메타데이터로 NULL deref DoS (GVariant 타입 미검증) | **진행 예정 — 최우선** |
+| **SEC-2** | **MEDIUM** | system_tray.c:54-89,154-215 | artUrl 경유 SSRF + `file://` 임의 파일 디코드 | 진행 예정 |
+| **SEC-3** | LOW | config.c:737-793 | symlink 폴백이 resolved-path 검증 우회 + prefix 경계 미검사 | 하드닝 (ea54306 리뷰) |
+| **SEC-4** | LOW | lyrics_provider.c:163-189 | `%00` 디코딩 시 embedded NUL 허용 (경로 절단) | 하드닝 |
 
 ### 요약 — 미완료 마이그레이션 / 정리 항목
 
@@ -37,17 +47,92 @@
 | ~~R2~~ | main.h `lyrics_state` 35필드 | S1820 — 5개 sub-struct 분리 (style/surface/playback/config/runtime) | ✅ 완료 (6b55f10, 35→6 필드). B(시그니처 분해)는 후속 |
 | ~~R3~~ | itunes_artwork.c, lrclib_provider.c | thin wrapper 정리 | ✅ 완료 (c15cdb9) |
 | ~~R4~~ | config.c, lyrics_provider.c | `config_trim_whitespace` 정리 | ✅ 완료 (c15cdb9) |
-| **R5** | config.c `[deepl]` section | Deprecated 섹션 — 제거 데드라인 결정 | ⏸ 보류 (정책) |
+| **R5** | config.c `[deepl]` section | Deprecated 섹션 — 제거 데드라인 결정 | ⏸ 보류 (정책) — 07-06 확인: 코드 위치 config.c:211-215, 893-908로 이동만, 변동 없음 |
 | ~~R6~~ | mpris.c Seeked signal | 빈 콜백 정리 | ✅ 완료 (c15cdb9) |
-| **R7** | translator/{openai,claude,gemini,deepl}/ | 4×3 함수 중복 → vtable 추상화 | **MEDIUM — 진행 예정** (Ollama 등 추가 LLM provider 지원 대비) |
-| **R8** | parser_utils.c:374 `find_word_start` | 152줄 함수 | ⏸ 보류 (가독성만 목적, 강제 아님) |
-| **R9** | mpris.c:931, wayland_init.c:12, lyrics_manager.c:180 | 100+줄 함수 3개 | ⏸ 보류 (강제 아님) |
+| **R7** | lyrics_provider.c:29-68 dispatcher | 4-branch if/else → provider 테이블 | **MEDIUM — 진행 예정** (07-06 재확인: 여전히 4-branch, 변동 없음) |
+| **R8** | parser_utils.c:374 `find_word_start` | 152줄 함수 (07-06 재측정: 정확히 152줄 유지) | ⏸ 보류 (가독성만 목적, 강제 아님) |
+| **R9** | mpris.c:921, wayland_init.c:13, lyrics_manager.c:179 | 100+줄 함수 3개 (07-06 재측정: 108/115/101줄 — `setup_player_subscription`은 126→108줄로 축소) | ⏸ 보류 (강제 아님) |
 | ~~R10~~ | config.c, deepl_translator.c | Magic number 버퍼 | ✅ 완료 (c15cdb9) |
 | ~~R11~~ | config.c | `XDG_CONFIG_HOME` 빈 문자열 가드 + 잠재 NULL deref | ✅ 완료 (c15cdb9) |
 | ~~R12-A~~ | 22 파일 | clang-tidy `misc-include-cleaner` 기준 unused #include 제거 (37 줄 순감) | ✅ 완료 (43a6366) |
 | **R12-B** | main.h | main.h 슬림화 (~30 .c가 stdint.h 등 직접 include 필요) | ⏸ 보류 (B 옵션 — 가독성 트레이드오프) |
+| **R13** | wayland_events.c:261, config.c:607/817/954, main.c:276 | SonarCloud 신규 5건 (S1121 ×4 체인 할당, S995 ×1 const 누락) | **HIGH — TINY 묶음, zero-risk** |
+| **R14** | system_tray.c:896-909 | 아이콘 폴백 3-tier에서 `set_indicator_icon_cached(); return true;` 3중 복붙 | MEDIUM |
+| **R15** | translator_common.c:105-106, 554-556 | `max_retries` 조회 + 기본값 `3` 중복 | LOW |
+| **R16** | main.c:296-299 vs 332-333 | 캐시 경로 prefix 검사 중복 + `get_cache_base_dir()` NULL 시 `strlen(NULL)` 잠재 크래시 | LOW (NULL 가드 포함) |
+| **R17** | main.c:309 | `char tr_path[768]` — R10에서 정리한 magic number 패턴 회귀 | TINY (R13 묶음에 포함) |
 
 **TINY 묶음 (R3+R4+R6+R10+R11)**: ✅ 완료 (c15cdb9, 2026-05-02)
+**TINY 묶음 2 (R13+R17)**: 미착수 — SonarCloud 5건 전부 해소 + magic number, ~15분, zero-risk
+
+---
+
+### SEC-1. MPRIS 메타데이터 GVariant 타입 미검증 → NULL deref DoS (MEDIUM)
+
+**위치**: `src/utils/mpris/mpris.c`
+- `parse_metadata_from_dict`: 127 (`xesam:title`), 141 (`xesam:album`), 148 (`xesam:url`), 155 (`mpris:trackid`), 162 (`mpris:artUrl`)
+- `is_player_playing`: 819, `setup_player_subscription`: 963 (`PlaybackStatus`)
+
+**문제**: `get_dict_value()`는 타입 무관하게 값을 돌려주는데, string이 아닌 GVariant에 `g_variant_get_string()`을 호출하면 NULL 반환 → `strdup(NULL)` → segfault. 세션 버스의 아무 프로세스나 `org.mpris.MediaPlayer2.evil`을 등록하고 `xesam:title`을 int32로 발행하면 오버레이 전체가 크래시 (CWE-476/843, 신뢰성 있는 로컬 DoS).
+
+**대비**: 숫자 필드 `mpris:length`(169-174)와 artist 배열(`extract_string_array`)은 이미 타입 체크함. `PlaybackStatus` 핸들러 중 311/562는 `g_variant_lookup_value(..., G_VARIANT_TYPE_STRING)`이라 안전 — 819/963만 미검증.
+
+**수정안**: `mpris:length` 패턴을 따라 `g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)` 가드 추가. 헬퍼 `dup_string_variant(GVariant*)` (타입 불일치 시 NULL) 하나로 5곳 중복 제거 가능.
+
+**우선순위**: **HIGH-급 처리 권장** — 수정 작고 명확, 세션 버스 접근만으로 재현 가능한 DoS.
+
+---
+
+### SEC-2. 앨범아트 URL 경유 SSRF + `file://` 임의 파일 디코드 (MEDIUM)
+
+**위치**: `src/user_experience/system_tray/system_tray.c:54-89` (`download_image`), `:154-215` (`load_image_from_url`)
+
+**문제**: `art_url`은 rogue MPRIS 플레이어 / iTunes API 응답에서 오는데 필터 없이 흘러감:
+1. `http(s)://` → `CURLOPT_FOLLOWLOCATION=1` + 호스트 allow-list 없음 → `http://169.254.169.254/...`, `http://localhost:PORT/...` 등 내부망 blind SSRF/포트 프로브 (CWE-918)
+2. `file://` → `gdk_pixbuf_new_from_file(url + 7)` 직접 호출 → 유저가 읽을 수 있는 임의 파일을 디코더에 투입 (CWE-73). 이미지 디코드 실패 + ~정사각형 체크로 유출 채널은 아니고 약한 file oracle 수준
+3. 두 경로 모두 공격자 바이트를 gdk-pixbuf 로더(CVE 다발 표면)에 노출
+
+**수정안**:
+- http(s): loopback/link-local/사설 대역 거부 또는 `CURLOPT_REDIR_PROTOCOLS` 제한, 다운로드 크기 상한
+- `file://`: `realpath` 정규화 후 예상 디렉토리($XDG_CACHE_HOME, 음악 디렉토리)로 제한
+
+**우선순위**: MEDIUM — 세션 버스 상의 악성 프로세스 전제, 출력 표면(48×48 트레이 아이콘)이 영향 제한.
+
+---
+
+### SEC-3. config symlink 폴백의 검증 우회 + prefix 경계 미검사 (LOW, 하드닝)
+
+**위치**: `src/user_experience/config/config.c:737-793` (커밋 ea54306 "Accept symlinked config from secret-manager stores")
+
+**문제**:
+1. 새 폴백(787-788)이 `realpath()` 결과가 safe 목록 밖이어도, **unresolved 리터럴 경로**가 `/`로 시작하고 `..` 없고 문자열상 safe 디렉토리 안이면 통과시킴. 원래 이 함수가 막으려던 "심링크가 임의 위치를 가리키는" 케이스를 되열어줌.
+2. `strncmp(resolved_path, home, strlen(home))` (740행)에 trailing-slash 경계가 없어 `HOME=/home/hm`이 `/home/hmEVIL/...`과도 매치.
+
+**평가**: config 경로는 항상 내부에서 구성되고(`config_get_user_path()`), `~/.config`에 심링크를 심을 수 있는 공격자는 이미 config 자체를 덮어쓸 수 있으므로 새 권한 경계 침해는 아님. defense-in-depth 약화.
+
+**수정안**: prefix 검사를 경계 인식으로 (다음 문자가 `/` 또는 문자열 끝). 심링크 케이스는 resolved 대상의 알려진 secret-store prefix(`/run/secrets`, `$XDG_RUNTIME_DIR/secrets.d`) allow-list 방식 권장. 최소한 `is_path_in_safe_location()` 근처에 이 폴백의 안전 근거 주석 추가.
+
+---
+
+### SEC-4. URL 디코딩 시 `%00` embedded NUL 허용 (LOW/INFO)
+
+**위치**: `src/provider/lyrics/lyrics_provider.c:163-189` (`url_decode_string`)
+
+**문제**: 버퍼 경계는 안전하나 `%00`이 NUL로 디코드되어 경로/파일명이 절단됨 (CWE-158). rogue 플레이어의 `file:///…/song%00.mp3` → 잘못된 디렉토리에서 가사 탐색. 메모리 안전 문제 아님, 기능적 영향만.
+
+**수정안**: 디코드 결과가 `0x00`이면 리터럴 유지 또는 디코드 중단.
+
+---
+
+### 클린 판정 (2026-07-06 감사)
+
+- **`wshowlyrics-offset`** (gdbus→busctl/dbus-send 폴백 +100줄): 인젝션 없음. 정수 정규식 검증, exact-match case, `busctl --`, 인용 처리 모두 적절.
+- **`dbus_control.c`**: introspection XML로 타입 강제 → SEC-1 류 타입 혼동 불가. offset ±5000 클램프.
+- **`translator_common.c` 캐시** (b891690 변경 포함): MAX_CACHE_FILE_SIZE 5MB 로드 전 검증, snprintf 절단 검사, umask 0077, json-c 인덱스 바운드 체크. 이상 없음.
+- **`lock_file.c` / `runtime_dir.c`**: 0600/0700 권한, stale-lock fd 유지로 TOCTOU 회피. 클린.
+- **`lrclib_provider.c`**: TLS 1.2 강제, json-c 파싱. `find_best_match_in_results`의 `strchr('{','}')` 오브젝트 분할은 가사 내 `}` 시 매칭 오류 가능 — 보안 아닌 정확성 이슈로 기록만.
+- **`rendering_manager.c` HiDPI 스케일링** (d76a4c2): scale은 컴포지터 제공(1-3), 오버플로 비현실적. 클린.
+- **파서들**: 이번 구간 diff 없음 + fuzz 커버리지 유지로 심층 재분석 생략.
 
 ---
 
@@ -269,10 +354,10 @@ struct lyrics_state {
 
 > **결정 (2026-05-03)**: 보류. R8과 같은 사유 (강제 아님, ROI 작음).
 
-**위치 / 길이**:
-- `src/utils/mpris/mpris.c:931` `setup_player_subscription` — 126줄
-- `src/utils/wayland/wayland_init.c:12` `wayland_init_surface` — 115줄
-- `src/lyrics/lyrics_manager.c:180` `lyrics_manager_load_lyrics` — 101줄
+**위치 / 길이** (2026-07-06 재측정):
+- `src/utils/mpris/mpris.c:921` `setup_player_subscription` — 108줄 (126→108, `player_matches_preferred()` 추출로 축소)
+- `src/utils/wayland/wayland_init.c:13` `wayland_init_surface` — 115줄
+- `src/lyrics/lyrics_manager.c:179` `lyrics_manager_load_lyrics` — 101줄
 
 **작업안**: 각 함수의 단계별 블록을 헬퍼로 추출. 외부 시그니처 유지.
 
@@ -327,6 +412,72 @@ if (config_home && config_home[0] != '\0') {
 
 ---
 
+### R13. SonarCloud 신규 5건 — S1121 ×4 + S995 ×1 (2026-07-06 유입)
+
+**전부 2026-05-03 이후 커밋에서 유입. 코드 검증 완료.**
+
+| 위치 | 룰 | 현재 코드 | 수정 |
+|---|---|---|---|
+| `wayland_events.c:261` | S1121 | `state->surface.width = state->surface.height = 0;` | 두 문장으로 분리 |
+| `config.c:607` | S1121 | `head = tail = node;` (`parse_config_keys_from_file`) | 분리 또는 아래 macro |
+| `config.c:817` | S1121 | `*head = *tail = node;` (`add_section_node`) | 〃 |
+| `config.c:954` | S1121 | `*head = *tail = node;` (`add_config_key_node`) | 〃 |
+| `main.c:276` | S995 | `touch_active_track_cache(struct lyrics_state *state)` — 본문 44줄 전부 읽기 전용 | `const struct lyrics_state *` |
+
+**config.c 3건 추가 참고**: 동일한 head/tail-append 6줄 블록의 3중 복붙 (`grep "= tail = "` 기준 src/ 전체에서 이 3곳뿐). 단순 분리로 Sonar만 끄거나, `APPEND_NODE(head, tail, node)` 매크로로 중복까지 제거하는 선택지.
+
+**우선순위**: HIGH (zero-risk, ~15분, R17과 묶음) — 완료 시 SonarCloud 이슈 0건 복귀.
+
+---
+
+### R14. system_tray 아이콘 폴백 3중 중복
+
+**위치**: `src/user_experience/system_tray/system_tray.c:896-909` (`system_tray_update_icon_with_fallback`, 커밋 0bb966e에서 유입)
+
+**상태**: cached → MPRIS → iTunes 3개 폴백 분기가 각각 `set_indicator_icon_cached(metadata_hash); return true;`를 반복.
+
+**작업안**: 3개 조건을 `||`로 묶어 성공 시 한 곳에서만 호출.
+
+**우선순위**: MEDIUM — 향후 폴백 tier 추가 시 누락 위험. ~10분 + 트레이 수동 테스트.
+
+---
+
+### R15. `max_retries` 조회 중복
+
+**위치**: `src/translator/common/translator_common.c:105-106`, `:554-556`
+
+**상태**: `config_get()` + `cfg ? cfg->translation.max_retries : 3` 이 2곳 중복. 기본값 `3`도 `config_init_defaults`와 소스 이원화.
+
+**작업안**: `static int translator_get_max_retries(void)` 추출, 554행의 ad-hoc 블록 스코프 제거.
+
+**우선순위**: LOW — ~10분.
+
+---
+
+### R16. 캐시 경로 prefix 검사 중복 + NULL 가드
+
+**위치**: `src/main.c:296-299` (신규 `touch_active_track_cache`) vs `:332-333` (기존 `monitor_track_and_files`)
+
+**상태**: "경로가 캐시 디렉토리 안인가" 검사(`get_cache_base_dir()` + `strncmp`)가 2곳 중복. 추가로 `get_cache_base_dir()`이 NULL 반환 가능($HOME 미설정 등)한데 `strlen(NULL)` → 크래시. 잠재 위험은 기존부터 있었으나 이번 diff로 2곳으로 확산.
+
+**작업안**: `static bool path_is_in_cache_dir(const char *path)` 를 file_utils에 추출 (cache_base NULL 가드 포함), 두 곳에서 사용.
+
+**우선순위**: LOW — ~15분. NULL 가드는 실질 가치 있음.
+
+---
+
+### R17. `char tr_path[768]` magic number 회귀
+
+**위치**: `src/main.c:309`
+
+**상태**: `constants.h`에 `PATH_BUFFER_SIZE 1024`가 이미 존재하는데 새 코드가 unnamed literal `768` 사용 — R10에서 정리한 패턴의 회귀.
+
+**작업**: `char tr_path[PATH_BUFFER_SIZE];`
+
+**우선순위**: TINY — R13 묶음에 포함.
+
+---
+
 ## 권장 작업 순서
 
 1. ~~SonarCloud 웹 마킹 작업~~ ✅ 완료 (2026-05-02)
@@ -335,9 +486,14 @@ if (config_home && config_home[0] != '\0') {
 4. ~~**R1**: Wayland 필드 → `wl_conn` 통합~~ ✅ 완료 (9007eec, 2026-05-03)
 5. ~~**R2-A**: S1820 `lyrics_state` 분리 (sub-struct)~~ ✅ 완료 (6b55f10, 2026-05-03)
 6. ~~**R12-A**: misc-include-cleaner 기반 unused 제거~~ ✅ 완료 (43a6366, 2026-05-03)
-7. **R7**: Translator vtable 추상화 — Ollama 추가 전 마치는 게 합리적
-8. ~~R2-B / R12-B~~ ⏸ 보류 (둘 다 가치 트레이드오프로 deferred)
-9. ~~R5/R8/R9~~ ⏸ 보류
+7. **SEC-1**: MPRIS GVariant 타입 가드 — **최우선** (작은 수정, 확실한 DoS 차단)
+8. **TINY 묶음 2** (R13 + R17): SonarCloud 5건 + magic number — zero-risk, ~15분
+9. **SEC-2**: artUrl SSRF/`file://` 제한 — SEC-1과 같은 threat model이라 연달아 처리 권장
+10. **Small 정리 PR** (R14 + R15 + R16): 중복 제거 + NULL 가드 — ~40분
+11. **SEC-3 / SEC-4**: 하드닝 (경계 검사, `%00` 거부) — 여유 있을 때
+12. **R7**: Translator vtable 추상화 — Ollama 추가 전 마치는 게 합리적
+13. ~~R2-B / R12-B~~ ⏸ 보류 (둘 다 가치 트레이드오프로 deferred)
+14. ~~R5/R8/R9~~ ⏸ 보류
 
 ---
 
@@ -441,11 +597,12 @@ if (config_home && config_home[0] != '\0') {
 
 ## 상태
 
-- **최종 업데이트**: 2026-05-03 (R12-A 완료)
-- **현재 단계**: R7 (translator vtable) 대기
+- **최종 업데이트**: 2026-07-06 (전체 코드 재감사 — 리팩토링 + 보안)
+- **현재 단계**: SEC-1 (MPRIS 타입 가드) → TINY 묶음 2 (R13+R17) → SEC-2 순 처리 대기
 - **완료**: Phase 1-14 + 2026-05-02 SonarCloud 마킹 + TINY 묶음 (c15cdb9) + R1 (9007eec) + R2-A (6b55f10) + R12-A (43a6366)
 - **남은 이슈**:
-  - 진행 예정: R7
+  - 보안: SEC-1, SEC-2 (MEDIUM), SEC-3, SEC-4 (LOW 하드닝)
+  - 진행 예정: R13+R17 (SonarCloud 5건), R14, R15, R16, R7
   - 보류: R2-B (시그니처 분해, ROI 작음), R12-B (main.h 슬림화, 가독성 트레이드오프), R5 (릴리스 정책), R8/R9 (강제 아님)
-- **목표**: A등급 유지, Quality Gate GREEN 유지, BLOCKER/CRITICAL 0개
-- **참고**: Coverity CID 643610 수정 완료 (b3a410a). SEC-A/SEC-B 검증 완료 — 모두 안전 (NULL+empty 가드 충분)
+- **목표**: A등급 유지, Quality Gate GREEN 유지, BLOCKER/CRITICAL 0개, SonarCloud 이슈 0건 복귀
+- **참고**: Coverity CID 643610 수정 완료 (b3a410a). SEC-A/SEC-B 검증 완료 — 모두 안전 (NULL+empty 가드 충분). 2026-07-06 감사에서 `wshowlyrics-offset`/dbus_control/translator 캐시/lock_file/runtime_dir/파서 클린 판정
