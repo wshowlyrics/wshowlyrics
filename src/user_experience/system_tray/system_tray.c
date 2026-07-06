@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <libappindicator/app-indicator.h>
@@ -241,19 +242,32 @@ static GdkPixbuf* decode_allowed_image(const unsigned char *data, size_t size) {
 // Read a vetted regular file fully into memory (bounded). Returns a malloc'd
 // buffer (caller frees) and stores the length in *out_len, or NULL on error.
 static unsigned char* read_art_file(const char *resolved, size_t *out_len) {
+    // Open first, then validate the *open descriptor* with fstat(). Checking the
+    // path with stat() and opening it in a separate step is a TOCTOU window (the
+    // path could be swapped in between); fstat on the fd we actually read closes
+    // it. O_NONBLOCK keeps open() from blocking if the path is a FIFO, O_CLOEXEC
+    // avoids leaking the fd across any future exec.
+    int fd = open(resolved, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) {
+        log_warn("system_tray: cannot open art file, ignoring");
+        return NULL;
+    }
+
     struct stat st;
-    if (stat(resolved, &st) != 0 || !S_ISREG(st.st_mode)) {
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
         log_warn("system_tray: art file is not a regular file, ignoring");
+        close(fd);
         return NULL;
     }
     if (st.st_size <= 0 || (uintmax_t)st.st_size > MAX_ARTWORK_DOWNLOAD_BYTES) {
         log_warn("system_tray: art file size out of range, ignoring");
+        close(fd);
         return NULL;
     }
 
-    FILE *fp = fopen(resolved, "rb");
+    FILE *fp = fdopen(fd, "rb");
     if (!fp) {
-        log_warn("system_tray: cannot open art file, ignoring");
+        close(fd);
         return NULL;
     }
 

@@ -784,16 +784,17 @@ static bool is_path_in_safe_location(const char *resolved_path) {
 // Helper: true if `resolved_path` is a volatile runtime store where secret
 // managers expose decrypted config. Used to bound the symlinked-config fallback
 // below so a symlink cannot redirect config reads to an arbitrary persistent
-// file. The accepted roots are all RAM-backed and cleared per boot, which is
-// what keeps the fallback safe:
+// file. The accepted roots are RAM-backed, cleared per boot, and NOT world-
+// writable — that last property is what keeps the fallback safe:
 //   - /run           sops-nix (/run/secrets), agenix (/run/agenix),
 //                     systemd LoadCredential (/run/credentials), /run/user/UID
 //   - $XDG_RUNTIME_DIR  per-user runtime dir (usually /run/user/UID, but honor
 //                     it explicitly in case it points elsewhere)
-//   - /dev/shm        POSIX shared-memory tmpfs used by pass/gopass and others
+// Deliberately NOT /dev/shm or /tmp: those are world-writable, so any local user
+// could plant a file there and a symlink pointing into them would no longer be a
+// trustworthy source. Every real secret manager decrypts under /run anyway.
 static bool is_secret_store_path(const char *resolved_path) {
-    if (path_has_dir_prefix(resolved_path, "/run") ||
-        path_has_dir_prefix(resolved_path, "/dev/shm")) {
+    if (path_has_dir_prefix(resolved_path, "/run")) {
         return true;
     }
     const char *runtime = getenv("XDG_RUNTIME_DIR");
