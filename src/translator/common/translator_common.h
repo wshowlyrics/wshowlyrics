@@ -3,7 +3,29 @@
 
 #include "../../lyrics_types.h"
 #include <stdbool.h>
+#include <stdint.h>
 #include <curl/curl.h>
+
+// A translation backend, registered once per translator module. The dispatcher
+// and the startup/shutdown lifecycle walk translator_providers[] instead of
+// hardcoding each provider, so a new backend (e.g. Ollama) is one struct plus
+// one array entry — no edits to main.c or the dispatcher.
+struct translator_provider {
+    const char *name;                              // module name, for logging
+    bool (*matches)(const char *provider_string);  // does config provider select this?
+    bool (*init)(void);                            // called once at startup
+    void (*cleanup)(void);                         // called once at shutdown
+    bool (*translate_lyrics)(struct lyrics_data *data, int64_t track_length_us);
+};
+
+// Each translator module defines its own registration.
+extern const struct translator_provider deepl_provider;
+extern const struct translator_provider gemini_provider;
+extern const struct translator_provider claude_provider;
+extern const struct translator_provider openai_provider;
+
+// NULL-terminated registry of all translation providers.
+extern const struct translator_provider *const translator_providers[];
 
 /**
  * Extract the last non-empty line from text.

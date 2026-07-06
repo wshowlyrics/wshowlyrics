@@ -13,10 +13,7 @@
 #include "utils/dbus_control/dbus_control.h"
 #include "utils/lock/lock_file.h"
 #include "utils/runtime/runtime_dir.h"
-#include "translator/deepl/deepl_translator.h"
-#include "translator/gemini/gemini_translator.h"
-#include "translator/claude/claude_translator.h"
-#include "translator/openai/openai_translator.h"
+#include "translator/common/translator_common.h"
 #include <curl/curl.h>
 #include <sys/stat.h>
 #include <signal.h>
@@ -207,10 +204,9 @@ static char *build_font_string(void) {
 
 // Initialize subsystems (translation, language detection, D-Bus)
 static bool initialize_subsystems(struct lyrics_state *state) {
-    deepl_translator_init();
-    gemini_translator_init();
-    claude_translator_init();
-    openai_translator_init();
+    for (const struct translator_provider *const *p = translator_providers; *p; p++) {
+        (*p)->init();
+    }
     lang_detect_init();
 
     int cleanup_days = config_get_cleanup_days(g_config.cache.cleanup_policy);
@@ -488,10 +484,9 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
     mpris_free_metadata(&state->playback.current_track);
     mpris_cleanup();
     lyrics_providers_cleanup();
-    deepl_translator_cleanup();
-    gemini_translator_cleanup();
-    claude_translator_cleanup();
-    openai_translator_cleanup();
+    for (const struct translator_provider *const *p = translator_providers; *p; p++) {
+        (*p)->cleanup();
+    }
     lang_detect_cleanup();
 
     // Cleanup Wayland buffers before disconnecting display

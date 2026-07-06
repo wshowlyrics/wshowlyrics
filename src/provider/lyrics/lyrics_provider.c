@@ -5,10 +5,7 @@
 #include "../../parser/lrc/lrcx_parser.h"
 #include "../../parser/srt/srt_parser.h"
 #include "../../user_experience/config/config.h"
-#include "../../translator/deepl/deepl_translator.h"
-#include "../../translator/gemini/gemini_translator.h"
-#include "../../translator/claude/claude_translator.h"
-#include "../../translator/openai/openai_translator.h"
+#include "../../translator/common/translator_common.h"
 #include "../../constants.h"
 #include "../../utils/file/file_utils.h"
 #include "../../utils/string/string_utils.h"
@@ -53,18 +50,14 @@ static void translate_lyrics_with_provider(struct lyrics_data *data, int64_t tra
 
     log_info("Starting translation with provider: %s", provider);
 
-    // Call appropriate translator based on provider
-    if (strcmp(provider, "deepl") == 0) {
-        deepl_translate_lyrics(data, track_length_us);
-    } else if (strncmp(provider, "gemini-", 7) == 0 || strncmp(provider, "gemini", 6) == 0) {
-        gemini_translate_lyrics(data, track_length_us);
-    } else if (strncmp(provider, "claude-", 7) == 0 || strncmp(provider, "claude", 6) == 0) {
-        claude_translate_lyrics(data, track_length_us);
-    } else if (strncmp(provider, "gpt-", 4) == 0 || strncmp(provider, "openai", 6) == 0) {
-        openai_translate_lyrics(data, track_length_us);
-    } else {
-        log_warn("Unknown translation provider: %s", provider);
+    // Dispatch to the first registered provider that claims this provider string.
+    for (const struct translator_provider *const *p = translator_providers; *p; p++) {
+        if ((*p)->matches(provider)) {
+            (*p)->translate_lyrics(data, track_length_us);
+            return;
+        }
     }
+    log_warn("Unknown translation provider: %s", provider);
 }
 
 // ============================================================================

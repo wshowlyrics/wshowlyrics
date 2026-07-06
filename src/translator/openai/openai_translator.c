@@ -120,6 +120,18 @@ static char* translate_single_line(const char *text, const char *target_lang,
     return translation;
 }
 
+// Provider registration (see struct translator_provider in translator_common.h).
+static bool openai_matches(const char *provider) {
+    return strncmp(provider, "gpt-", 4) == 0 || strncmp(provider, "openai", 6) == 0;
+}
+const struct translator_provider openai_provider = {
+    .name             = "openai",
+    .matches          = openai_matches,
+    .init             = openai_translator_init,
+    .cleanup          = openai_translator_cleanup,
+    .translate_lyrics = openai_translate_lyrics,
+};
+
 bool openai_translator_init(void) {
     return translator_init_curl_handle(&curl_handle, "openai_translator");
 }

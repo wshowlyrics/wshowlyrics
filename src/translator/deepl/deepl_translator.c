@@ -234,6 +234,18 @@ static char* translate_single_line(const char *text, const char *target_lang,
 }
 
 // Initialize translator
+// Provider registration (see struct translator_provider in translator_common.h).
+static bool deepl_matches(const char *provider) {
+    return strcmp(provider, "deepl") == 0;
+}
+const struct translator_provider deepl_provider = {
+    .name             = "deepl",
+    .matches          = deepl_matches,
+    .init             = deepl_translator_init,
+    .cleanup          = deepl_translator_cleanup,
+    .translate_lyrics = deepl_translate_lyrics,
+};
+
 bool deepl_translator_init(void) {
     CURLcode res = curl_global_init(CURL_GLOBAL_DEFAULT);
     if (res != CURLE_OK) {

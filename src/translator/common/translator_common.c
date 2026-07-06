@@ -18,6 +18,21 @@
 #include <sys/types.h>
 #include <json-c/json.h>
 
+// Registry of all translation providers, walked by the startup/shutdown
+// lifecycle (main.c) and the dispatcher (lyrics_provider.c), which uses the
+// first provider whose matches() accepts the configured name. The matchers are
+// currently mutually exclusive (distinct name prefixes), so order does not
+// affect dispatch; if a future provider's matcher could overlap another's,
+// place the more specific one first. Add a new provider by defining its
+// translator_provider (in its own module) and adding one entry here.
+const struct translator_provider *const translator_providers[] = {
+    &openai_provider,
+    &claude_provider,
+    &gemini_provider,
+    &deepl_provider,
+    NULL,
+};
+
 /**
  * Extract the last non-empty line from text
  * This handles cases where AI includes the original text before the translation

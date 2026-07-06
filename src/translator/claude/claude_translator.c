@@ -132,6 +132,18 @@ static char* translate_single_line(const char *text, const char *target_lang,
     return translation;
 }
 
+// Provider registration (see struct translator_provider in translator_common.h).
+static bool claude_matches(const char *provider) {
+    return strncmp(provider, "claude", 6) == 0;
+}
+const struct translator_provider claude_provider = {
+    .name             = "claude",
+    .matches          = claude_matches,
+    .init             = claude_translator_init,
+    .cleanup          = claude_translator_cleanup,
+    .translate_lyrics = claude_translate_lyrics,
+};
+
 bool claude_translator_init(void) {
     return translator_init_curl_handle(&curl_handle, "claude_translator");
 }

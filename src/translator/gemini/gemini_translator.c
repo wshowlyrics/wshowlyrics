@@ -120,6 +120,18 @@ static char* translate_single_line(const char *text, const char *target_lang,
     return translation;
 }
 
+// Provider registration (see struct translator_provider in translator_common.h).
+static bool gemini_matches(const char *provider) {
+    return strncmp(provider, "gemini", 6) == 0;
+}
+const struct translator_provider gemini_provider = {
+    .name             = "gemini",
+    .matches          = gemini_matches,
+    .init             = gemini_translator_init,
+    .cleanup          = gemini_translator_cleanup,
+    .translate_lyrics = gemini_translate_lyrics,
+};
+
 bool gemini_translator_init(void) {
     return translator_init_curl_handle(&curl_handle, "gemini_translator");
 }
