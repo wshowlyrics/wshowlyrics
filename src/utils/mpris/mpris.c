@@ -103,6 +103,25 @@ static char* extract_string_array(GVariant *variant) {
     return result;
 }
 
+// Helper: strdup the string carried by a GVariant, or NULL if it is not a
+// string-like value. Guards against rogue MPRIS metadata that publishes an
+// unexpected type for a field: g_variant_get_string() returns NULL for those,
+// which would crash the following strdup() (CWE-476/843).
+//
+// g_variant_get_string() accepts STRING ('s'), OBJECT_PATH ('o') and
+// SIGNATURE ('g'); accept all three. In particular mpris:trackid is spec'd as
+// an object path, so restricting to STRING would silently drop trackid for
+// spec-compliant players and break track-change detection.
+static char* dup_string_variant(GVariant *value) {
+    if (!value ||
+        (!g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+         !g_variant_is_of_type(value, G_VARIANT_TYPE_OBJECT_PATH) &&
+         !g_variant_is_of_type(value, G_VARIANT_TYPE_SIGNATURE))) {
+        return NULL;
+    }
+    return strdup(g_variant_get_string(value, NULL));
+}
+
 // Helper: Parse metadata from GVariant dictionary into track_metadata struct
 // Returns newly allocated track_metadata, caller must free with mpris_free_metadata()
 static struct track_metadata* parse_metadata_from_dict(GVariant *metadata_dict, const char *player_name) {
@@ -124,7 +143,7 @@ static struct track_metadata* parse_metadata_from_dict(GVariant *metadata_dict, 
     // Title (xesam:title)
     value = get_dict_value(metadata_dict, "xesam:title");
     if (value) {
-        metadata->title = strdup(g_variant_get_string(value, NULL));
+        metadata->title = dup_string_variant(value);
         g_variant_unref(value);
     }
 
@@ -138,28 +157,28 @@ static struct track_metadata* parse_metadata_from_dict(GVariant *metadata_dict, 
     // Album (xesam:album)
     value = get_dict_value(metadata_dict, "xesam:album");
     if (value) {
-        metadata->album = strdup(g_variant_get_string(value, NULL));
+        metadata->album = dup_string_variant(value);
         g_variant_unref(value);
     }
 
     // URL (xesam:url)
     value = get_dict_value(metadata_dict, "xesam:url");
     if (value) {
-        metadata->url = strdup(g_variant_get_string(value, NULL));
+        metadata->url = dup_string_variant(value);
         g_variant_unref(value);
     }
 
     // Track ID (mpris:trackid)
     value = get_dict_value(metadata_dict, "mpris:trackid");
     if (value) {
-        metadata->trackid = strdup(g_variant_get_string(value, NULL));
+        metadata->trackid = dup_string_variant(value);
         g_variant_unref(value);
     }
 
     // Art URL (mpris:artUrl)
     value = get_dict_value(metadata_dict, "mpris:artUrl");
     if (value) {
-        metadata->art_url = strdup(g_variant_get_string(value, NULL));
+        metadata->art_url = dup_string_variant(value);
         g_variant_unref(value);
     }
 
@@ -816,8 +835,12 @@ static bool is_player_playing(const char *player_name) {
 
     GVariant *status_value = g_variant_get_child_value(status_variant, 0);
     GVariant *status_str = g_variant_get_variant(status_value);
-    const char *status = g_variant_get_string(status_str, NULL);
-    bool is_playing = (strcmp(status, "Playing") == 0);
+    // Guard against rogue players publishing a non-string PlaybackStatus:
+    // g_variant_get_string() would return NULL and crash strcmp().
+    bool is_playing = false;
+    if (g_variant_is_of_type(status_str, G_VARIANT_TYPE_STRING)) {
+        is_playing = (strcmp(g_variant_get_string(status_str, NULL), "Playing") == 0);
+    }
 
     g_variant_unref(status_str);
     g_variant_unref(status_value);
@@ -960,11 +983,14 @@ static void setup_player_subscription(char *player) {
     if (!error && result) {
         GVariant *status_variant = g_variant_get_child_value(result, 0);
         GVariant *status_value = g_variant_get_variant(status_variant);
-        const char *status = g_variant_get_string(status_value, NULL);
 
-        g_mutex_lock(&mpris_state.mutex);
-        mpris_state.playback_status = strdup(status);
-        g_mutex_unlock(&mpris_state.mutex);
+        // Guard against rogue players publishing a non-string PlaybackStatus.
+        if (g_variant_is_of_type(status_value, G_VARIANT_TYPE_STRING)) {
+            const char *status = g_variant_get_string(status_value, NULL);
+            g_mutex_lock(&mpris_state.mutex);
+            mpris_state.playback_status = strdup(status);
+            g_mutex_unlock(&mpris_state.mutex);
+        }
 
         g_variant_unref(status_value);
         g_variant_unref(status_variant);
