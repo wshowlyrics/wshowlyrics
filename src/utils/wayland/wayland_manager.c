@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <poll.h>
 #include <stdio.h>
 
 bool wayland_manager_init(struct wayland_connection *conn) {
@@ -126,21 +127,66 @@ bool wayland_manager_flush(struct wayland_connection *conn) {
         return false;
     }
 
-    errno = 0;
-    do {
-        if (wl_display_flush(conn->display) == -1 && errno != EAGAIN) {
+    // Consecutive poll timeouts across calls. A healthy compositor drains the
+    // socket within a poll interval, so this stays at 0. If it climbs, the peer
+    // is wedged (hung-but-connected) and the buffered data would grow unbounded.
+    static int stall_count = 0;
+
+    // Flush the outgoing Wayland buffer. When the socket send buffer is full,
+    // wl_display_flush() returns -1 with EAGAIN. Wait for the fd to become
+    // writable and retry, rather than busy-spinning. The previous loop tested a
+    // stale errno (wl_display_flush() does not clear it on success), so a single
+    // EAGAIN wedged it in an infinite loop that never returned and never let the
+    // main loop observe the shutdown flag — the process could only be SIGKILLed.
+    while (wl_display_flush(conn->display) == -1) {
+        if (errno != EAGAIN) {
             log_error("Wayland display flush error: %s (errno=%d)",
                     strerror(errno), errno);
-
             if (errno == EPIPE || errno == ECONNRESET) {
                 log_error("Wayland connection lost (possibly due to screen lock or compositor restart)");
                 conn->connected = false;
             }
-
+            stall_count = 0;
             return false;
         }
-    } while (errno == EAGAIN);
 
+        struct pollfd pfd = {
+            .fd = wl_display_get_fd(conn->display),
+            .events = POLLOUT,
+        };
+        int pr = poll(&pfd, 1, POLL_TIMEOUT_MS);
+        if (pr < 0 && errno != EINTR) {
+            log_error("Wayland flush poll error: %s (errno=%d)", strerror(errno), errno);
+            stall_count = 0;
+            return false;
+        }
+        if (pr > 0 && (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+            // The socket errored/closed under us — treat as a lost connection so
+            // the main loop can trigger a reconnect instead of looping forever.
+            log_error("Wayland flush poll reported error (revents=0x%x)", pfd.revents);
+            conn->connected = false;
+            stall_count = 0;
+            return false;
+        }
+        if (pr <= 0) {
+            // Timeout or interrupted: leave the remaining data buffered and let
+            // the main loop iterate (re-checking run / handling signals). It
+            // flushes again next pass, so shutdown and reconnect stay responsive.
+            // But a compositor that never drains would buffer without bound, so
+            // escalate to a lost connection after a sustained stall.
+            if (pr == 0 && ++stall_count >= WAYLAND_FLUSH_MAX_STALLS) {
+                log_error("Wayland flush stalled for ~%d ms — treating connection as lost",
+                        WAYLAND_FLUSH_MAX_STALLS * POLL_TIMEOUT_MS);
+                conn->connected = false;
+                stall_count = 0;
+                return false;
+            }
+            return true;
+        }
+        // Socket is writable now — loop retries the flush.
+    }
+
+    stall_count = 0;
     return true;
 }
 

@@ -17,18 +17,24 @@
 #include <curl/curl.h>
 #include <sys/stat.h>
 #include <signal.h>
+#include <unistd.h>
 #include <time.h>
 
 // Global state for signal handler
 static struct lyrics_state *g_state = NULL;
 
-// Signal handler for cleanup
+// Signal handler for cleanup. Must use only async-signal-safe operations:
+// log_info()/printf() are NOT safe (stdio locks), so we only set the run flag
+// and write a fixed message with write(2). The main loop performs the actual
+// cleanup once it observes the flag.
 static void signal_handler(int signum) {
-    log_info("Received signal %d, cleaning up...", signum);
-
+    (void)signum;
     if (g_state) {
-        g_state->runtime.run = false;
+        g_state->runtime.run = 0;
     }
+    static const char msg[] = "Signal received, shutting down...\n";
+    ssize_t written = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    (void)written;
 }
 
 // Handle --purge option

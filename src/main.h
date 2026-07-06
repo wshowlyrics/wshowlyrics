@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <getopt.h>
+#include <signal.h>
 #include <libgen.h>
 #include <poll.h>
 #include <stdbool.h>
@@ -77,7 +78,7 @@ struct surface_state {
 
 // Runtime flags: lifecycle and behavior toggles
 struct runtime {
-    bool run;
+    volatile sig_atomic_t run;                    // Cleared by the signal handler; must be async-safe
     bool needs_reconnect;                         // Set when layer surface is closed
     bool reconnecting;                            // Ignore layer_surface_closed during reconnect
     bool overlay_enabled;                         // D-Bus controlled: show/hide overlay

@@ -119,6 +119,10 @@ static inline void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
 // Maximum retry attempts for Wayland surface configuration
 #define WAYLAND_CONFIGURE_RETRY_LIMIT 10
 
+// Consecutive flush poll timeouts before declaring the connection lost.
+// 50 × POLL_TIMEOUT_MS (100ms) = ~5s of sustained back-pressure with no drain.
+#define WAYLAND_FLUSH_MAX_STALLS 50
+
 // How often to check for track updates (in poll intervals)
 // 20 polls × 100ms = 2 seconds
 #define TRACK_UPDATE_CHECK_INTERVAL 20
