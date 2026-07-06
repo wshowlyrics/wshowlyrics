@@ -9,6 +9,7 @@
 #include "../../constants.h"
 #include "../../utils/file/file_utils.h"
 #include "../../utils/string/string_utils.h"
+#include "../../utils/url/url_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -150,38 +151,6 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
     }
 
     return success;
-}
-
-// URL decode a string (handles %XX encoding)
-static char* url_decode_string(const char *str) {
-    if (!str) return NULL;
-
-    size_t len = strlen(str);
-    char *decoded = malloc(len + 1);
-    if (!decoded) return NULL;
-
-    size_t i = 0;
-    size_t j = 0;
-    while (i < len) {
-        if (str[i] == '%' && i + 2 < len) {
-            // Decode %XX
-            char hex[3] = { str[i+1], str[i+2], '\0' };
-            char *endptr;
-            long val = strtol(hex, &endptr, 16);
-            // Reject %00: decoding it to a NUL would truncate the path/filename
-            // (CWE-158). Leave the literal "%00" so the lookup simply fails
-            // instead of silently searching a shortened path.
-            if (*endptr == '\0' && val != 0) {
-                decoded[j++] = (char)val;
-                i += 3;
-                continue;
-            }
-        }
-        decoded[j++] = str[i++];
-    }
-    decoded[j] = '\0';
-
-    return decoded;
 }
 
 // Cleanup partially allocated extension array (helper for error paths)

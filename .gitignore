@@ -92,3 +92,4 @@ fuzz/corpus/**
 !fuzz/corpus/**/*.lrc
 !fuzz/corpus/**/*.lrcx
 !fuzz/corpus/**/*.srt
+!fuzz/corpus/**/*.txt

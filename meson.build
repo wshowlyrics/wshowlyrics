@@ -104,6 +104,7 @@ executable(
 		'src/user_experience/system_tray/system_tray.c',
 		'src/user_experience/config/config.c',
 		'src/utils/curl/curl_utils.c',
+		'src/utils/url/url_utils.c',
 		'src/utils/file/file_utils.c',
 		'src/utils/icon/icon_utils.c',
 		'src/utils/json/json_utils.c',
@@ -194,5 +195,14 @@ if get_option('fuzzing')
 			install: false,
 		)
 	endforeach
+
+	# url_decode target only needs the self-contained url util (no parser deps).
+	executable('fuzz_url_decode',
+		files('fuzz/fuzz_url_decode.c', 'src/utils/url/url_utils.c'),
+		include_directories: include_directories('src'),
+		c_args: fuzz_sanitizer_args,
+		link_args: fuzz_sanitizer_args,
+		install: false,
+	)
 endif
 

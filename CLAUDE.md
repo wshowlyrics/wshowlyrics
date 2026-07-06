@@ -18,7 +18,7 @@ On NixOS, `nix-shell` (root `shell.nix`) provides all build/fuzz deps — enter 
 
 ### Fuzz Targets
 
-Parsers (LRC/LRCX/SRT) have libFuzzer + ASan targets. Build separately with clang:
+Parsers (LRC/LRCX/SRT) plus the MPRIS-URI percent-decoder (`url_decode`) have libFuzzer + ASan targets. Build separately with clang:
 
 ```bash
 # ASan build (default — runtime memory error detection)
@@ -31,7 +31,7 @@ CC=clang meson setup build-valgrind -Dfuzzing=true -Dfuzz_sanitizer=none
 valgrind --leak-check=full ./build-valgrind/fuzz_lrc fuzz/corpus/lrc/
 ```
 
-Fuzz sources are in `fuzz/`, seed corpora in `fuzz/corpus/{lrc,lrcx,srt}/`. Fuzz targets share `parser_sources` with the main binary (see `meson.build`).
+Fuzz sources are in `fuzz/`, seed corpora in `fuzz/corpus/{lrc,lrcx,srt,url_decode}/`. The parser targets share `parser_sources` with the main binary; `fuzz_url_decode` links only the self-contained `src/utils/url/url_utils.c` (no parser deps). See `meson.build`.
 
 ## CI/CD: GitLab Primary, GitHub Mirror
 
