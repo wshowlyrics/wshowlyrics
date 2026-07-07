@@ -311,6 +311,32 @@ static bool is_cjk_ideograph(const char *p, const char *limit, const char *text_
     return false;
 }
 
+// Helper: Is the character at 'p' an ASCII (0-9) or fullwidth (U+FF10-U+FF19) digit?
+// Used to let a kanji ruby base absorb a leading numeral (e.g. "2人", "258円")
+// so the reading centers over the whole counter word.
+static bool is_ascii_or_fullwidth_digit(const char *p, const char *limit, const char *text_end) {
+    if (p >= text_end || p < limit) {
+        return false;
+    }
+
+    unsigned char c1 = (unsigned char)p[0];
+
+    // ASCII digit
+    if (c1 >= '0' && c1 <= '9') {
+        return true;
+    }
+
+    // Fullwidth digit U+FF10 - U+FF19 (3-byte UTF-8)
+    if ((c1 & 0xF0) == 0xE0 && p + 2 < text_end) {
+        unsigned char c2 = (unsigned char)p[1];
+        unsigned char c3 = (unsigned char)p[2];
+        uint32_t codepoint = ((c1 & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F);
+        return codepoint >= 0xFF10 && codepoint <= 0xFF19;
+    }
+
+    return false;
+}
+
 // Helper: Move back one UTF-8 character (skip continuation bytes)
 static const char* move_back_one_utf8_char(const char *p, const char *limit) {
     // Prevent buffer underflow when p == limit
@@ -354,12 +380,66 @@ static const char* find_space_boundary(const char *p, const char *limit, const c
 }
 
 // Helper: Find kanji-based word boundary
-static const char* find_kanji_boundary(const char *p, const char *limit, const char *text_end) {
+// Helper: Is this codepoint a small kana (sutegana)? Small kana do not count as
+// a separate mora (ゃゅょっ and friends).
+static bool is_small_kana(uint32_t cp) {
+    switch (cp) {
+        // Hiragana small: ぁぃぅぇぉ っ ゃゅょ ゎ ゕゖ
+        case 0x3041: case 0x3043: case 0x3045: case 0x3047: case 0x3049:
+        case 0x3063: case 0x3083: case 0x3085: case 0x3087: case 0x308E:
+        case 0x3095: case 0x3096:
+        // Katakana small: ァィゥェォ ッ ャュョ ヮ ヵヶ
+        case 0x30A1: case 0x30A3: case 0x30A5: case 0x30A7: case 0x30A9:
+        case 0x30C3: case 0x30E3: case 0x30E5: case 0x30E7: case 0x30EE:
+        case 0x30F5: case 0x30F6:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Helper: Count morae in a ruby reading, excluding small kana. A long jukujikun
+// counter reading (ふたり, はたち — 3+ morae) should span the leading digits of a
+// numeral counter; a short compositional reading (じ, ふん, びょう — <= 2 morae)
+// stays over the kanji only.
+static int count_morae(const char *s) {
+    int morae = 0;
+    const unsigned char *p = (const unsigned char *)s;
+    while (p && *p) {
+        unsigned char c = *p;
+        uint32_t cp;
+        int len;
+        if (c < 0x80) { cp = c; len = 1; }
+        else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; len = 2; }
+        else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; len = 3; }
+        else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; len = 4; }
+        else { p++; continue; }
+
+        int i = 1;
+        while (i < len && (p[i] & 0xC0) == 0x80) {
+            cp = (cp << 6) | (p[i] & 0x3F);
+            i++;
+        }
+        if (i == len && !is_small_kana(cp)) {
+            morae++;
+        }
+        p += (i > 1) ? i : 1;
+    }
+    return morae;
+}
+
+// Helper: Find kanji-based word boundary. When group_digits is true, leading
+// ASCII/fullwidth digits are absorbed into the base (so "2人{ふたり}" covers the
+// numeral); otherwise the scan stops at the first non-kanji.
+static const char* find_kanji_boundary(const char *p, const char *limit,
+                                       const char *text_end, bool group_digits) {
     while (p > limit) {
         const char *prev = move_back_one_utf8_char(p, limit);
 
-        // Check if previous character is a space or not a kanji
-        if (is_space_char(prev, text_end) || !is_cjk_ideograph(prev, limit, text_end)) {
+        bool is_word_char = is_cjk_ideograph(prev, limit, text_end) ||
+                            (group_digits &&
+                             is_ascii_or_fullwidth_digit(prev, limit, text_end));
+        if (is_space_char(prev, text_end) || !is_word_char) {
             return p;  // Found word boundary
         }
 
@@ -371,7 +451,8 @@ static const char* find_kanji_boundary(const char *p, const char *limit, const c
 // Helper: Find the start of the word that ends at 'end'
 // For ruby text, scan backwards to find kanji sequence
 // Will not go before 'limit'
-static const char* find_word_start(const char *limit, const char *end, const char *text_end) {
+static const char* find_word_start(const char *limit, const char *end,
+                                   const char *text_end, bool group_digits) {
     // Check if the character right before '{' is a kanji
     const char *check = move_back_one_utf8_char(end, limit);
 
@@ -381,7 +462,7 @@ static const char* find_word_start(const char *limit, const char *end, const cha
     }
 
     // Kanji - scan backwards to find start of kanji sequence
-    return find_kanji_boundary(end, limit, text_end);
+    return find_kanji_boundary(end, limit, text_end, group_digits);
 }
 
 int parse_karaoke_segments(const char *text, int64_t timestamp_us, struct word_segment **segments) {
@@ -559,9 +640,12 @@ static const char* handle_ruby_annotation(const char *pos, const char *seg_start
     size_t ruby_len = close_brace - pos - 1;
     char *ruby = ruby_len > 0 ? strndup(pos + 1, ruby_len) : NULL;
 
-    // Find the word that this ruby annotation applies to
+    // Find the word that this ruby annotation applies to. A long (jukujikun)
+    // reading absorbs leading digits (2人{ふたり}); a short compositional counter
+    // reading (17時{じ}) does not, so the reading stays over the kanji only.
     const char *word_end = pos;
-    const char *word_start = find_word_start(seg_start, word_end, text_end);
+    bool group_digits = count_morae(ruby) >= 3;
+    const char *word_start = find_word_start(seg_start, word_end, text_end, group_digits);
 
     // Create segment for text before the word (if any)
     if (word_start > seg_start &&
