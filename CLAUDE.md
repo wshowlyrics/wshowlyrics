@@ -258,4 +258,4 @@ See `docs/TESTING.md` for the Unicode-path scenarios.
 ## Helper Scripts
 
 - `wshowlyrics-offset` — D-Bus client for timing offset and overlay toggle (installed to `bindir`).
-- `docs/add_furigana.py`, `docs/convert_vtt_to_srt.py` — content-prep helpers (not built/installed).
+- `tools/add_furigana.py` — offline furigana (pyopenjtalk readings over pykakasi structure; `--regenerate` rebuilds existing files). `tools/add_furigana_ai.py` — optional cloud-LLM overlay. `tools/convert_vtt_to_srt.py` — VTT→SRT. All content-prep helpers (not built/installed); NixOS deps via `tools/furigana-shell.nix`.
