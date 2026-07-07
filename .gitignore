@@ -94,6 +94,6 @@ fuzz/corpus/**
 !fuzz/corpus/**/*.srt
 !fuzz/corpus/**/*.txt
 
-# Python bytecode cache (docs/ content-prep helpers)
+# Python bytecode cache (tools/ content-prep helpers)
 __pycache__/
 *.pyc
