@@ -302,7 +302,10 @@ def process_file(filepath, annotate_fn=annotate_line, regenerate=False):
 
     new_lines = []
     is_srt = filepath.lower().endswith('.srt')
-    is_lrc = filepath.lower().endswith('.lrc')
+    # .lrcx is LRC with inline word timestamps: it carries the same [ti:]/[al:]
+    # metadata tags, so it must take the LRC path (a plain endswith('.lrc') is
+    # False for '.lrcx' and would let the tags be annotated).
+    is_lrc = filepath.lower().endswith(('.lrc', '.lrcx'))
 
     for line in lines:
         # Universal newlines already normalised the EOL, so strip just '\n' and
