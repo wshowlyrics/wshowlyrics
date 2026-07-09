@@ -110,6 +110,28 @@ COUNTER_READINGS = {
     '週': ['しゅう'], '人': ['にん', 'じん'],
 }
 
+# Readings that ONLY exist as a counter, i.e. they require a preceding numeral.
+# じ is the hour counter (9時 / 九時); a bare 時 is とき, so ひと時{じ} is wrong.
+# Counter readings that are also valid on their own (円{えん}, 番{ばん}, 点{てん},
+# 度{ど}, 本{ほん}) are deliberately omitted -- they need no numeral.
+COUNTER_ONLY_READINGS = {
+    '時': ('じ',), '分': ('ふん', 'ぷん'), '人': ('にん',), '月': ('がつ',),
+    '日': ('にち',), '歳': ('さい',), '才': ('さい',), '秒': ('びょう',),
+    '個': ('こ',), '枚': ('まい',),
+}
+NUMERAL_CHARS = set('0123456789０１２３４５６７８９一二三四五六七八九十百千万〇零')
+
+
+def _counter_reading_without_numeral(base, reading, base_text, start):
+    """True when a counter-only reading lands on a bare counter kanji that has no
+    numeral in front of it -- e.g. ひと時{じ}, which should read とき."""
+    if len(base) != 1:
+        return False
+    readings = COUNTER_ONLY_READINGS.get(base)
+    if not readings or reading not in readings:
+        return False
+    return start == 0 or base_text[start - 1] not in NUMERAL_CHARS
+
 
 def strip_readings(text):
     """Remove all {...} reading groups, leaving only the base text."""
@@ -163,6 +185,8 @@ def reconcile_readings(structure_text, reading_runs):
     as data — rather than re-parsing an annotated string — is what keeps a
     reading for 中 from being widened onto a preceding bare kanji (日中).
     """
+    base_text = strip_readings(structure_text)
+
     out = []
     offset = 0
     for base, reading in annotated_segments(structure_text):
@@ -177,8 +201,11 @@ def reconcile_readings(structure_text, reading_runs):
             for run_start, run_end, run_reading in inside:
                 if run_start < pos:
                     continue
+                run_base = base[run_start - start:run_end - start]
+                if _counter_reading_without_numeral(run_base, run_reading, base_text, run_start):
+                    continue
                 out.append(base[pos - start:run_start - start])
-                out.append(f"{base[run_start - start:run_end - start]}{{{run_reading}}}")
+                out.append(f"{run_base}{{{run_reading}}}")
                 pos = run_end
             out.append(base[pos - start:])
             continue
@@ -187,7 +214,10 @@ def reconcile_readings(structure_text, reading_runs):
         if (inside and inside[0][0] == start and inside[-1][1] == end and
                 all(inside[k][1] == inside[k + 1][0] for k in range(len(inside) - 1))):
             merged = ''.join(r[2] for r in inside)
-            if PURE_HIRAGANA_RE.match(merged):
+            # A counter-only reading (時->じ) needs a numeral in front; without one
+            # it is wrong, so keep the structure's reading (ひと時{とき}).
+            if PURE_HIRAGANA_RE.match(merged) and \
+                    not _counter_reading_without_numeral(base, merged, base_text, start):
                 chosen = merged
         out.append(f"{base}{{{chosen}}}")
     return ''.join(out)
