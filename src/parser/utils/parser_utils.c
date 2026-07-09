@@ -292,8 +292,13 @@ static bool is_cjk_ideograph(const char *p, const char *limit, const char *text_
 
         // CJK Unified Ideographs: U+4E00 - U+9FFF
         // CJK Extension A: U+3400 - U+4DBF
+        // U+3005 々 repeats the preceding kanji, so it is part of the word and
+        // must join the ruby base (日々 / 人々 / 時々). Without it the base falls
+        // back to a space boundary and swallows the whole phrase. This mirrors
+        // KANJI_CLASS in tools/add_furigana.py.
         return (codepoint >= 0x4E00 && codepoint <= 0x9FFF) ||
-               (codepoint >= 0x3400 && codepoint <= 0x4DBF);
+               (codepoint >= 0x3400 && codepoint <= 0x4DBF) ||
+               (codepoint == 0x3005);
     }
 
     // 4-byte UTF-8 (for extension B and beyond)
