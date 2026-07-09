@@ -433,17 +433,37 @@ static int count_morae(const char *s) {
 // numeral); otherwise the scan stops at the first non-kanji.
 static const char* find_kanji_boundary(const char *p, const char *limit,
                                        const char *text_end, bool group_digits) {
+    int kanji_count = 0;
+
     while (p > limit) {
         const char *prev = move_back_one_utf8_char(p, limit);
 
-        bool is_word_char = is_cjk_ideograph(prev, limit, text_end) ||
-                            (group_digits &&
-                             is_ascii_or_fullwidth_digit(prev, limit, text_end));
-        if (is_space_char(prev, text_end) || !is_word_char) {
+        if (is_space_char(prev, text_end)) {
             return p;  // Found word boundary
         }
 
-        p = prev;
+        if (is_cjk_ideograph(prev, limit, text_end)) {
+            kanji_count++;
+            p = prev;
+            continue;
+        }
+
+        // Absorb a leading numeral only for a SINGLE-kanji counter whose reading
+        // is long enough to cover it (2人{ふたり}). A multi-kanji base such as
+        // 日中{にっちゅう} or 時間{じかん} reads the kanji alone -- its reading is
+        // naturally long -- so the digit must stay outside the base.
+        if (group_digits && kanji_count == 1 &&
+            is_ascii_or_fullwidth_digit(prev, limit, text_end)) {
+            p = prev;
+            while (p > limit) {
+                const char *digit = move_back_one_utf8_char(p, limit);
+                if (!is_ascii_or_fullwidth_digit(digit, limit, text_end)) {
+                    break;
+                }
+                p = digit;
+            }
+        }
+        return p;  // Found word boundary
     }
     return limit;
 }
