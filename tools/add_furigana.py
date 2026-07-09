@@ -18,6 +18,14 @@ import pyopenjtalk
 # Initialize pykakasi converter once outside the function for efficiency
 kks = pykakasi.kakasi()
 
+# A ruby base is kanji, plus the iteration mark 々 (U+3005) which closes words
+# like 日々 / 人々 / 時々 but lives outside the CJK ideograph block.
+KANJI_CLASS = '一-龯々'
+KANJI_RE = re.compile(f'[{KANJI_CLASS}]')
+KANJI_TAIL_RE = re.compile(f'[{KANJI_CLASS}]$')
+PURE_HIRAGANA_RE = re.compile(r'^[぀-ゟ]+$')
+READING_RE = re.compile(r'\{[^}]*\}')
+
 def find_common_suffix(s1, s2):
     """Finds the longest common suffix between two strings."""
     s1_rev, s2_rev = s1[::-1], s2[::-1]
@@ -33,7 +41,9 @@ def add_furigana_to_text(text):
 
     # Pattern to identify kanji already followed by furigana, e.g., 漢字{かんじ}
     # This helps in splitting the string to process only parts without furigana.
-    furigana_pattern = r'([\u4e00-\u9faf]+(?:\{[^\}]*\}))'
+    # NOTE: the base may end with \u3005 (\u65e5\u3005{\u3072\u3073}); KANJI_CLASS covers it, otherwise
+    # such a block is not seen as annotated and a second run appends a reading.
+    furigana_pattern = rf'([{KANJI_CLASS}]+(?:\{{[^\}}]*\}}))'
 
     parts = re.split(furigana_pattern, text)
 
@@ -51,17 +61,25 @@ def add_furigana_to_text(text):
             processed_chunk = ''
             for item in result:
                 # Add furigana if the original part contains Kanji and the reading is different.
-                if re.search('[\u4e00-\u9faf]', item['orig']) and item['hira'] != item['orig']:
-                    suffix = find_common_suffix(item['orig'], item['hira'])
+                orig, hira = item['orig'], item['hira']
+                if KANJI_RE.search(orig) and hira != orig:
+                    suffix = find_common_suffix(orig, hira)
                     # If there's a common suffix (okurigana), apply furigana only to the kanji part.
-                    if suffix and len(suffix) < len(item['orig']):
-                        kanji_part = item['orig'][:-len(suffix)]
-                        hira_part = item['hira'][:-len(suffix)]
+                    if suffix and len(suffix) < len(orig):
+                        kanji_part, hira_part = orig[:-len(suffix)], hira[:-len(suffix)]
+                    else:  # No common suffix or word is all kanji.
+                        kanji_part, hira_part, suffix = orig, hira, ''
+                    # A ruby base must end with a kanji and carry a pure-hiragana
+                    # reading. pykakasi sometimes returns a long-vowel \u30fc (\u611b\u304a\u3057\u3044
+                    # -> \u3044\u3068\u30fc\u3057\u3044) which misaligns the okurigana split and leaves
+                    # kana at the end of the base (\u611b\u304a{\u3044\u3068\u30fc}) -- that is not
+                    # expressible as ruby, so leave the token unannotated.
+                    if KANJI_TAIL_RE.search(kanji_part) and PURE_HIRAGANA_RE.match(hira_part):
                         processed_chunk += f"{kanji_part}{{{hira_part}}}{suffix}"
-                    else: # No common suffix or word is all kanji.
-                        processed_chunk += f"{item['orig']}{{{item['hira']}}}"
+                    else:
+                        processed_chunk += orig
                 else:
-                    processed_chunk += item['orig']
+                    processed_chunk += orig
             processed_parts.append(processed_chunk)
 
     return "".join(processed_parts)
@@ -75,10 +93,6 @@ def add_furigana_to_text(text):
 # top. pyopenjtalk normalises punctuation/latin/digits in its surface, so it can
 # only be a READING source: its kanji runs (never normalised) are mapped back
 # onto the original by string search.
-
-PURE_HIRAGANA_RE = re.compile(r'^[぀-ゟ]+$')
-KANJI_RE = re.compile(r'[一-龯]')
-READING_RE = re.compile(r'\{[^}]*\}')
 
 # Numeral + counter: digits followed by kanji, plus any ruby already attached.
 NUM_COUNTER_RE = re.compile(r'([0-9０-９]+)([一-龯]+)(\{[^}]*\})?')
@@ -105,17 +119,19 @@ def strip_readings(text):
 def annotated_segments(text):
     """Split an annotated line into (base, reading|None) segments.
 
-    A ruby unit's base is the run ending at '{', trimmed to start at its first
-    kanji: pykakasi groups okurigana verbs like 思い出{おもいだ}, whose base
-    contains internal kana, so the base is NOT simply "trailing kanji".
+    A ruby unit's base is the maximal run of kanji (or 々) immediately before
+    '{' -- exactly how the C renderer's find_kanji_boundary reads it, so this
+    segmentation matches what will actually be drawn.
     Concatenating the base parts reproduces the ruby-free original text.
     """
+    base_tail_re = re.compile(f'[{KANJI_CLASS}]+$')
     segments = []
     idx = 0
     for match in re.finditer(r'\{([^}]*)\}', text):
         chunk = text[idx:match.start()]
-        kanji = KANJI_RE.search(chunk)
+        kanji = base_tail_re.search(chunk)
         if kanji is None:
+            # No kanji owns this reading — keep it verbatim as plain text.
             segments.append((chunk + match.group(0), None))
         else:
             if kanji.start() > 0:
@@ -153,7 +169,18 @@ def reconcile_readings(structure_text, reading_runs):
         start, end = offset, offset + len(base)
         offset = end
         if reading is None:
-            out.append(base)
+            # The structure left this span bare (pykakasi could not express a
+            # valid base, e.g. 愛おしい). Insert any reading run that fits inside
+            # it so pyopenjtalk still supplies 愛{いと}おしい.
+            inside = sorted(r for r in reading_runs if r[0] >= start and r[1] <= end)
+            pos = start
+            for run_start, run_end, run_reading in inside:
+                if run_start < pos:
+                    continue
+                out.append(base[pos - start:run_start - start])
+                out.append(f"{base[run_start - start:run_end - start]}{{{run_reading}}}")
+                pos = run_end
+            out.append(base[pos - start:])
             continue
         chosen = reading  # structure_text's reading is the fallback
         inside = sorted(r for r in reading_runs if r[0] >= start and r[1] <= end)
@@ -244,20 +271,18 @@ def fix_numerals(text):
 def annotate_line(text):
     """Default engine: pykakasi structure + pyopenjtalk readings + numeral policy.
 
-    Idempotent: a line that already contains ruby is left to the pykakasi-only
-    path (which preserves existing {…} blocks and only fills bare kanji), so
-    re-running never rewrites readings. To regenerate readings, strip the
-    existing ruby first.
+    Idempotent: a line that already contains ruby is returned untouched, so a
+    re-run can never rewrite or duplicate a reading. (A base ending in 々 or in
+    kana would otherwise be re-annotated, appending a second reading each run.)
+    Pass --regenerate to rebuild readings from scratch.
     """
     if not KANJI_RE.search(text):
         return text
     base = strip_readings(text)
     if base != text:
-        # Already annotated: preserve existing ruby, only fill bare kanji.
-        result = add_furigana_to_text(text)
-    else:
-        structure = add_furigana_to_text(text)
-        result = fix_numerals(reconcile_readings(structure, pyopenjtalk_runs(text)))
+        return text
+    structure = add_furigana_to_text(text)
+    result = fix_numerals(reconcile_readings(structure, pyopenjtalk_runs(text)))
     # Safety net: never alter the underlying (ruby-stripped) text. If any stage
     # changed it (mojibake input, a normalization edge), return it unchanged.
     return result if strip_readings(result) == base else text
@@ -271,12 +296,18 @@ def process_file(filepath, annotate_fn=annotate_line, regenerate=False):
         print(f"Error reading file {filepath}: {e}", file=sys.stderr)
         return
 
+    # Preserve the file's trailing newline (and therefore any trailing blank
+    # line): '\n'.join() alone would silently drop it.
+    ends_with_newline = bool(lines) and lines[-1].endswith('\n')
+
     new_lines = []
     is_srt = filepath.lower().endswith('.srt')
     is_lrc = filepath.lower().endswith('.lrc')
 
     for line in lines:
-        cleaned_line = line.rstrip()
+        # Universal newlines already normalised the EOL, so strip just '\n' and
+        # leave any trailing spaces in the lyrics untouched.
+        cleaned_line = line.rstrip('\n')
 
         text_to_process = ""
         prefix = ""
@@ -309,7 +340,7 @@ def process_file(filepath, annotate_fn=annotate_line, regenerate=False):
 
     try:
         with open(filepath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(new_lines))
+            f.write('\n'.join(new_lines) + ('\n' if ends_with_newline else ''))
     except Exception as e:
         print(f"Error writing to file {filepath}: {e}", file=sys.stderr)
 
