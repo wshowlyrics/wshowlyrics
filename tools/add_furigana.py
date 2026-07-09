@@ -127,19 +127,26 @@ def annotated_segments(text):
     return segments
 
 
-def reconcile_readings(structure_text, reading_text):
-    """Adopt structure_text's segmentation while substituting reading_text's
-    reading wherever its runs cleanly tile a base of structure_text.
-
-    Both inputs annotate the SAME base text, so character offsets line up.
-    """
-    reading_runs = []
+def reading_runs_from_annotated(annotated_text):
+    """(start, end, reading) runs over the ruby-stripped text of an annotated string."""
+    runs = []
     offset = 0
-    for base, reading in annotated_segments(reading_text):
+    for base, reading in annotated_segments(annotated_text):
         if reading is not None:
-            reading_runs.append((offset, offset + len(base), reading))
+            runs.append((offset, offset + len(base), reading))
         offset += len(base)
+    return runs
 
+
+def reconcile_readings(structure_text, reading_runs):
+    """Adopt structure_text's segmentation, substituting a reading from
+    reading_runs wherever those runs cleanly tile one of its bases.
+
+    reading_runs are (start, end, reading) over the ruby-stripped base text, so
+    they record exactly which characters each reading belongs to. Passing them
+    as data — rather than re-parsing an annotated string — is what keeps a
+    reading for 中 from being widened onto a preceding bare kanji (日中).
+    """
     out = []
     offset = 0
     for base, reading in annotated_segments(structure_text):
@@ -159,11 +166,13 @@ def reconcile_readings(structure_text, reading_text):
     return ''.join(out)
 
 
-def pyopenjtalk_annotate(original):
-    """Annotate `original` (text preserved) with pyopenjtalk readings.
+def pyopenjtalk_runs(original):
+    """pyopenjtalk readings as (start, end, reading) runs over `original`.
 
-    Only kanji runs (which pyopenjtalk does NOT normalise) are matched back onto
-    the original by string search; everything else is copied verbatim.
+    Only kanji runs (which pyopenjtalk does NOT normalise) are located in the
+    original by string search; a run that cannot be matched (e.g. 2 -> 二 after
+    numeral normalisation) is skipped. Returning offsets instead of an annotated
+    string keeps each reading bound to exactly the characters it belongs to.
     """
     units = []
     for entry in pyopenjtalk.run_frontend(original):
@@ -179,16 +188,14 @@ def pyopenjtalk_annotate(original):
             kanji, hira = surf, read
         units.append((kanji, hira))
 
-    out, cursor = [], 0
+    runs, cursor = [], 0
     for kanji, hira in units:
         pos = original.find(kanji, cursor)
         if pos == -1:            # normalised mismatch (e.g. 2 -> 二) -> skip safely
             continue
-        out.append(original[cursor:pos])
-        out.append(f"{kanji}{{{hira}}}")
+        runs.append((pos, pos + len(kanji), hira))
         cursor = pos + len(kanji)
-    out.append(original[cursor:])
-    return ''.join(out)
+    return runs
 
 
 def _token_reading(token):
@@ -210,15 +217,25 @@ def fix_numerals(text):
         reading = _token_reading(token)
         if not reading:
             return match.group(0)
-        counter = kanji[-1]
-        for candidate in sorted(COUNTER_READINGS.get(counter, []),
-                                key=len, reverse=True):
+
+        # Counter readings to try as a suffix of the full reading. A multi-kanji
+        # counter (時間 -> じかん) is its own compound reading, so look that up
+        # via pyopenjtalk rather than keeping every compound in the table.
+        candidates = list(COUNTER_READINGS.get(kanji[-1], []))
+        if len(kanji) > 1:
+            own = _token_reading(kanji)
+            if own and PURE_HIRAGANA_RE.match(own):
+                candidates.append(own)
+        for candidate in sorted(candidates, key=len, reverse=True):
             if reading.endswith(candidate) and len(reading) > len(candidate):
                 # compositional: the counter suffix is clean hiragana even when
                 # the number part carries a long-vowel ー (じゅーしちじ -> じ).
                 return f"{token}{{{candidate}}}"
-        # jukujikun: use the full reading only if it renders as clean hiragana.
-        if PURE_HIRAGANA_RE.match(reading):
+
+        # jukujikun: the full reading covers the numeral, and the parser only
+        # absorbs a numeral into a SINGLE-kanji base. Emitting a number-inclusive
+        # reading over a multi-kanji base would misalign it, so leave those be.
+        if len(kanji) == 1 and PURE_HIRAGANA_RE.match(reading):
             return f"{token}{{{reading}}}"
         return match.group(0)
     return NUM_COUNTER_RE.sub(repl, text)
@@ -240,8 +257,7 @@ def annotate_line(text):
         result = add_furigana_to_text(text)
     else:
         structure = add_furigana_to_text(text)
-        readings = pyopenjtalk_annotate(text)
-        result = fix_numerals(reconcile_readings(structure, readings))
+        result = fix_numerals(reconcile_readings(structure, pyopenjtalk_runs(text)))
     # Safety net: never alter the underlying (ruby-stripped) text. If any stage
     # changed it (mojibake input, a normalization edge), return it unchanged.
     return result if strip_readings(result) == base else text

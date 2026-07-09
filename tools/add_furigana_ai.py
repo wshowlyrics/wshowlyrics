@@ -46,6 +46,7 @@ from add_furigana import (
     annotate_line,
     fix_numerals,
     process_file,
+    reading_runs_from_annotated,
     reconcile_readings,
     strip_readings,
 )
@@ -240,7 +241,7 @@ def make_ai_annotate(cfg):
         candidate = last_nonempty_line(call_llm(cfg, build_prompt(text)))
         if not is_valid(candidate, text):
             return base                     # no usable LLM output
-        merged = reconcile_readings(base, candidate)
+        merged = reconcile_readings(base, reading_runs_from_annotated(candidate))
         return fix_numerals(merged)         # re-assert numeral policy over LLM
     return ai_annotate
 
