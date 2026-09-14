@@ -78,11 +78,19 @@ runner service's PATH (git, nix, coreutils, gnused, gnugrep, tar, gzip, xz, open
 clone target is `rm -rf`'d before `git clone`. Never install packages there
 (`nix-env -i` would mutate the actual machine's profile on every nightly).
 
-**arm64 packaging is currently parked.** `package:*:arm64` still carry the dead
-`saas-linux-small-arm64` tag on purpose: dropping it would schedule them on an
-amd64 runner and publish amd64 binaries under arm64 filenames. binfmt emulation
-cannot be registered on the Synology host (the `binfmt_misc` `F` flag needs kernel
-4.8). Tracked in wshowlyrics#11, blocked on nix-configurations#34.
+**GitHub release binaries are x86_64 only.** The arm64 deb/rpm/AppImage jobs were
+removed (wshowlyrics#11): across 65 releases the arm64 and x86_64 download counts
+matched exactly for 65 of 76 asset pairs — whole-release scrapers, not people — and
+the human-attributable aarch64 residue was 2 downloads. Rebuilding them would also
+need a runner nobody has: the Synology host cannot register binfmt emulation (the
+`binfmt_misc` `F` flag needs kernel 4.8).
+
+aarch64 users are still served, because every other channel builds on its own
+side from source: AUR (`arch=('x86_64' 'aarch64')`), COPR (`fedora-*-aarch64`
+chroots), the Launchpad PPA (arm64 enabled) and NUR (`platforms.linux`). Those
+architecture lists live outside this repo — in the AUR PKGBUILDs, the COPR project
+settings, the PPA settings and `nur-packages` — so nothing here needs to change
+to keep them.
 
 ## Release Process
 

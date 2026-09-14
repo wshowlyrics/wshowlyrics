@@ -9,15 +9,9 @@ publish:github-release:
   needs:
     - job: package:deb:amd64
       artifacts: true
-    - job: package:deb:arm64
-      artifacts: true
     - job: package:rpm:x86_64
       artifacts: true
-    - job: package:rpm:aarch64
-      artifacts: true
     - job: package:appimage:x86_64
-      artifacts: true
-    - job: package:appimage:aarch64
       artifacts: true
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
@@ -48,22 +42,23 @@ publish:github-release:
 
       ### Installation
 
+      The files attached here are built for x86_64 only. On aarch64, install from
+      AUR, COPR, the Launchpad PPA or NUR instead — they build natively for your
+      architecture.
+
       #### Debian/Ubuntu (.deb)
       \`\`\`bash
-      # Download the appropriate .deb file for your architecture
       sudo dpkg -i wshowlyrics_${VERSION}_amd64.deb
       sudo apt-get install -f  # Install dependencies
       \`\`\`
 
       #### Fedora/RHEL (.rpm)
       \`\`\`bash
-      # Download the appropriate .rpm file for your architecture
       sudo dnf install wshowlyrics-${VERSION}-1.fc*.rpm
       \`\`\`
 
       #### Universal (AppImage)
       \`\`\`bash
-      # Download the appropriate AppImage file for your architecture
       chmod +x wshowlyrics-${VERSION}-x86_64.AppImage
       ./wshowlyrics-${VERSION}-x86_64.AppImage
       \`\`\`
