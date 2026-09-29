@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef RENDERING_MANAGER_H
 #define RENDERING_MANAGER_H
 

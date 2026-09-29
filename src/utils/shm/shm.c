@@ -1,4 +1,39 @@
-/* Portions of this file taken from sway, MIT licensed */
+// SPDX-License-Identifier: GPL-3.0-or-later AND MIT AND CC0-1.0
+/*
+ * Shared-memory buffer pool, inherited from wshowkeys (shm.c).
+ *
+ * randname(), create_shm_file() and allocate_shm_file() come from the
+ * "Allocating a shared memory pool" boilerplate in The Wayland Protocol book
+ * by Drew DeVault (src/surfaces/shared-memory.md,
+ * https://git.sr.ht/~sircmpwn/wayland-book), which the book releases into the
+ * public domain / under CC0.
+ *
+ * buffer_release(), create_buffer(), destroy_buffer() and get_next_buffer()
+ * are derived from sway's client/pool-buffer.c
+ * (https://github.com/swaywm/sway), distributed under the following license:
+ *
+ * Copyright (c) 2016-2017 Drew DeVault
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is furnished to do
+ * so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ * Modifications for wshowlyrics are licensed under GPL-3.0-or-later.
+ */
 #include <assert.h>
 #include <cairo/cairo.h>
 #include <errno.h>

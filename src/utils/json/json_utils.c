@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "json_utils.h"
 #include "../../constants.h"
 #include <stdio.h>

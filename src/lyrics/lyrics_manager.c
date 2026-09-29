@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "lyrics_manager.h"
 #include "../user_experience/config/config.h"
 #include "../core/state/state_helpers.h"

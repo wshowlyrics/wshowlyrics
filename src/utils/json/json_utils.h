@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef JSON_UTILS_H
 #define JSON_UTILS_H
 

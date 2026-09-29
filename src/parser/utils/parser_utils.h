@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef PARSER_UTILS_H
 #define PARSER_UTILS_H
 
@@ -28,9 +29,9 @@ bool parse_file_generic(const char *filename, struct lyrics_data *data,
 char* parse_ruby_text(const char *text, char **ruby_text);
 
 // Split text with ruby annotations into ruby segments (for LRC/SRT)
-// Example: "目指せよ　快眠{かいみん}" becomes 2 segments:
-//   1. text="目指せよ　", ruby=NULL
-//   2. text="快眠", ruby="かいみん"
+// Example: "明日は　晴天{せいてん}" becomes 2 segments:
+//   1. text="明日は　", ruby=NULL
+//   2. text="晴天", ruby="せいてん"
 // Returns number of segments created, or 0 on error
 // No timestamp information - used for furigana display only
 int parse_ruby_segments(const char *text, struct ruby_segment **segments);

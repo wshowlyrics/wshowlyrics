@@ -2,7 +2,7 @@ project(
 	'lyrics',
 	'c',
 	version: '0.10.2',
-	license: 'GPL',
+	license: 'GPL-3.0-or-later',
 	meson_version: '>=0.51.0',
 	default_options: [
 		'c_std=c11',

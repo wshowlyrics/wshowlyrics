@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef RUBY_RENDER_H
 #define RUBY_RENDER_H
 

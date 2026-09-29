@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "wayland_events.h"
 #include "../core/rendering/rendering_manager.h"
 #include "../utils/wayland/wayland_manager.h"

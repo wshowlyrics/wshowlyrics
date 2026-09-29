@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef STATE_HELPERS_H
 #define STATE_HELPERS_H
 

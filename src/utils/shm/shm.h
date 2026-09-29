@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later AND MIT
+// struct pool_buffer and the buffer-pool API derive from sway (MIT); see shm.c for the notice.
 #ifndef SHM_H
 #define SHM_H
 #include <cairo/cairo.h>

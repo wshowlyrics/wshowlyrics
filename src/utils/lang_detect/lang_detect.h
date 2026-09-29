@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef _LANG_DETECT_H
 #define _LANG_DETECT_H
 

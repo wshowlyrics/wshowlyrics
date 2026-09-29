@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "pango_utils.h"
 #include <stdbool.h>
 #include <stdint.h>

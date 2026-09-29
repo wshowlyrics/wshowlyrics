@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "runtime_dir.h"
 #include "../../constants.h"
 #include <stdbool.h>

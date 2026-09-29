@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "word_render.h"
 #include "render_common.h"
 #include "render_params.h"

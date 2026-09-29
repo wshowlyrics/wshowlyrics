@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "itunes_artwork.h"
 #include "../../utils/curl/curl_utils.h"
 #include "../../utils/string/string_utils.h"

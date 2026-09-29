@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef _LRCLIB_PROVIDER_H
 #define _LRCLIB_PROVIDER_H
 

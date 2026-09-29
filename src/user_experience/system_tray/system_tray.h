@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef _LYRICS_SYSTEM_TRAY_H
 #define _LYRICS_SYSTEM_TRAY_H
 

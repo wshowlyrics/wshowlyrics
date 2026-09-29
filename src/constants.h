@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 

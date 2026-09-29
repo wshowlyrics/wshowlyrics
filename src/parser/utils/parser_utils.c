@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "parser_utils.h"
 #include <stdio.h>
 #include "../../constants.h"

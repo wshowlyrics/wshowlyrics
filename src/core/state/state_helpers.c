@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "state_helpers.h"
 #include "../../constants.h"
 #include <stdio.h>

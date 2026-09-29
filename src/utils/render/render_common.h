@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef RENDER_COMMON_H
 #define RENDER_COMMON_H
 

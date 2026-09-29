@@ -16,7 +16,7 @@
 
 <img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/1909f0c1-445b-4526-b30f-6a5df93e624d" />
 
-A Wayland-based lyrics overlay program. Built on the [wshowkeys project](https://github.com/unstable-code/wshowkeys) and inspired by [LyricsX](https://github.com/ddddxxx/LyricsX).
+A Wayland-based lyrics overlay program. Built on [wshowkeys](https://git.sr.ht/~sircmpwn/wshowkeys) by Drew DeVault (via [this fork](https://github.com/unstable-code/wshowkeys)) and inspired by [LyricsX](https://github.com/ddddxxx/LyricsX).
 
 <p align="center">
   <a href="docs/README.ko.md">🇰🇷 한국어</a>
@@ -533,7 +533,7 @@ Karaoke-style lyrics with word-level timing:
 For special vocal patterns where a character needs to blink/oscillate, use the `[<MM:SS.xx]` unfill syntax:
 
 ```lrcx
-[00:10.00]僕{ぼく}[00:10.50]の[00:11.00]S[<00:11.50][00:12.00][<00:12.50][00:13.00]OS[00:14.00]を
+[00:10.00]歌{うた}[00:10.50]の[00:11.00]テ[<00:11.50][00:12.00][<00:12.50][00:13.00]スト[00:14.00]だ
 ```
 
 - `[<MM:SS.xx]`: Unfill timestamp (note the `<` prefix)
@@ -988,6 +988,14 @@ valgrind --leak-check=full ./build-valgrind/fuzz_lrc fuzz/corpus/lrc/
 
 ## License
 
-GNU General Public License v3.0 (GPL-3.0)
+GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE](LICENSE).
 
-This project is based on wshowkeys and follows the same GPL-3.0 license.
+```
+wshowlyrics
+Copyright (C) 2025-2026 unstable-code
+
+Based on wshowkeys
+Copyright (C) 2019 Drew DeVault
+```
+
+This project is based on [wshowkeys](https://git.sr.ht/~sircmpwn/wshowkeys) and follows the same GPL-3.0 license. Portions of `src/utils/shm/shm.c` are derived from [sway](https://github.com/swaywm/sway) (MIT). See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for the full list of third-party code and notices.

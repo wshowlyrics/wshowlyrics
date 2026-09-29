@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef _ITUNES_ARTWORK_H
 #define _ITUNES_ARTWORK_H
 

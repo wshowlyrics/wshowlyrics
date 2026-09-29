@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef LYRICS_MANAGER_H
 #define LYRICS_MANAGER_H
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "openai_translator.h"
 #include <json-c/json.h>
 #include "../common/translator_common.h"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "lang_detect.h"
 #include "../../constants.h"
 #include "config.h"

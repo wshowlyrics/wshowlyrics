@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "deepl_translator.h"
 #include "../common/translator_common.h"
 #include "../../constants.h"

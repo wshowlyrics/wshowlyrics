@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef TRANSLATOR_COMMON_H
 #define TRANSLATOR_COMMON_H
 

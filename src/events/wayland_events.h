@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef WAYLAND_EVENTS_H
 #define WAYLAND_EVENTS_H
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef WORD_RENDER_H
 #define WORD_RENDER_H
 

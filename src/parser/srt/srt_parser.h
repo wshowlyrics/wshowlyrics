@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef _LYRICS_SRT_PARSER_H
 #define _LYRICS_SRT_PARSER_H
 

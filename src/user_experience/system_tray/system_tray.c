@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #define _GNU_SOURCE
 #include "system_tray.h"
 #include "../../main.h"

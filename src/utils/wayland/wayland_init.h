@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef WAYLAND_INIT_H
 #define WAYLAND_INIT_H
 

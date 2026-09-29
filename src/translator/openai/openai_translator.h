@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef _OPENAI_TRANSLATOR_H
 #define _OPENAI_TRANSLATOR_H
 

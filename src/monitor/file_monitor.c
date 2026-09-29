@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "file_monitor.h"
 #include "../user_experience/config/config.h"
 #include "../core/rendering/rendering_manager.h"

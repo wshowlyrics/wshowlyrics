@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef _LYRICS_MPRIS_H
 #define _LYRICS_MPRIS_H
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Optional cloud-LLM overlay on top of the offline furigana engine.
 
 add_furigana.py already produces high-quality furigana offline (pyopenjtalk

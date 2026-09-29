@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "lrclib_provider.h"
 #include "../../parser/lrc/lrc_parser.h"
 #include "../../utils/curl/curl_utils.h"

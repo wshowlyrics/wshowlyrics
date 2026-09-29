@@ -16,7 +16,7 @@
 
 <img width="696" height="77" alt="a65e765" src="https://github.com/user-attachments/assets/e33bb35e-24f3-4632-811c-b7e55a0660a1" />
 
-Wayland 기반 가사 오버레이 프로그램입니다. [wshowkeys 프로젝트를 기반](https://github.com/unstable-code/wshowkeys)으로 제작되었으며, [LyricsX](https://github.com/ddddxxx/LyricsX)에서 영감을 받았습니다.
+Wayland 기반 가사 오버레이 프로그램입니다. Drew DeVault의 [wshowkeys](https://git.sr.ht/~sircmpwn/wshowkeys)를 기반([포크](https://github.com/unstable-code/wshowkeys))으로 제작되었으며, [LyricsX](https://github.com/ddddxxx/LyricsX)에서 영감을 받았습니다.
 
 ## 기능
 
@@ -528,7 +528,7 @@ rm "$XDG_RUNTIME_DIR/wshowlyrics/wshowlyrics.lock"
 특정 문자가 깜빡이거나 진동해야 하는 특수한 보컬 패턴에는 `[<MM:SS.xx]` 언필(unfill) 문법을 사용하세요:
 
 ```lrcx
-[00:10.00]僕{ぼく}[00:10.50]の[00:11.00]S[<00:11.50][00:12.00][<00:12.50][00:13.00]OS[00:14.00]を
+[00:10.00]歌{うた}[00:10.50]の[00:11.00]テ[<00:11.50][00:12.00][<00:12.50][00:13.00]スト[00:14.00]だ
 ```
 
 - `[<MM:SS.xx]`: 언필 타임스탬프 (`<` 접두사 주목)
@@ -983,6 +983,14 @@ valgrind --leak-check=full ./build-valgrind/fuzz_lrc fuzz/corpus/lrc/
 
 ## 라이선스
 
-GNU General Public License v3.0 (GPL-3.0)
+GNU General Public License v3.0 or later (GPL-3.0-or-later). [LICENSE](../LICENSE) 참고.
 
-이 프로젝트는 wshowkeys를 기반으로 하며, 동일한 GPL-3.0 라이선스를 따릅니다.
+```
+wshowlyrics
+Copyright (C) 2025-2026 unstable-code
+
+Based on wshowkeys
+Copyright (C) 2019 Drew DeVault
+```
+
+이 프로젝트는 [wshowkeys](https://git.sr.ht/~sircmpwn/wshowkeys)를 기반으로 하며, 동일한 GPL-3.0 라이선스를 따릅니다. `src/utils/shm/shm.c`의 일부는 [sway](https://github.com/swaywm/sway)(MIT)에서 파생되었습니다. 제3자 코드와 고지 전문은 [THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md)를 참고하세요.

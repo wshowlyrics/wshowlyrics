@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "render_common.h"
 #include "render_params.h"
 #include "../pango/pango_utils.h"

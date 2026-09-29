@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef URL_UTILS_H
 #define URL_UTILS_H
 

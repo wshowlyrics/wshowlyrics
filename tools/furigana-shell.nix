@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # nix-shell environment for tools/add_furigana.py and tools/add_furigana_ai.py.
 # pyopenjtalk provides the context-aware readings, pykakasi the text-preserving
 # structure, and jaconv the katakana->hiragana conversion. add_furigana_ai.py

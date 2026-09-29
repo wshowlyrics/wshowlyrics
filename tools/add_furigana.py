@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Offline furigana annotation for LRC/SRT/plain lyrics files.
 
 Readings come from pyopenjtalk (OpenJTalk G2P — context-aware) laid over
