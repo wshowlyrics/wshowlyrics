@@ -10,7 +10,7 @@ require.
 | `src/`, `fuzz/`, `tools/` (overall project) | [wshowkeys](https://git.sr.ht/~sircmpwn/wshowkeys) — Copyright (C) 2019 Drew DeVault | GPL-3.0 | [LICENSE](LICENSE), README "License" section |
 | `src/utils/shm/shm.c` (`buffer_release`, `create_buffer`, `destroy_buffer`, `get_next_buffer`), `src/utils/shm/shm.h` (`struct pool_buffer`) | [sway](https://github.com/swaywm/sway) `client/pool-buffer.c`, `include/pool-buffer.h` — Copyright (c) 2016-2017 Drew DeVault | MIT | [below](#sway-mit), file header of `shm.c` |
 | `src/utils/shm/shm.c` (`randname`, `create_shm_file`, `allocate_shm_file`) | [The Wayland Protocol](https://git.sr.ht/~sircmpwn/wayland-book) book, "Allocating a shared memory pool" — Drew DeVault | Public domain / CC0-1.0 | None required; origin noted in `shm.c` |
-| `protocols/wlr-layer-shell-unstable-v1.xml` | [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) — Copyright © 2017 Drew DeVault | MIT-style (X11) | `<copyright>` block preserved in the file |
+| `protocols/wlr-layer-shell-unstable-v1.xml` | [wlroots](https://gitlab.freedesktop.org/wlroots/wlroots) — Copyright © 2017 Drew DeVault | HPND-sell-variant (MIT-style) | `<copyright>` block preserved in the file |
 
 Build and runtime dependencies (cairo, pango, gdk-pixbuf, libcurl, json-c,
 wayland, ...) are linked, not vendored, and are distributed under their own

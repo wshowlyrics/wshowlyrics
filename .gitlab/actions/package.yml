@@ -46,7 +46,7 @@
       cp wshowlyrics.service "${PKG_DIR}/usr/lib/systemd/user/"
       cp wshowlyrics.desktop "${PKG_DIR}/usr/share/applications/"
       cp wshowlyrics.svg "${PKG_DIR}/usr/share/icons/hicolor/scalable/apps/"
-      cp README.md LICENSE "${PKG_DIR}/usr/share/doc/wshowlyrics/"
+      cp README.md LICENSE THIRD_PARTY_LICENSES.md "${PKG_DIR}/usr/share/doc/wshowlyrics/"
 
     # Create DEBIAN/control
     - |
@@ -185,7 +185,7 @@
       %systemd_user_preun wshowlyrics.service
 
       %files
-      %license LICENSE
+      %license LICENSE THIRD_PARTY_LICENSES.md
       %doc README.md
       %{_bindir}/wshowlyrics
       %{_bindir}/wshowlyrics-offset
@@ -245,6 +245,7 @@
     - meson compile -C build
     - DESTDIR=$PWD/AppDir meson install -C build
     - mv AppDir/usr/bin/lyrics AppDir/usr/bin/wshowlyrics
+    - install -Dm644 -t AppDir/usr/share/doc/wshowlyrics README.md LICENSE THIRD_PARTY_LICENSES.md
 
     # Download linuxdeploy
     - |

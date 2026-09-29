@@ -280,7 +280,7 @@ publish:copr-nightly:
       %systemd_user_preun wshowlyrics.service
 
       %files
-      %license LICENSE
+      %license LICENSE THIRD_PARTY_LICENSES.md
       %doc README.md
       %{_bindir}/wshowlyrics
       %{_bindir}/wshowlyrics-offset
@@ -406,7 +406,7 @@ publish:copr-stable:
       %systemd_user_preun wshowlyrics.service
 
       %files
-      %license LICENSE
+      %license LICENSE THIRD_PARTY_LICENSES.md
       %doc README.md
       %{_bindir}/wshowlyrics
       %{_bindir}/wshowlyrics-offset
@@ -629,8 +629,64 @@ publish:ppa:tarball:
       Source: https://github.com/wshowlyrics/wshowlyrics
 
       Files: *
-      Copyright: 2024-2025 unstable-code <assa0620@gmail.com>
+      Copyright: 2025-2026 unstable-code <assa0620@gmail.com>
+                 2019 Drew DeVault
       License: GPL-3.0-or-later
+      Comment: Based on wshowkeys (https://git.sr.ht/~sircmpwn/wshowkeys).
+
+      Files: src/utils/shm/shm.c src/utils/shm/shm.h
+      Copyright: 2025-2026 unstable-code <assa0620@gmail.com>
+                 2016-2017 Drew DeVault
+      License: GPL-3.0-or-later and Expat
+      Comment: The buffer pool derives from sway's client/pool-buffer.c (Expat).
+       randname(), create_shm_file() and allocate_shm_file() come from The
+       Wayland Protocol book, released into the public domain / under CC0-1.0.
+
+      Files: protocols/wlr-layer-shell-unstable-v1.xml
+      Copyright: 2017 Drew DeVault
+      License: HPND-sell-variant
+
+      License: Expat
+       Permission is hereby granted, free of charge, to any person obtaining a
+       copy of this software and associated documentation files (the
+       "Software"), to deal in the Software without restriction, including
+       without limitation the rights to use, copy, modify, merge, publish,
+       distribute, sublicense, and/or sell copies of the Software, and to permit
+       persons to whom the Software is furnished to do so, subject to the
+       following conditions:
+       .
+       The above copyright notice and this permission notice shall be included
+       in all copies or substantial portions of the Software.
+       .
+       THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+       OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+       MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+       NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+       DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+       OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+       USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+      License: HPND-sell-variant
+       Permission to use, copy, modify, distribute, and sell this
+       software and its documentation for any purpose is hereby granted
+       without fee, provided that the above copyright notice appear in
+       all copies and that both that copyright notice and this permission
+       notice appear in supporting documentation, and that the name of
+       the copyright holders not be used in advertising or publicity
+       pertaining to distribution of the software without specific,
+       written prior permission.  The copyright holders make no
+       representations about the suitability of this software for any
+       purpose.  It is provided "as is" without express or implied
+       warranty.
+       .
+       THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS
+       SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+       FITNESS, IN NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY
+       SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+       WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+       AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+       ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+       THIS SOFTWARE.
 
       License: GPL-3.0-or-later
        This program is free software: you can redistribute it and/or modify
