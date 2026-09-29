@@ -100,7 +100,7 @@ Version strings live in two places and **must be synced before tagging**:
 2. `src/constants.h`: `#define USER_AGENT_STRING "wshowlyrics/X.Y.Z"`
 
 ```bash
-sed -i "s/version: '[^']*'/version: 'X.Y.Z'/" meson.build
+sed -i "0,/^\tversion: '[^']*'/s//\tversion: 'X.Y.Z'/" meson.build   # anchored: must not touch meson_version
 sed -i 's|"wshowlyrics/[^"]*"|"wshowlyrics/X.Y.Z"|' src/constants.h
 git commit -am "chore: Bump version to X.Y.Z"
 git tag -s vX.Y.Z -m "Release vX.Y.Z"
