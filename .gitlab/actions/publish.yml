@@ -543,6 +543,8 @@ publish:ppa:tarball:
     - apt-get update -qq && apt-get install -y -qq git
     - VERSION="${CI_COMMIT_TAG#v}"
     - mkdir -p ppa-tarball
+    # The checkout is owned by a different uid than the job user
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
     - git archive --format=tar.gz --prefix="wshowlyrics-${VERSION}/" -o "ppa-tarball/wshowlyrics_${VERSION}.orig.tar.gz" HEAD
   artifacts:
     paths:

@@ -15,15 +15,18 @@
 
     # Build in Ubuntu 22.04 for broad compatibility
     - |
+      # --no-install-recommends: with recommends this pulled ~300 packages and
+      # overran the 1h job timeout on the Synology runner
       apt-get update -qq
-      apt-get install -y -qq \
+      apt-get install -y -qq --no-install-recommends \
+        build-essential pkg-config \
         meson ninja-build \
         libwayland-dev wayland-protocols \
         libcairo2-dev libpango1.0-dev \
         libcurl4-openssl-dev libfontconfig1-dev \
         libappindicator3-dev libgdk-pixbuf-2.0-dev \
         libjson-c-dev libssl-dev \
-        dpkg-dev debsigs devscripts file
+        dpkg-dev debsigs gnupg file
 
     # Build
     - meson setup build --prefix=/usr
@@ -198,6 +201,9 @@
       * ${CHANGELOG_DATE} unstable-code <assa0620@gmail.com> - ${VERSION}-1
       - Release ${VERSION}
       SPECEOF
+
+    # The checkout is owned by a different uid than the job user
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
 
     # Create source tarball
     - git archive --format=tar.gz --prefix="wshowlyrics-${VERSION}/" -o ~/rpmbuild/SOURCES/wshowlyrics-${VERSION}.tar.gz HEAD
