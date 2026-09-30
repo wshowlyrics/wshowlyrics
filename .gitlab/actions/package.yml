@@ -106,7 +106,10 @@
 
 .package:rpm:
   stage: package
-  image: fedora:latest
+  # Not fedora:latest: Fedora 44's tar extracts with openat2(RESOLVE_BENEATH),
+  # which the Synology runner's kernel 4.4 lacks, so %prep fails with
+  # "Cannot mkdir: Function not implemented". Fedora 43 extracts without it.
+  image: fedora:43
   extends: .tag-only-rules
   needs:
     - job: build:makepkg

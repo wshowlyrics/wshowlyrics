@@ -65,6 +65,13 @@ rejected, not Docker's profile. Two consequences are baked into the CI files:
 - **nix jobs cannot run there at all.** They are tagged `nix-build` and run on the
   NixOS host instead, where nix is native. `filter-syscalls = false` would also
   work around it, but routing to a modern kernel is preferred.
+- **Syscalls newer than 4.4 return `ENOSYS`, and not every tool falls back.**
+  Fedora 44's tar extracts with `openat2(RESOLVE_BENEATH)` (kernel 5.6), so
+  `rpmbuild` `%prep` fails with `Cannot mkdir: Function not implemented`;
+  `package:rpm` is therefore pinned to `fedora:43`. Before bumping an image, run
+  the job locally under a seccomp profile that returns errno 38 for post-4.4
+  syscalls (`openat2`, `clone3`, `fchmodat2`, `faccessat2`, ...) — `statx` and
+  the `fs*` mount calls cannot be blocked because runc itself needs them.
 
 Jobs that run `git` against the checkout also need
 `git config --global --add safe.directory "$CI_PROJECT_DIR"` — the build directory
