@@ -116,6 +116,11 @@ git push origin master --tags
 
 Tagging triggers downstream package workflows (AUR `wshowlyrics`, PPA, COPR stable, NUR `default.nix`). Non-tag master pushes trigger nightly publishes (COPR nightly, NUR `unstable.nix`).
 
+Pushing master and the tag together is safe. The master and tag pipelines then run at the same time, and two things are handled in CI:
+
+- **`resource_group: nur-packages`** serialises `publish:nur-unstable` and `publish:nur-stable`. Both push to the same repo; each clones only after taking the lock and edits a different file, so order does not matter.
+- **Every job that fetches from the GitHub mirror retries for up to 10 minutes** (`nur-*`, `copr-stable`, `aur-stable`, `github-release`), because the mirror trails the GitLab push. `github-release` must not run early: `gh release create` would create the tag on GitHub from the default branch.
+
 ## Code Architecture
 
 ### Two-Tier Lyrics Provider Chain

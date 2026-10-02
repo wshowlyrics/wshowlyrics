@@ -83,6 +83,16 @@ publish:github-release:
                    wshowlyrics-${VERSION}-x86_64.AppImage
       \`\`\`
       EOF
+    # gh release create makes the tag itself (from the default branch) when the
+    # mirror has not pushed it yet, which would then collide with the mirrored
+    # tag — wait until GitHub has the real one
+    - |
+      for i in $(seq 1 20); do
+        curl -fsIL -o /dev/null "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/${CI_COMMIT_TAG}.tar.gz" && break
+        echo "Waiting for the GitHub mirror to have ${CI_COMMIT_TAG} ($i/20)"; sleep 30
+      done
+      curl -fsIL -o /dev/null "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/${CI_COMMIT_TAG}.tar.gz" \
+        || { echo "GitHub mirror never got ${CI_COMMIT_TAG}"; exit 1; }
     - |
       GH_TOKEN="$GITHUB_PAT" gh release create "$CI_COMMIT_TAG" \
         release-assets/* \
@@ -99,6 +109,10 @@ publish:nur-unstable:
   tags:
     - nix-build
   extends: .nontag-master-rules
+  # Both NUR jobs clone, commit and push the same nur-packages repo. Serialise
+  # them across pipelines so a master push and a tag push landing together do
+  # not race into a non-fast-forward rejection.
+  resource_group: nur-packages
   needs:
     - job: build:makepkg
       optional: true
@@ -112,8 +126,14 @@ publish:nur-unstable:
 
     # Calculate Nix hash, update unstable.nix, commit and push
     - |
-      HASH_BASE32=$(nix-prefetch-url --unpack \
-        "https://github.com/wshowlyrics/wshowlyrics/archive/${COMMIT_HASH}.tar.gz" 2>&1 | tail -1)
+      # The GitHub mirror trails the GitLab push — retry until it serves the commit
+      URL="https://github.com/wshowlyrics/wshowlyrics/archive/${COMMIT_HASH}.tar.gz"
+      HASH_BASE32=""
+      for i in $(seq 1 20); do
+        if out=$(nix-prefetch-url --unpack "$URL" 2>/dev/null); then HASH_BASE32=$(echo "$out" | tail -1); break; fi
+        echo "Waiting for the GitHub mirror to serve ${COMMIT_HASH} ($i/20)"; sleep 30
+      done
+      [ -n "$HASH_BASE32" ] || { echo "GitHub mirror never served ${COMMIT_HASH}"; exit 1; }
       HASH_SRI=$(nix --extra-experimental-features nix-command hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
       echo "Nix SRI hash: ${HASH_SRI}"
 
@@ -143,6 +163,8 @@ publish:nur-stable:
   tags:
     - nix-build
   extends: .tag-only-rules
+  # Shares the nur-packages repo with publish:nur-unstable — see there
+  resource_group: nur-packages
   needs:
     - job: build:makepkg
     - job: build:fuzz
@@ -151,8 +173,14 @@ publish:nur-stable:
 
     # Calculate Nix hash, update default.nix, commit and push
     - |
-      HASH_BASE32=$(nix-prefetch-url --unpack \
-        "https://github.com/wshowlyrics/wshowlyrics/archive/${CI_COMMIT_TAG}.tar.gz" 2>&1 | tail -1)
+      # The GitHub mirror trails the GitLab push — retry until it serves the tag
+      URL="https://github.com/wshowlyrics/wshowlyrics/archive/${CI_COMMIT_TAG}.tar.gz"
+      HASH_BASE32=""
+      for i in $(seq 1 20); do
+        if out=$(nix-prefetch-url --unpack "$URL" 2>/dev/null); then HASH_BASE32=$(echo "$out" | tail -1); break; fi
+        echo "Waiting for the GitHub mirror to serve ${CI_COMMIT_TAG} ($i/20)"; sleep 30
+      done
+      [ -n "$HASH_BASE32" ] || { echo "GitHub mirror never served ${CI_COMMIT_TAG}"; exit 1; }
       HASH_SRI=$(nix --extra-experimental-features nix-command hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
       echo "Nix SRI hash: ${HASH_SRI}"
 
@@ -422,7 +450,13 @@ publish:copr-stable:
 
     # Download source tarball from the GitHub mirror
     # -O matches the Source0 "#/" fragment, so rpmbuild finds the expected filename
-    - wget -O "wshowlyrics-${VERSION}.tar.gz" "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/v${VERSION}.tar.gz"
+    # The GitHub mirror trails the GitLab push — retry until it serves the tag
+    - |
+      for i in $(seq 1 20); do
+        wget -q -O "wshowlyrics-${VERSION}.tar.gz" "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/v${VERSION}.tar.gz" && break
+        echo "Waiting for the GitHub mirror to serve v${VERSION} ($i/20)"; sleep 30
+      done
+      test -s "wshowlyrics-${VERSION}.tar.gz" || { echo "GitHub mirror never served v${VERSION}"; exit 1; }
 
     # Build SRPM
     - |
@@ -503,6 +537,16 @@ publish:aur-stable:
     # The runner kernel rejects pacman's seccomp sandbox — same guard as build:makepkg
     - sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
     - pacman -Syu --noconfirm base-devel git openssh sudo pacman-contrib
+
+    # updpkgsums downloads the PKGBUILD source from the GitHub mirror, which
+    # trails the GitLab push — wait until it serves the tag
+    - |
+      for i in $(seq 1 20); do
+        curl -fsIL -o /dev/null "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/${CI_COMMIT_TAG}.tar.gz" && break
+        echo "Waiting for the GitHub mirror to serve ${CI_COMMIT_TAG} ($i/20)"; sleep 30
+      done
+      curl -fsIL -o /dev/null "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/${CI_COMMIT_TAG}.tar.gz" \
+        || { echo "GitHub mirror never served ${CI_COMMIT_TAG}"; exit 1; }
 
     # Setup SSH for AUR
     - |
