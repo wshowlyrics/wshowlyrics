@@ -18,7 +18,7 @@ publish:github-release:
 
     - |
       apt-get update -qq
-      apt-get install -y -qq curl jq
+      apt-get install -y -qq curl jq git
 
     # Install gh CLI
     - |
@@ -86,13 +86,7 @@ publish:github-release:
     # gh release create makes the tag itself (from the default branch) when the
     # mirror has not pushed it yet, which would then collide with the mirrored
     # tag — wait until GitHub has the real one
-    - |
-      for i in $(seq 1 20); do
-        curl -fsIL -o /dev/null "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/${CI_COMMIT_TAG}.tar.gz" && break
-        echo "Waiting for the GitHub mirror to have ${CI_COMMIT_TAG} ($i/20)"; sleep 30
-      done
-      curl -fsIL -o /dev/null "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/${CI_COMMIT_TAG}.tar.gz" \
-        || { echo "GitHub mirror never got ${CI_COMMIT_TAG}"; exit 1; }
+    - !reference [.wait-github-tag, script]
     - |
       GH_TOKEN="$GITHUB_PAT" gh release create "$CI_COMMIT_TAG" \
         release-assets/* \
@@ -170,17 +164,14 @@ publish:nur-stable:
     - job: build:fuzz
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
+    - !reference [.wait-github-tag, script]
 
     # Calculate Nix hash, update default.nix, commit and push
     - |
-      # The GitHub mirror trails the GitLab push — retry until it serves the tag
-      URL="https://github.com/wshowlyrics/wshowlyrics/archive/${CI_COMMIT_TAG}.tar.gz"
-      HASH_BASE32=""
-      for i in $(seq 1 20); do
-        if out=$(nix-prefetch-url --unpack "$URL" 2>/dev/null); then HASH_BASE32=$(echo "$out" | tail -1); break; fi
-        echo "Waiting for the GitHub mirror to serve ${CI_COMMIT_TAG} ($i/20)"; sleep 30
-      done
-      [ -n "$HASH_BASE32" ] || { echo "GitHub mirror never served ${CI_COMMIT_TAG}"; exit 1; }
+      HASH_BASE32=$(nix-prefetch-url --unpack \
+        "https://github.com/wshowlyrics/wshowlyrics/archive/${CI_COMMIT_TAG}.tar.gz" 2>/dev/null) \
+        || { echo "nix-prefetch-url failed for ${CI_COMMIT_TAG}"; exit 1; }
+      HASH_BASE32=$(echo "$HASH_BASE32" | tail -1)
       HASH_SRI=$(nix --extra-experimental-features nix-command hash convert --hash-algo sha256 --to sri "$HASH_BASE32")
       echo "Nix SRI hash: ${HASH_SRI}"
 
@@ -354,7 +345,7 @@ publish:copr-stable:
     GIT_DEPTH: 0
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
-    - dnf install -y copr-cli rpm-build rpmdevtools wget
+    - dnf install -y copr-cli rpm-build rpmdevtools wget git
 
     # Setup COPR config
     - |
@@ -448,15 +439,10 @@ publish:copr-stable:
       - Release ${VERSION}
       SPECEOF
 
-    # Download source tarball from the GitHub mirror
+    # Download source tarball from the GitHub mirror, once it has the tag at this commit
+    - !reference [.wait-github-tag, script]
     # -O matches the Source0 "#/" fragment, so rpmbuild finds the expected filename
-    # The GitHub mirror trails the GitLab push — retry until it serves the tag
-    - |
-      for i in $(seq 1 20); do
-        wget -q -O "wshowlyrics-${VERSION}.tar.gz" "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/v${VERSION}.tar.gz" && break
-        echo "Waiting for the GitHub mirror to serve v${VERSION} ($i/20)"; sleep 30
-      done
-      test -s "wshowlyrics-${VERSION}.tar.gz" || { echo "GitHub mirror never served v${VERSION}"; exit 1; }
+    - wget -O "wshowlyrics-${VERSION}.tar.gz" "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/v${VERSION}.tar.gz"
 
     # Build SRPM
     - |
@@ -539,14 +525,8 @@ publish:aur-stable:
     - pacman -Syu --noconfirm base-devel git openssh sudo pacman-contrib
 
     # updpkgsums downloads the PKGBUILD source from the GitHub mirror, which
-    # trails the GitLab push — wait until it serves the tag
-    - |
-      for i in $(seq 1 20); do
-        curl -fsIL -o /dev/null "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/${CI_COMMIT_TAG}.tar.gz" && break
-        echo "Waiting for the GitHub mirror to serve ${CI_COMMIT_TAG} ($i/20)"; sleep 30
-      done
-      curl -fsIL -o /dev/null "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/${CI_COMMIT_TAG}.tar.gz" \
-        || { echo "GitHub mirror never served ${CI_COMMIT_TAG}"; exit 1; }
+    # trails the GitLab push — wait until it has the tag at this commit
+    - !reference [.wait-github-tag, script]
 
     # Setup SSH for AUR
     - |

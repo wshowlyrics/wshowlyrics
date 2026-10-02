@@ -119,7 +119,7 @@ Tagging triggers downstream package workflows (AUR `wshowlyrics`, PPA, COPR stab
 Pushing master and the tag together is safe. The master and tag pipelines then run at the same time, and two things are handled in CI:
 
 - **`resource_group: nur-packages`** serialises `publish:nur-unstable` and `publish:nur-stable`. Both push to the same repo; each clones only after taking the lock and edits a different file, so order does not matter.
-- **Every job that fetches from the GitHub mirror retries for up to 10 minutes** (`nur-*`, `copr-stable`, `aur-stable`, `github-release`), because the mirror trails the GitLab push. `github-release` must not run early: `gh release create` would create the tag on GitHub from the default branch.
+- **Tag jobs that use the GitHub mirror wait until it has the tag *at this pipeline's commit*** (`nur-stable`, `copr-stable`, `aur-stable`, `github-release`), via the shared `.wait-github-tag` snippet in `.gitlab-ci.yml` (`git ls-remote` incl. `^{}`, up to 10 minutes). Existence alone is not enough — a stray same-name tag would pass and the job would package the wrong commit. `github-release` must never run early: `gh release create` would itself create the tag on GitHub from the default branch. `nur-unstable` fetches by commit SHA, so it only retries the fetch.
 
 ## Code Architecture
 

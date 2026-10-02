@@ -70,6 +70,30 @@ variables:
         - ".gitlab-ci.yml"
         - ".gitlab/**/*.yml"
 
+# ─── Shared script snippets ───────────────────────────────────────────
+
+# Wait until the GitHub mirror has this tag pointing at this pipeline's commit.
+#   Tag jobs fetch the release tarball from the mirror, which trails the GitLab
+#   push. Checking only that the tag exists is not enough: a stray tag of the
+#   same name (e.g. one `gh release create` made on the default branch before the
+#   mirror caught up) would pass and the job would package the wrong commit.
+#   Signed/annotated tags list their commit under ^{}, lightweight ones directly.
+#   Needs git in the job image. Use with `- !reference [.wait-github-tag, script]`.
+.wait-github-tag:
+  script:
+    - |
+      GH_URL="https://github.com/wshowlyrics/wshowlyrics.git"
+      for i in $(seq 1 20); do
+        git ls-remote --tags "$GH_URL" "refs/tags/${CI_COMMIT_TAG}" "refs/tags/${CI_COMMIT_TAG}^{}" \
+          | grep -q "^${CI_COMMIT_SHA}" && break
+        if [ "$i" -eq 20 ]; then
+          echo "GitHub mirror never got ${CI_COMMIT_TAG} at ${CI_COMMIT_SHA}" >&2
+          exit 1
+        fi
+        echo "Waiting for the GitHub mirror to have ${CI_COMMIT_TAG} at ${CI_COMMIT_SHA} ($i/20)"
+        sleep 30
+      done
+
 # ─── Include action files ─────────────────────────────────────────────
 
 include:
