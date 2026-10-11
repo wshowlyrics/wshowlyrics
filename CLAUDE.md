@@ -99,6 +99,43 @@ architecture lists live outside this repo — in the AUR PKGBUILDs, the COPR pro
 settings, the PPA settings and `nur-packages` — so nothing here needs to change
 to keep them.
 
+## Issue Labels
+
+**The judging rules live in the label descriptions** — read `glab label list` before
+labelling. This section only records the axis structure that does not fit in one
+description. The scheme mirrors `peter/desktop/nix-configurations` (its CLAUDE.md
+"라벨 체계"), but these are **project labels**: `unstable-code` is a user namespace,
+so group labels are impossible and the two sets do not sync.
+
+| Axis | Labels | Nature |
+|---|---|---|
+| Type | `bug` · `enhancement` · `refactor` · `documentation` · `discussion` | |
+| Triage | `need-triage` | Remove once any `priority::*`, `hold::*`, `blocked:*` or `wontfix` is set |
+| Priority | `priority::urgent`/`high`/`medium`/`low` | **Decision** — when to do it. Not set while `blocked:*`/`hold::*` |
+| Severity | `severity::critical`/`major`/`minor`/`trivial` | **Fact** — how bad it is. `bug` only; does not remove `need-triage` |
+| Why stopped | `blocked:upstream`/`prereq` · `hold::decision`/`evidence` | Outside reason / our own reason |
+| Diagnosis | `confirmed::repro` → `confirmed::cause` | Never both |
+| Area | `ci` · `security` · `packaging:<channel>` · `component:<area>:<name>` | Multiple allowed |
+
+- **`::` vs `:` is deliberate.** The instance is EE, so `key::value` is mutually
+  exclusive. Use `::` only where one value per issue is the rule; anything that can
+  hit two values at once uses `:` (`blocked:*`, `packaging:*`, `component:*`).
+  `component:provider:lrclib` and `:itunes` are a real example — 12 of 33 commits
+  touching either touched both (shared curl/json helpers).
+- **Translator components name the affected providers, not the shared code.** A bug
+  in `src/translator/common/` gets `component:translator:claude`/`gemini`/`openai`
+  (and `deepl` only if its path is hit). `component:translator:llm` is reserved for
+  the not-yet-introduced provider abstraction and future LLM providers (#2).
+- **`packaging:*` makes it ours.** A channel-specific failure (e.g. NixOS not enabling
+  the user unit, #4) is a `bug` even when the root cause is the distro's design,
+  because the channel is one we publish.
+- **Leave the reason in a comment** when setting `severity::*`/`confirmed::*`
+  (evidence) or `hold::*`/`blocked:*` (release condition). `blocked:prereq` also gets
+  an `is_blocked_by` link.
+- **Rename via REST, not `glab label edit --new-name`** (it reports success but does
+  nothing): `glab api projects/29/labels/<id> -X PUT -f new_name='...'`. Issues keep
+  the label across a rename.
+
 ## Release Process
 
 Version strings live in two places and **must be synced before tagging**:
