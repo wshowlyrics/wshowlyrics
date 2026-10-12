@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <json-c/json.h>
 
 // Claude API endpoint
 #define CLAUDE_API_ENDPOINT "https://api.anthropic.com/v1/messages"
