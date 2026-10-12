@@ -52,15 +52,89 @@ static char* build_request_json(const char *text, const char *target_lang, const
 }
 
 /**
+ * Join the text of every "text" block in a Claude content array.
+ * Returns NULL when there is none; *types gets the block types seen (for logs).
+ */
+static char* join_text_blocks(json_object *content, char *types, size_t types_size) {
+    types[0] = '\0';
+    size_t len = 0;
+    char *joined = NULL;
+
+    const size_t count = json_object_array_length(content);
+    for (size_t i = 0; i < count; i++) {
+        json_object *block = json_object_array_get_idx(content, i);
+        json_object *type_obj = NULL;
+        json_object *text_obj = NULL;
+        const char *type = json_object_object_get_ex(block, "type", &type_obj)
+                               ? json_object_get_string(type_obj) : NULL;
+
+        size_t used = strlen(types);
+        snprintf(types + used, types_size - used, "%s%s", used ? "," : "", type ? type : "?");
+
+        if (!type || strcmp(type, "text") != 0 ||
+            !json_object_object_get_ex(block, "text", &text_obj)) {
+            continue;
+        }
+        const char *text = json_object_get_string(text_obj);
+        const size_t text_len = text ? strlen(text) : 0;
+        char *grown = realloc(joined, len + text_len + 1);
+        if (!grown) {
+            free(joined);
+            return NULL;
+        }
+        joined = grown;
+        memcpy(joined + len, text ? text : "", text_len);
+        len += text_len;
+        joined[len] = '\0';
+    }
+    return joined;
+}
+
+/**
  * Parse Claude API response JSON
- * Response format: {"content": [{"text": "..."}]}
+ * Response format: {"content": [{"type": "text", "text": "..."}], "stop_reason": "..."}
+ *
+ * Current models think adaptively even when the request sends no "thinking"
+ * field, so content[0] is often a thinking block with the translation in the
+ * text block after it. Read the text blocks, not content[0] (#15).
  */
 static char* parse_response_json(const char *json_str) {
-    // Extract text using JSON path: content[0].text
-    char *text = json_extract_text_by_path(json_str, "content[0].text", "claude_translator");
-    if (!text) {
+    json_object *root = json_tokener_parse(json_str);
+    if (!root) {
+        log_error("claude_translator: Failed to parse JSON response");
         return NULL;
     }
+
+    json_object *stop_obj = NULL;
+    const char *stop_reason = json_object_object_get_ex(root, "stop_reason", &stop_obj)
+                                  ? json_object_get_string(stop_obj) : NULL;
+
+    // A refused or truncated answer is not a translation, even if it has text
+    if (stop_reason && (strcmp(stop_reason, "refusal") == 0 ||
+                        strcmp(stop_reason, "max_tokens") == 0)) {
+        log_warn("claude_translator: Response discarded (stop_reason=%s)", stop_reason);
+        json_object_put(root);
+        return NULL;
+    }
+
+    json_object *content = NULL;
+    if (!json_object_object_get_ex(root, "content", &content) ||
+        !json_object_is_type(content, json_type_array)) {
+        log_error("claude_translator: No 'content' array in JSON response (stop_reason=%s)",
+                  stop_reason ? stop_reason : "none");
+        json_object_put(root);
+        return NULL;
+    }
+
+    char types[128];
+    char *text = join_text_blocks(content, types, sizeof(types));
+    if (!text) {
+        log_error("claude_translator: No text block in JSON response (stop_reason=%s, blocks=[%s])",
+                  stop_reason ? stop_reason : "none", types);
+        json_object_put(root);
+        return NULL;
+    }
+    json_object_put(root);
 
     // Extract last line to handle cases where AI includes original text
     char *result = translator_extract_last_line(text);
