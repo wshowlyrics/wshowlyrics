@@ -363,6 +363,56 @@ bool translator_should_skip_translation(const char *stripped_text, const char *t
     return false;
 }
 
+// Span of s without surrounding ASCII whitespace; returns its length
+static size_t trimmed_span(const char *s, const char **start) {
+    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') {
+        s++;
+    }
+    const char *end = s + strlen(s);
+    while (end > s && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' || end[-1] == '\n')) {
+        end--;
+    }
+    *start = s;
+    return (size_t)(end - s);
+}
+
+// Whether line's text, ruby-stripped and trimmed, equals the src_len bytes at src
+static bool line_text_matches(const struct lyrics_line *line, const char *src, size_t src_len) {
+    if (!line->text) {
+        return false;
+    }
+    char *stripped = strip_ruby_notation(line->text);
+    if (!stripped) {
+        return false;
+    }
+    const char *cand;
+    const size_t cand_len = trimmed_span(stripped, &cand);
+    const bool same = cand_len == src_len && memcmp(cand, src, src_len) == 0;
+    free(stripped);
+    return same;
+}
+
+/*
+ * Translation already made for the same source text on another line, or NULL.
+ * The prompt carries only the line itself, so a repeated line (a refrain) would
+ * get the same translation — reuse it instead of paying for it again (#14).
+ * Compares ruby-stripped text, ignoring surrounding whitespace.
+ */
+static const char* find_reusable_translation(const struct lyrics_data *data,
+                                             const struct lyrics_line *self,
+                                             const char *stripped) {
+    const char *src;
+    const size_t src_len = trimmed_span(stripped, &src);
+
+    for (const struct lyrics_line *other = data->lines; other; other = other->next) {
+        if (other != self && other->translation && other->translation[0] != '\0' &&
+            line_text_matches(other, src, src_len)) {
+            return other->translation;
+        }
+    }
+    return NULL;
+}
+
 void translator_rate_limit_delay(int delay_ms) {
     if (delay_ms <= 0) {
         return;
@@ -386,14 +436,30 @@ void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_
         return;
     }
 
-    // Count translatable lines (lines with text but no translation)
+    // Count the requests still needed: untranslated lines, each distinct text
+    // once. A repeat of a text that is translated, or that an earlier pending
+    // line will translate first, is reused without a request (#14).
     int translatable_count = 0;
-    struct lyrics_line *line = data->lines;
-    while (line) {
-        if (line->text && line->text[0] != '\0' && !line->translation) {
+    for (struct lyrics_line *line = data->lines; line; line = line->next) {
+        if (!line->text || line->text[0] == '\0' ||
+            (line->translation && line->translation[0] != '\0')) {
+            continue;
+        }
+        char *stripped = strip_ruby_notation(line->text);
+        if (!stripped) {
+            continue;
+        }
+        bool seen = find_reusable_translation(data, line, stripped) != NULL;
+        const char *src;
+        const size_t src_len = trimmed_span(stripped, &src);
+        for (struct lyrics_line *prev = data->lines; !seen && prev != line; prev = prev->next) {
+            seen = !(prev->translation && prev->translation[0] != '\0') &&
+                   line_text_matches(prev, src, src_len);
+        }
+        free(stripped);
+        if (!seen && src_len > 0) {
             translatable_count++;
         }
-        line = line->next;
     }
 
     if (translatable_count == 0) {
@@ -426,11 +492,11 @@ void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_
             data->translation_will_discard = true;
 
             log_warn("Translation will be DISCARDED (below cache threshold)!");
-            log_warn("  Estimated time: %.1fs (%d lines × %dms)",
+            log_warn("  Estimated time: %.1fs (%d requests × %dms)",
                      estimated_sec, translatable_count, rate_limit_ms);
-            log_warn("  Song duration: %.1fs (only %d%% / %d lines will complete)",
+            log_warn("  Song duration: %.1fs (only %d%% / %d requests will complete)",
                      track_sec, completion_percent, lines_completed);
-            log_warn("  Cache threshold: %d%% (%d lines required)",
+            log_warn("  Cache threshold: %d%% (%d requests required)",
                      threshold_percent, threshold_lines);
             log_warn("  REDUCE rate_limit to at least %dms to save progress!",
                      required_rate_ms);
@@ -554,7 +620,10 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
                                               const struct translator_thread_args *args,
                                               struct lyrics_data *data,
                                               int *current,
-                                              const int translatable_count) {
+                                              const int translatable_count,
+                                              bool *api_called) {
+    *api_called = false;
+
     // Check cancellation
     if (data->translation_should_cancel) {
         log_info("%s: Translation cancelled (%d/%d completed)",
@@ -593,6 +662,20 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
         return true;  // Continue
     }
 
+    // Same text already translated on another line (refrain) - reuse it
+    const char *reusable = find_reusable_translation(data, line, stripped);
+    char *reused = reusable ? strdup(reusable) : NULL;
+    if (reused) {
+        char *old = line->translation;
+        __atomic_store_n(&line->translation, reused, __ATOMIC_RELEASE);
+        free(old);
+        line->translation_retry_count = 0;
+        log_info("%s: [%d/%d] Reused: %s",
+                 args->provider_name, *current, translatable_count, reused);
+        free(stripped);
+        return true;  // Continue
+    }
+
     // Check if already in target language
     char *skipped_translation = NULL;
     if (translator_should_skip_translation(stripped, args->target_lang, &skipped_translation)) {
@@ -604,6 +687,7 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
     }
 
     // Translate using provider-specific function
+    *api_called = true;
     char *translation = args->translate_line_fn(stripped, args->target_lang,
                                                 args->api_key, args->model_name);
     if (translation) {
@@ -709,11 +793,6 @@ void* translator_async_worker(void *arg) {
 
     data->translation_in_progress = true;
 
-    // Check if translation can complete before song ends
-    const struct config *cfg_time = config_get();
-    translator_check_time_feasibility(data, cfg_time->translation.rate_limit_ms,
-                                       args->track_length_us);
-
     // Try loading from cache
     int already_translated = 0;
     if (!translator_handle_cache_loading_ex(args, data, translatable_count, &already_translated)) {
@@ -726,16 +805,25 @@ void* translator_async_worker(void *arg) {
         return NULL;
     }
 
+    // Check if translation can complete before song ends. Runs after the cache
+    // load so lines a partial cache already covers are not counted as pending.
+    const struct config *cfg_time = config_get();
+    translator_check_time_feasibility(data, cfg_time->translation.rate_limit_ms,
+                                       args->track_length_us);
+
     // Translate each line
     struct lyrics_line *line = data->lines;
     int current = already_translated;
     while (line) {
-        if (!translator_process_line_translation_ex(line, args, data, &current, translatable_count)) {
+        bool api_called = false;
+        if (!translator_process_line_translation_ex(line, args, data, &current,
+                                                    translatable_count, &api_called)) {
             break;  // Cancelled
         }
 
-        // Rate limiting
-        if (line->next) {
+        // Rate limiting - only after a real request. Empty, cached, reused and
+        // already-in-target-language lines cost nothing to wait for (#14).
+        if (api_called && line->next) {
             const struct config *cfg = config_get();
             translator_rate_limit_delay(cfg->translation.rate_limit_ms);
         }

@@ -234,13 +234,16 @@ bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
  * @param data Lyrics data for cancellation check
  * @param current Current translation counter (input/output)
  * @param translatable_count Total number of translatable lines
+ * @param api_called Set to true only if a translation request was sent, so the
+ *                   caller applies the rate-limit delay after real requests only
  * @return true to continue, false to break
  */
 bool translator_process_line_translation_ex(struct lyrics_line *line,
                                               const struct translator_thread_args *args,
                                               struct lyrics_data *data,
                                               int *current,
-                                              int translatable_count);
+                                              int translatable_count,
+                                              bool *api_called);
 
 /**
  * Save translation to cache with provider name in logs (common logic).
