@@ -45,18 +45,27 @@ Fuzz sources are in `fuzz/`, seed corpora in `fuzz/corpus/{lrc,lrcx,srt,url_deco
 
 ### Runners: the Synology Host Runs an Old Kernel
 
-Jobs land on one of two runners, and the split is not cosmetic.
+Jobs land on one of three runners, and the split is not cosmetic.
 
 | Runner | Executor | Jobs |
 |---|---|---|
 | Synology instance runner | docker | everything untagged |
 | `nix-build` (HM-iMac, NixOS) | **shell** | `publish:nur-unstable`, `publish:nur-stable` |
+| `docker-modern` (HM-iMac, rootless docker) | docker | `package:deb`, `package:rpm`, `package:appimage`, `publish:ppa:jammy`, `publish:ppa:noble` |
+
+Both HM-iMac runners are project runners with `run_untagged: false`, so only jobs
+carrying their tag go there. The `docker-modern` runner is a user service without
+linger: while nobody is logged in on HM-iMac its jobs sit **pending, not failed**,
+and a tag release waits at those jobs. Only jobs that actually hit the Synology
+host's limits are routed to it (#13, peter/desktop/nix-configurations#100);
+everything else keeps the always-on Synology runner.
 
 The Synology host runs **kernel 4.4.302+**. Containers share the host kernel, so
 anything that installs its **own seccomp filter inside the container fails there**
 with `EINVAL`, no matter what image or `security_opt` is used — `seccomp=unconfined`
 does not help, because the failure is nix/pacman's own `seccomp()` call being
-rejected, not Docker's profile. Two consequences are baked into the CI files:
+rejected, not Docker's profile. The old kernel and the host's speed are baked into
+the CI files:
 
 - **pacman jobs must disable its sandbox before the first `pacman` call.** Every
   such job does `sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf` first
@@ -67,11 +76,16 @@ rejected, not Docker's profile. Two consequences are baked into the CI files:
   work around it, but routing to a modern kernel is preferred.
 - **Syscalls newer than 4.4 return `ENOSYS`, and not every tool falls back.**
   Fedora 44's tar extracts with `openat2(RESOLVE_BENEATH)` (kernel 5.6), so
-  `rpmbuild` `%prep` fails with `Cannot mkdir: Function not implemented`;
-  `package:rpm` is therefore pinned to `fedora:43`. Before bumping an image, run
-  the job locally under a seccomp profile that returns errno 38 for post-4.4
-  syscalls (`openat2`, `clone3`, `fchmodat2`, `faccessat2`, ...) — `statx` and
-  the `fs*` mount calls cannot be blocked because runc itself needs them.
+  `rpmbuild` `%prep` fails there with `Cannot mkdir: Function not implemented`;
+  `package:rpm` therefore runs on `docker-modern` with `fedora:latest`. Before
+  moving an image-bumped job back to Synology, run it locally under a seccomp
+  profile that returns errno 38 for post-4.4 syscalls (`openat2`, `clone3`,
+  `fchmodat2`, `faccessat2`, ...) — `statx` and the `fs*` mount calls cannot be
+  blocked because runc itself needs them.
+- **Heavy apt installs nearly exhaust the Synology runner's 1h limit** (its
+  `maximum_timeout` is 3600, so a job-level `timeout:` cannot raise it): deb,
+  AppImage and both PPA jobs took 3454–3520 s there (#13), which is why they run
+  on `docker-modern`.
 
 Jobs that run `git` against the checkout also need
 `git config --global --add safe.directory "$CI_PROJECT_DIR"` — the build directory

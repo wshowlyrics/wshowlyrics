@@ -787,6 +787,10 @@ publish:ppa:jammy:
   stage: publish
   image: ubuntu:22.04
   extends: .tag-only-rules
+  # HM-iMac docker runner: the debuild toolchain install nearly hits the
+  # Synology runner's 1h limit (#13). Pending (not failing) while it is offline.
+  tags:
+    - docker-modern
   needs:
     - job: build:makepkg
     - job: build:fuzz
@@ -801,6 +805,9 @@ publish:ppa:noble:
   stage: publish
   image: ubuntu:24.04
   extends: .tag-only-rules
+  # HM-iMac docker runner — see publish:ppa:jammy (#13)
+  tags:
+    - docker-modern
   needs:
     - job: build:makepkg
     - job: build:fuzz
