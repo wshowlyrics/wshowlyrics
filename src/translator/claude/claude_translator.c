@@ -5,6 +5,7 @@
 #include "../../constants.h"
 #include "../../user_experience/config/config.h"
 #include <curl/curl.h>
+#include <ctype.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,19 +21,51 @@
 static CURL *curl_handle = NULL;
 
 /**
+ * Build the structured-outputs format: {"translation": "<string>"} only.
+ * {"type": "json_schema", "schema": {"type": "object",
+ *   "properties": {"translation": {"type": "string"}},
+ *   "required": ["translation"], "additionalProperties": false}}
+ */
+static json_object* build_output_format(void) {
+    json_object *translation = json_object_new_object();
+    json_object_object_add(translation, "type", json_object_new_string("string"));
+
+    json_object *properties = json_object_new_object();
+    json_object_object_add(properties, "translation", translation);
+
+    json_object *required = json_object_new_array();
+    json_object_array_add(required, json_object_new_string("translation"));
+
+    json_object *schema = json_object_new_object();
+    json_object_object_add(schema, "type", json_object_new_string("object"));
+    json_object_object_add(schema, "properties", properties);
+    json_object_object_add(schema, "required", required);
+    json_object_object_add(schema, "additionalProperties", json_object_new_boolean(0));
+
+    json_object *format = json_object_new_object();
+    json_object_object_add(format, "type", json_object_new_string("json_schema"));
+    json_object_object_add(format, "schema", schema);
+    return format;
+}
+
+/**
  * Build Claude API request JSON
- * Request format: {"model": "...", "max_tokens": 1024, "messages": [{"role": "user", "content": "..."}]}
+ * Request format: {"model": "...", "max_tokens": 1024, "messages": [{"role": "user", "content": "..."}],
+ *                  "output_config": {"format": <build_output_format>}}
+ *
+ * Structured outputs make the answer a JSON object instead of free text, so
+ * commentary or the source line can no longer end up in the translation (#19).
  */
 static char* build_request_json(const char *text, const char *target_lang, const char *model_name) {
-    json_object *root = json_object_new_object();
-    json_object *messages_array = json_object_new_array();
-    json_object *message_obj = json_object_new_object();
-
     // Build standard translation prompt
     char prompt[TRANSLATION_PROMPT_SIZE];
     if (translator_build_translation_prompt(prompt, sizeof(prompt), text, target_lang) < 0) {
         return NULL;
     }
+
+    json_object *root = json_object_new_object();
+    json_object *messages_array = json_object_new_array();
+    json_object *message_obj = json_object_new_object();
 
     json_object_object_add(root, "model", json_object_new_string(model_name));
     json_object_object_add(root, "max_tokens", json_object_new_int(1024));
@@ -42,6 +75,10 @@ static char* build_request_json(const char *text, const char *target_lang, const
     json_object_array_add(messages_array, message_obj);
 
     json_object_object_add(root, "messages", messages_array);
+
+    json_object *output_config = json_object_new_object();
+    json_object_object_add(output_config, "format", build_output_format());
+    json_object_object_add(root, "output_config", output_config);
 
     const char *json_str = json_object_to_json_string(root);
     char *result = strdup(json_str);
@@ -53,6 +90,10 @@ static char* build_request_json(const char *text, const char *target_lang, const
 /**
  * Join the text of every "text" block in a Claude content array.
  * Returns NULL when there is none; *types gets the block types seen (for logs).
+ *
+ * Blocks are joined with no separator: if the JSON answer is ever split
+ * across blocks, plain concatenation is what reassembles it — a separator
+ * would land inside the string value.
  */
 static char* join_text_blocks(json_object *content, char *types, size_t types_size) {
     types[0] = '\0';
@@ -90,8 +131,43 @@ static char* join_text_blocks(json_object *content, char *types, size_t types_si
 }
 
 /**
+ * Read "translation" from the structured-outputs answer (see build_output_format).
+ * Returns NULL when the answer is not that JSON object or the value is blank,
+ * so the line is retried instead of storing something that is not a translation.
+ */
+static char* extract_translation(const char *answer) {
+    json_object *obj = json_tokener_parse(answer);
+    json_object *value = NULL;
+    if (!obj || !json_object_object_get_ex(obj, "translation", &value) ||
+        !json_object_is_type(value, json_type_string)) {
+        log_error("claude_translator: Answer is not the {\"translation\"} JSON object: %.80s",
+                  answer);
+        json_object_put(obj);
+        return NULL;
+    }
+
+    const char *start = json_object_get_string(value);
+    const char *end = start + strlen(start);
+    while (*start && isspace((unsigned char)*start)) {
+        start++;
+    }
+    while (end > start && isspace((unsigned char)end[-1])) {
+        end--;
+    }
+
+    char *result = NULL;
+    if (end > start) {
+        result = strndup(start, (size_t)(end - start));
+    } else {
+        log_error("claude_translator: Empty translation in JSON answer");
+    }
+    json_object_put(obj);
+    return result;
+}
+
+/**
  * Parse Claude API response JSON
- * Response format: {"content": [{"type": "text", "text": "..."}], "stop_reason": "..."}
+ * Response format: {"content": [{"type": "text", "text": "{\"translation\": \"...\"}"}], "stop_reason": "..."}
  *
  * Current models think adaptively even when the request sends no "thinking"
  * field, so content[0] is often a thinking block with the translation in the
@@ -135,8 +211,7 @@ static char* parse_response_json(const char *json_str) {
     }
     json_object_put(root);
 
-    // Extract last line to handle cases where AI includes original text
-    char *result = translator_extract_last_line(text);
+    char *result = extract_translation(text);
     free(text);
     return result;
 }
