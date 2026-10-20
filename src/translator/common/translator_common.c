@@ -252,8 +252,12 @@ bool translator_load_from_cache(const char *cache_path, struct lyrics_data *data
         return false;
     }
 
+    // json-c's array accessors do not check the type in release builds: on a
+    // non-array, json_object_array_length() returns garbage and the loop
+    // below reads invalid memory, so a damaged cache is rejected here
     json_object *translations_array;
-    if (!json_object_object_get_ex(root, "translations", &translations_array)) {
+    if (!json_object_object_get_ex(root, "translations", &translations_array) ||
+        !json_object_is_type(translations_array, json_type_array)) {
         json_object_put(root);
         return false;
     }
@@ -261,7 +265,10 @@ bool translator_load_from_cache(const char *cache_path, struct lyrics_data *data
     // R15: optional retry_counts sparse dict. Forward-compatible — old
     // caches simply omit it and every line stays at 0.
     json_object *retry_counts = NULL;
-    json_object_object_get_ex(root, "retry_counts", &retry_counts);
+    if (!json_object_object_get_ex(root, "retry_counts", &retry_counts) ||
+        !json_object_is_type(retry_counts, json_type_object)) {
+        retry_counts = NULL;
+    }
 
     int translation_count = json_object_array_length(translations_array);
     struct lyrics_line *line = data->lines;
