@@ -279,6 +279,14 @@ int build_path_with_subdir_ext(char *dest, size_t dest_size, const char *dir,
         return -1;
     }
 
+    // subdir must be exactly one directory level below dir. Callers pass
+    // external text (an MPRIS artist), and "", ".", ".." or a '/' would
+    // point at dir itself, its parent, or deeper (path traversal).
+    if (subdir[0] == '\0' || strcmp(subdir, ".") == 0 || strcmp(subdir, "..") == 0 ||
+        strchr(subdir, '/')) {
+        return -1;
+    }
+
     int written = snprintf(dest, dest_size, "%s/%s/%s.%s", dir, subdir, name, ext);
     if (written < 0 || written >= (int)dest_size) {
         return -1;

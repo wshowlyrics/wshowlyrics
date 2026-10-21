@@ -536,6 +536,7 @@ static bool try_title_patterns(const char *dir, const char *title_safe,
             }
 
             // Search: <artist>/<title>.<extension>
+            // (build_path_with_subdir_ext refuses an artist of "." or "..")
             if (build_path_with_subdir_ext(path, sizeof(path), dir, artist_safe, title_safe, ext) >= 0 &&
                 try_load_lyrics_file(path, data)) {
                 return true;

@@ -26,6 +26,7 @@ int build_path_with_ext(char *dest, size_t dest_size, const char *dir,
                         const char *name, const char *ext);
 
 // Build path with subdirectory and extension: "dir/subdir/name.ext"
+// Returns -1 unless subdir is one plain directory name (not "", ".", ".." or containing '/')
 int build_path_with_subdir_ext(char *dest, size_t dest_size, const char *dir,
                                const char *subdir, const char *name, const char *ext);
 
