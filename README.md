@@ -633,20 +633,22 @@ The program uses a two-stage approach to find lyrics:
 If the `extensions` setting in `settings.ini` is configured (default: enabled), the program automatically searches for lyrics files in the following **priority order**:
 
 1. **Same directory as the currently playing music file** (highest priority!)
-   - First searches for a lyrics file with the same name as the music file
-   - Example: `song.mp3` → `song.lrcx`, `song.lrc`, or `song.srt`
-2. Title-based search (starting from current directory)
+2. Current directory (local builds only)
 3. `$XDG_MUSIC_DIR`
 4. `~/.lyrics/`
 5. `$HOME`
 
+Setting `search_dirs` in `[lyrics]` replaces this list (e.g. `search_dirs = {music_dir}:~/.lyrics`).
+
 **Skip Local Search**: If the `extensions` setting is empty (disabled), the program skips local file searching and jumps directly to online provider fallback.
 
-Filename formats (searched in order):
-- `filename.lrcx` / `filename.lrc` / `filename.srt` / `filename.vtt` (recommended! same name as music file)
-- `title.lrcx` / `title.lrc` / `title.srt` / `title.vtt`
-- `artist - title.lrcx` / `artist - title.lrc` / `artist - title.srt` / `artist - title.vtt`
-- `artist/title.lrcx` / `artist/title.lrc` / `artist/title.vtt`
+Filename formats, tried in this order in each directory (`*` = each enabled extension: `lrcx`, `lrc`, `srt`, `vtt`):
+- `filename.*` (recommended! same name as the music file, e.g. `song.mp3` → `song.lrc`)
+- `title.*`
+- `artist - title.*`
+- `artist/title.*` (one folder per artist)
+
+Characters that cannot appear in a filename (`/ \ : * ? " < > |`) are replaced with `_` in the title and artist. Streaming players such as Spotify report a web URL instead of a file, so only the title-based formats apply to them.
 
 **Tips:**
 - Place lyrics files with the **same name in the same directory** as your music files!

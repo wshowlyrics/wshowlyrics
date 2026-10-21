@@ -603,24 +603,24 @@ static bool local_search(const char *title, const char *artist, const char *albu
     int dir_count = build_search_directories(search_dirs, 10, current_dir, lyrics_dir, sizeof(lyrics_dir),
                                              allocated_dirs, &alloc_count);
 
-    // In the file's own directory, try_exact_filename already covers the URL
-    // filename. If the MPRIS title matches that filename (common for video
-    // files where the player uses the filename as the title), the bare
-    // "<title>.<ext>" pattern would retry identical paths — skip it there.
-    bool title_matches_url_name = (title_safe && filename_from_url &&
-                                   strcmp(title_safe, filename_from_url) == 0);
+    // try_exact_filename already covers the URL filename in every directory.
+    // If the MPRIS title matches that filename (common for untagged video
+    // files, where the player uses the filename as the title), the bare
+    // "<title>.<ext>" pattern would retry identical paths — skip it.
+    bool skip_bare_title = (title_safe && filename_from_url &&
+                            strcmp(title_safe, filename_from_url) == 0);
 
-    // Search all directories
+    // Search every configured directory, each for the file's own name first.
+    // Not only the first one: a tagged file's MPRIS title is no longer its
+    // filename, so "<filename>.lrc" kept in e.g. ~/.lyrics is found only here,
+    // and with a custom search_dirs the first entry need not be {music_dir}.
     bool found = false;
-    for (int i = 0; i < dir_count; i++) {
+    for (int i = 0; i < dir_count && !found; i++) {
         if (!search_dirs[i]) continue;
 
-        // Try exact filename first (only in first directory - file's own directory)
-        bool tried_exact = (i == 0 && try_exact_filename(search_dirs[i], filename_from_url, extensions, data));
-        bool skip_bare_title = (i == 0 && title_matches_url_name);
-        found = tried_exact ||
-                try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data, skip_bare_title);
-        if (found) break;
+        found = try_exact_filename(search_dirs[i], filename_from_url, extensions, data) ||
+                try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data,
+                                   skip_bare_title);
     }
 
     cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url,
