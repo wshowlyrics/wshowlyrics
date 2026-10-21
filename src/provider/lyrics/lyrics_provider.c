@@ -126,6 +126,7 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
         return false;
     }
 
+    log_info("Trying: %s", sanitize_path(path));
     bool success = false;
 
     // Try LRCX only for .lrcx files
@@ -498,7 +499,6 @@ static bool try_exact_filename(const char *dir, const char *filename,
         if (build_path_with_ext(path, sizeof(path), dir, filename, extensions[ext_idx]) < 0) {
             continue;  // Path too long, skip
         }
-        log_info("Trying: %s", sanitize_path(path));
         if (try_load_lyrics_file(path, data)) {
             return true;
         }
@@ -521,11 +521,9 @@ static bool try_title_patterns(const char *dir, const char *title_safe,
 
         // Search: <title>.<extension>
         if (!skip_bare_title &&
-            build_path_with_ext(path, sizeof(path), dir, title_safe, ext) >= 0) {
-            log_info("Trying: %s", sanitize_path(path));
-            if (try_load_lyrics_file(path, data)) {
-                return true;
-            }
+            build_path_with_ext(path, sizeof(path), dir, title_safe, ext) >= 0 &&
+            try_load_lyrics_file(path, data)) {
+            return true;
         }
 
         if (artist_safe) {
