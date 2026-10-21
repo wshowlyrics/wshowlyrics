@@ -147,23 +147,28 @@ def _post_json(url, headers, body):
 def _call_once(kind, provider, api_key, prompt):
     """One HTTP round-trip. Returns the model's raw text or None."""
     if kind == 'openai':
+        # No "temperature": reasoning models (gpt-5 family) accept only the
+        # default and reject 0 with HTTP 400 (#26)
         body = {
             "model": provider,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
         }
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
         }
         resp = _post_json("https://api.openai.com/v1/chat/completions", headers, body)
-        return resp["choices"][0]["message"]["content"]
+        choice = resp["choices"][0]
+        # A refused or truncated answer is not a reading, even if it has text
+        if choice["message"].get("refusal") or choice.get("finish_reason") == "length":
+            return None
+        return choice["message"].get("content") or None
 
     if kind == 'claude':
+        # No "temperature": current models reject it with HTTP 400 (#26)
         body = {
             "model": provider,
             "max_tokens": 1024,
-            "temperature": 0,
             "messages": [{"role": "user", "content": prompt}],
         }
         headers = {
@@ -172,7 +177,13 @@ def _call_once(kind, provider, api_key, prompt):
             "anthropic-version": "2023-06-01",
         }
         resp = _post_json("https://api.anthropic.com/v1/messages", headers, body)
-        return resp["content"][0]["text"]
+        # A refused or truncated answer is not a reading, even if it has text
+        if resp.get("stop_reason") in ("refusal", "max_tokens"):
+            return None
+        # The answer may follow a thinking block, so join the text blocks
+        # rather than reading content[0] (same as the app, #15)
+        texts = [b.get("text", "") for b in resp["content"] if b.get("type") == "text"]
+        return "".join(texts) or None
 
     if kind == 'gemini':
         body = {
