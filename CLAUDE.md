@@ -132,6 +132,7 @@ so group labels are impossible and the two sets do not sync.
 | Why stopped | `blocked:upstream`/`prereq` · `hold::decision`/`evidence` | Outside reason / our own reason |
 | Diagnosis | `confirmed::repro` → `confirmed::cause` | Never both |
 | Area | `ci` · `security` · `packaging:<channel>` · `component:<area>:<name>` | Multiple allowed |
+| Follow-up | `need-verify` · `stale` · `pinned` | Landed, effect unchecked · body no longer matches reality · keep for reference |
 
 - **`::` vs `:` is deliberate.** The instance is EE, so `key::value` is mutually
   exclusive. Use `::` only where one value per issue is the rule; anything that can
@@ -148,6 +149,11 @@ so group labels are impossible and the two sets do not sync.
 - **Leave the reason in a comment** when setting `severity::*`/`confirmed::*`
   (evidence) or `hold::*`/`blocked:*` (release condition). `blocked:prereq` also gets
   an `is_blocked_by` link.
+- **`need-verify` is for "done, not yet confirmed"**, so an issue whose fix has landed
+  does not sit open with nothing to say what is left (#16 and #17 did, until 6b48afd
+  had long since removed their cause). Its comment names the commit, *when* to check
+  (a date, or a trigger such as the next tag release when the jobs involved only run
+  there, as in #30) and *what* closes it. Unlike `hold::*` it keeps `priority::*`.
 - **Rename via REST, not `glab label edit --new-name`** (it reports success but does
   nothing): `glab api projects/29/labels/<id> -X PUT -f new_name='...'`. Issues keep
   the label across a rename.
