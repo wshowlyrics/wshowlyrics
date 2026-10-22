@@ -70,34 +70,33 @@ build:makepkg:
 
 build:fuzz:
   stage: build
-  image: ubuntu:latest
+  image: debian:stable-slim
   extends: .source-changes-rules
   variables:
     CC: clang
+    DEBIAN_FRONTEND: noninteractive
   script:
+    # A fuzzing build has no external deps (#29). clang does not pull in the
+    # libFuzzer/ASan runtime, so libclang-rt-dev is listed explicitly.
     - |
       apt-get update -qq
-      apt-get install -y -qq clang meson ninja-build \
-        libcairo2-dev libpango1.0-dev libwayland-dev wayland-protocols \
-        libcurl4-openssl-dev libappindicator3-dev libgdk-pixbuf-2.0-dev \
-        libssl-dev libjson-c-dev libglib2.0-dev
+      apt-get install -y -qq --no-install-recommends \
+        clang libclang-rt-dev meson ninja-build
 
     # Build fuzz targets
     - meson setup build-fuzz -Dfuzzing=true
     - meson compile -C build-fuzz
 
     # Run fuzzers (60s each, suppress parser warnings to avoid 4MB log limit)
-    - mkdir -p fuzz/artifacts/lrc fuzz/artifacts/lrcx fuzz/artifacts/srt
     - |
-      run_fuzzer() {
-        local name="$1"; shift
+      for name in lrc lrcx srt url_decode; do
         echo "=== Running $name ==="
-        "$@" 2>fuzz_${name}.log || { tail -50 fuzz_${name}.log; return 1; }
-        grep -E "^(stat::|SUMMARY)" fuzz_${name}.log || true
-      }
-      run_fuzzer lrc ./build-fuzz/fuzz_lrc fuzz/corpus/lrc/ -artifact_prefix=fuzz/artifacts/lrc/ -max_total_time=60 -print_final_stats=1
-      run_fuzzer lrcx ./build-fuzz/fuzz_lrcx fuzz/corpus/lrcx/ -artifact_prefix=fuzz/artifacts/lrcx/ -max_total_time=60 -print_final_stats=1
-      run_fuzzer srt ./build-fuzz/fuzz_srt fuzz/corpus/srt/ -artifact_prefix=fuzz/artifacts/srt/ -max_total_time=60 -print_final_stats=1
+        mkdir -p fuzz/artifacts/$name
+        ./build-fuzz/fuzz_$name fuzz/corpus/$name/ -artifact_prefix=fuzz/artifacts/$name/ \
+          -max_total_time=60 -print_final_stats=1 2>fuzz_$name.log \
+          || { tail -50 fuzz_$name.log; exit 1; }
+        sed -n -E '/^(stat::|SUMMARY)/p' fuzz_$name.log
+      done
   artifacts:
     when: on_failure
     paths:

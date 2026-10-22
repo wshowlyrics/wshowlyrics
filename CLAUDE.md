@@ -33,6 +33,8 @@ valgrind --leak-check=full ./build-valgrind/fuzz_lrc fuzz/corpus/lrc/
 
 Fuzz sources are in `fuzz/`, seed corpora in `fuzz/corpus/{lrc,lrcx,srt,url_decode}/`. The parser targets share `parser_sources` with the main binary; `fuzz_url_decode` links only the self-contained `src/utils/url/url_utils.c` (no parser deps). See `meson.build`.
 
+**`-Dfuzzing=true` builds only the fuzz targets.** `meson.build` defines them before any `dependency()` lookup and ends with `subdir_done()`, so a fuzzing build needs nothing but the compiler and never builds `lyrics`. CI's `build:fuzz` relies on this to install only the clang toolchain on `debian:stable-slim` (#29). Keep the parsers (and `constants.h`, which they include) free of external headers — `cairo_set_source_u32` lives in `render_common.h` for that reason. Alpine is not an option for that job: its LeakSanitizer reports a libFuzzer-internal allocation as a leak at exit even for an empty target, so every run fails.
+
 ## CI/CD: GitLab Primary, GitHub Mirror
 
 **Source of truth is the self-hosted GitLab** (`origin` → `gitlab.gggames.synology.me/unstable-code/wshowlyrics`); `downstream` (`github.com/wshowlyrics/wshowlyrics`) is an auto push mirror — never push it manually. Use `glab` instead of `gh` for MRs.

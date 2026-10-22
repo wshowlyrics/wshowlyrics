@@ -5,6 +5,17 @@
 #include <cairo.h>
 #include <stdint.h>
 #include "render_params.h"
+#include "../../constants.h"
+
+// Helper function to set Cairo source color from uint32_t (inline for performance).
+// Lives here rather than in constants.h so the parsers stay free of cairo (#29).
+static inline void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
+    cairo_set_source_rgba(cairo,
+        COLOR_CAIRO_R(color),
+        COLOR_CAIRO_G(color),
+        COLOR_CAIRO_B(color),
+        COLOR_CAIRO_A(color));
+}
 
 // Strip ruby notation from text (removes {ruby} syntax)
 // Returns newly allocated string, caller must free

@@ -70,16 +70,6 @@
 #define COLOR_CAIRO_B(c) (COLOR_TO_CAIRO(COLOR_EXTRACT_B(c)))
 #define COLOR_CAIRO_A(c) (COLOR_TO_CAIRO(COLOR_EXTRACT_A(c)))
 
-// Helper function to set Cairo source color from uint32_t (inline for performance)
-#include <cairo.h>
-static inline void cairo_set_source_u32(cairo_t *cairo, const uint32_t color) {
-    cairo_set_source_rgba(cairo,
-        COLOR_CAIRO_R(color),
-        COLOR_CAIRO_G(color),
-        COLOR_CAIRO_B(color),
-        COLOR_CAIRO_A(color));
-}
-
 // ============================================================================
 // Logging Macros
 // ============================================================================

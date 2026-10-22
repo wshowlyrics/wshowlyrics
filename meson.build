@@ -33,6 +33,44 @@ add_project_arguments(cc.get_supported_arguments([
 	'-Wno-unused-parameter',
 ]), language: 'c')
 
+# Parser sources (shared between main binary and fuzz targets)
+parser_sources = files(
+	'src/parser/lrc/lrc_common.c',
+	'src/parser/lrc/lrc_parser.c',
+	'src/parser/lrc/lrcx_parser.c',
+	'src/parser/srt/srt_parser.c',
+	'src/parser/utils/parser_utils.c',
+	'src/utils/string/string_utils.c',
+)
+
+# Fuzz targets (requires clang with libFuzzer). They have no external
+# dependencies, so a fuzzing build stops here instead of requiring the whole
+# GTK/Wayland stack of the main binary (#29).
+if get_option('fuzzing')
+	fuzz_targets = {
+		'fuzz_lrc': files('fuzz/fuzz_lrc.c') + parser_sources,
+		'fuzz_lrcx': files('fuzz/fuzz_lrcx.c') + parser_sources,
+		'fuzz_srt': files('fuzz/fuzz_srt.c') + parser_sources,
+		# url_decode only needs the self-contained url util (no parser deps).
+		'fuzz_url_decode': files('fuzz/fuzz_url_decode.c', 'src/utils/url/url_utils.c'),
+	}
+
+	fuzz_sanitizer_args = (get_option('fuzz_sanitizer') == 'address'
+		? ['-fsanitize=fuzzer,address'] : ['-fsanitize=fuzzer'])
+
+	foreach name, srcs : fuzz_targets
+		executable(name,
+			srcs,
+			include_directories: include_directories('src'),
+			c_args: fuzz_sanitizer_args,
+			link_args: fuzz_sanitizer_args,
+			install: false,
+		)
+	endforeach
+
+	subdir_done()
+endif
+
 cairo          = dependency('cairo')
 fontconfig     = dependency('fontconfig')
 pango          = dependency('pango')
@@ -69,16 +107,6 @@ configure_file(
 )
 
 subdir('protocols')
-
-# Parser sources (shared between main binary and fuzz targets)
-parser_sources = files(
-	'src/parser/lrc/lrc_common.c',
-	'src/parser/lrc/lrc_parser.c',
-	'src/parser/lrc/lrcx_parser.c',
-	'src/parser/srt/srt_parser.c',
-	'src/parser/utils/parser_utils.c',
-	'src/utils/string/string_utils.c',
-)
 
 executable(
 	'lyrics',
@@ -169,40 +197,4 @@ install_data(
 	'wshowlyrics.svg',
 	install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps',
 )
-
-# Fuzz targets (requires clang with libFuzzer)
-if get_option('fuzzing')
-	fuzz_targets = {
-		'fuzz_lrc': 'fuzz/fuzz_lrc.c',
-		'fuzz_lrcx': 'fuzz/fuzz_lrcx.c',
-		'fuzz_srt': 'fuzz/fuzz_srt.c',
-	}
-
-	fuzz_sanitizer = get_option('fuzz_sanitizer')
-	if fuzz_sanitizer == 'address'
-		fuzz_sanitizer_args = ['-fsanitize=fuzzer,address']
-	else
-		fuzz_sanitizer_args = ['-fsanitize=fuzzer']
-	endif
-
-	foreach name, src : fuzz_targets
-		executable(name,
-			files(src) + parser_sources,
-			include_directories: include_directories('src'),
-			dependencies: [cairo],
-			c_args: fuzz_sanitizer_args,
-			link_args: fuzz_sanitizer_args,
-			install: false,
-		)
-	endforeach
-
-	# url_decode target only needs the self-contained url util (no parser deps).
-	executable('fuzz_url_decode',
-		files('fuzz/fuzz_url_decode.c', 'src/utils/url/url_utils.c'),
-		include_directories: include_directories('src'),
-		c_args: fuzz_sanitizer_args,
-		link_args: fuzz_sanitizer_args,
-		install: false,
-	)
-endif
 
