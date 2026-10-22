@@ -4,7 +4,9 @@
 
 publish:github-release:
   stage: publish
-  image: ubuntu:latest
+  # Tools only (gh, and git for .wait-github-tag): Alpine installs them in
+  # seconds where apt took most of the job on Synology (#30)
+  image: alpine:latest
   extends: .tag-only-rules
   needs:
     - job: package:deb:amd64
@@ -16,18 +18,7 @@ publish:github-release:
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
 
-    - |
-      apt-get update -qq
-      apt-get install -y -qq curl jq git
-
-    # Install gh CLI
-    - |
-      curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-        -o /usr/share/keyrings/githubcli-archive-keyring.gpg
-      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-        > /etc/apt/sources.list.d/github-cli.list
-      apt-get update -qq
-      apt-get install -y -qq gh
+    - apk add --no-cache github-cli git
 
     # Collect all artifacts
     - |
@@ -207,7 +198,7 @@ publish:copr-nightly:
   variables:
     GIT_DEPTH: 0
   script:
-    - dnf install -y copr-cli rpm-build rpmdevtools git
+    - dnf install -y --setopt=install_weak_deps=False copr-cli rpm-build git
 
     # Setup COPR config
     - |
@@ -345,7 +336,7 @@ publish:copr-stable:
     GIT_DEPTH: 0
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
-    - dnf install -y copr-cli rpm-build rpmdevtools wget git
+    - dnf install -y --setopt=install_weak_deps=False copr-cli rpm-build wget git
 
     # Setup COPR config
     - |
@@ -558,13 +549,14 @@ publish:aur-stable:
 
 publish:ppa:tarball:
   stage: publish
-  image: ubuntu:latest
+  # Tools only (git archive): Alpine, see publish:github-release (#30)
+  image: alpine:latest
   extends: .tag-only-rules
   needs:
     - job: build:makepkg
     - job: build:fuzz
   script:
-    - apt-get update -qq && apt-get install -y -qq git
+    - apk add --no-cache git
     - VERSION="${CI_COMMIT_TAG#v}"
     - mkdir -p ppa-tarball
     # The checkout is owned by a different uid than the job user
@@ -582,7 +574,7 @@ publish:ppa:tarball:
     - VERSION="${CI_COMMIT_TAG#v}"
     - |
       apt-get update -qq
-      apt-get install -y -qq devscripts debhelper dput-ng gnupg2 git
+      apt-get install -y -qq --no-install-recommends devscripts debhelper dput-ng gnupg2 git
 
     # Create debian directory
     - mkdir -p debian/source
