@@ -144,12 +144,20 @@ references in them use the full path (`wshowlyrics/wshowlyrics#9`), not `#9`.
 - **`::` vs `:` is deliberate.** The instance is EE, so `key::value` is mutually
   exclusive. Use `::` only where one value per issue is the rule; anything that can
   hit two values at once uses `:` (`blocked:*`, `packaging:*`, `component:*`).
-  `component:provider:lrclib` and `:itunes` are a real example — 12 of 33 commits
-  touching either touched both (shared curl/json helpers).
+  `component:provider:lyrics:lrclib` and `component:provider:album_art:itunes` are a
+  real example — 12 of 33 commits touching either touched both (shared curl/json
+  helpers).
+- **Provider components say what they fetch** (#27): `component:provider:lyrics:*`
+  (`lrclib`, `local`) and `component:provider:album_art:*` (`itunes`).
 - **Translator components name the affected providers, not the shared code.** A bug
   in `src/translator/common/` gets `component:translator:claude`/`gemini`/`openai`
   (and `deepl` only if its path is hit). `component:translator:llm` is reserved for
   the not-yet-introduced provider abstraction and future LLM providers (#2).
+- **`tools/` gets `component:tools:*`, one per feature** (#27): `furigana`
+  (`add_furigana.py`, `add_furigana_ai.py`) and `youtube` (`tag_youtube_media.py`,
+  `link_spotify_lyrics.py`). Scripts of one feature share code, so a change hits both.
+  Not `component:translator:*`, even when a script calls the same LLM APIs (#26):
+  those labels mean the app's `src/translator/`.
 - **`packaging:*` makes it ours.** A channel-specific failure (e.g. NixOS not enabling
   the user unit, #4) is a `bug` even when the root cause is the distro's design,
   because the channel is one we publish.
