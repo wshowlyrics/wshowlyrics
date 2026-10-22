@@ -1,5 +1,4 @@
 # Lyrics Overlay for Wayland
-[![Build Status](https://gitlab.gggames.synology.me/unstable-code/wshowlyrics/badges/master/pipeline.svg)](https://gitlab.gggames.synology.me/unstable-code/wshowlyrics/-/pipelines)
 [![GitHub release](https://img.shields.io/github/v/release/wshowlyrics/wshowlyrics)](https://github.com/wshowlyrics/wshowlyrics/releases)
 [![AUR version](https://img.shields.io/aur/version/wshowlyrics-git)](https://aur.archlinux.org/packages/wshowlyrics-git)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-green.svg)](https://www.linux.org/)

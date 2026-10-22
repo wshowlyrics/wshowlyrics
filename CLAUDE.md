@@ -37,7 +37,7 @@ Fuzz sources are in `fuzz/`, seed corpora in `fuzz/corpus/{lrc,lrcx,srt,url_deco
 
 ## CI/CD: GitLab Primary, GitHub Mirror
 
-**Source of truth is the self-hosted GitLab** (`origin` → `gitlab.gggames.synology.me/unstable-code/wshowlyrics`); `downstream` (`github.com/wshowlyrics/wshowlyrics`) is an auto push mirror — never push it manually. Use `glab` instead of `gh` for MRs.
+**Source of truth is the self-hosted GitLab** (`origin` → `gitlab.gggames.synology.me/wshowlyrics/wshowlyrics`); `downstream` (`github.com/wshowlyrics/wshowlyrics`) is an auto push mirror — never push it manually. Use `glab` instead of `gh` for MRs.
 
 **Public artifact URLs point at the GitHub mirror**, not at `origin`. Packaging metadata (`URL`, `Homepage`, `Vcs-Git`, `Source`) and every source-tarball fetch in `.gitlab/actions/publish.yml` use `github.com/wshowlyrics/wshowlyrics`, so end users (AUR/COPR/PPA/NUR) never depend on the self-hosted instance being reachable. Keep it that way when adding publish steps.
 
