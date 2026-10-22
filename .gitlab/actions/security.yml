@@ -25,16 +25,19 @@ security:semgrep:
       optional: true
     - job: build:fuzz
       optional: true
-  variables:
-    SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN
   script:
     - pip install --quiet semgrep
+    # `semgrep scan`: there is no Semgrep account. Do not add back
+    # `SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN` — with no such CI/CD variable
+    # GitLab passes the literal string, semgrep takes it as a token and every
+    # scan is refused (#32). --gitlab-sast is the schema reports:sast reads.
     - |
-      semgrep ci \
+      semgrep scan \
+        --metrics=off \
         --config p/security-audit \
         --config p/c \
         --config p/ci \
-        --sarif > gl-sast-report.json || true
+        --gitlab-sast --output gl-sast-report.json
   artifacts:
     reports:
       sast: gl-sast-report.json
