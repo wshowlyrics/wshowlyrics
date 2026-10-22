@@ -120,8 +120,15 @@ to keep them.
 **The judging rules live in the label descriptions** — read `glab label list` before
 labelling. This section only records the axis structure that does not fit in one
 description. The scheme mirrors `peter/desktop/nix-configurations` (its CLAUDE.md
-"라벨 체계"), but these are **project labels**: `unstable-code` is a user namespace,
-so group labels are impossible and the two sets do not sync.
+"라벨 체계"), but the two sets do not sync — that one lives in the `peter` group.
+
+**Two layers since the move to the `wshowlyrics` group (#37, #39).** Every label in
+the table below is a **group label** of `wshowlyrics`, shared with any other repo
+there (e.g. the planned QEMU bridge), except `component:*` and `packaging:*`: those
+stay **project labels**, because they name this repo's code and channels; another
+repo in the group adds its own. `glab label list` shows both layers, so lookup is
+unchanged. Because group label descriptions render in every repo, example issue
+references in them use the full path (`wshowlyrics/wshowlyrics#9`), not `#9`.
 
 | Axis | Labels | Nature |
 |---|---|---|
@@ -155,8 +162,9 @@ so group labels are impossible and the two sets do not sync.
   (a date, or a trigger such as the next tag release when the jobs involved only run
   there, as in #30) and *what* closes it. Unlike `hold::*` it keeps `priority::*`.
 - **Rename via REST, not `glab label edit --new-name`** (it reports success but does
-  nothing): `glab api projects/29/labels/<id> -X PUT -f new_name='...'`. Issues keep
-  the label across a rename.
+  nothing): `glab api projects/29/labels/<id> -X PUT -f new_name='...'` for a project
+  label, `glab api groups/76/labels/<id> -X PUT -f new_name='...'` for a group label.
+  Issues keep the label across a rename.
 
 ## Release Process
 
