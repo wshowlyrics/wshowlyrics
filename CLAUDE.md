@@ -161,6 +161,13 @@ references in them use the full path (`wshowlyrics/wshowlyrics#9`), not `#9`.
   had long since removed their cause). Its comment names the commit, *when* to check
   (a date, or a trigger such as the next tag release when the jobs involved only run
   there, as in #30) and *what* closes it. Unlike `hold::*` it keeps `priority::*`.
+- **Weight is a field, not a label, so its scale lives in #40** (group-wide, pinned):
+  1·2·3·5, nothing at 8 or above (split into Tasks first). It measures **size only** —
+  verification cost and uncertainty, not line count; a CI change that only a tag
+  pipeline can confirm is bigger than the same edit checked by a local build. Leave it
+  blank on parents (epics, #28, #37 — summing both counts the work twice),
+  `blocked:*`/`hold::*`, `discussion` and `stale` issues. A `need-verify` issue
+  carries the size of the check (usually 1), not of the landed fix. No iterations yet.
 - **Rename via REST, not `glab label edit --new-name`** (it reports success but does
   nothing): `glab api projects/29/labels/<id> -X PUT -f new_name='...'` for a project
   label, `glab api groups/76/labels/<id> -X PUT -f new_name='...'` for a group label.
