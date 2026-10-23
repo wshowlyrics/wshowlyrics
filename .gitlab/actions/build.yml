@@ -40,7 +40,7 @@ build:makepkg:
       ls -lh build/lyrics
 
     # Smoke tests
-    - ./build/lyrics -h || true
+    - ./build/lyrics -h
     - |
       FILE_OUTPUT=$(file build/lyrics)
       echo "Binary info: $FILE_OUTPUT"
