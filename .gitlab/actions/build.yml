@@ -61,10 +61,21 @@ build:makepkg:
         exit 1
       fi
       echo "Installation files verified"
-      for pkg in *.pkg.tar.zst; do
-        [ -f "$pkg" ] || continue
-        echo "=== $pkg ==="
-        tar -tvf "$pkg" | grep -E "(wshowlyrics|settings.ini|wshowlyrics.service)" || true
+      # makepkg also emits a -debug package (debug symbols only); check the main one
+      set -- $(ls *.pkg.tar.zst 2>/dev/null | grep -v -- '-debug-')
+      if [ "$#" -ne 1 ]; then
+        echo "Error: expected one package, found $#: $*"
+        exit 1
+      fi
+      echo "=== $1 ==="
+      CONTENTS=$(tar -tf "$1")
+      for path in usr/bin/wshowlyrics usr/bin/wshowlyrics-offset \
+                  etc/wshowlyrics/settings.ini usr/lib/systemd/user/wshowlyrics.service; do
+        if ! printf '%s\n' "$CONTENTS" | grep -qx "$path"; then
+          echo "Error: $path missing from $1"
+          exit 1
+        fi
+        echo "found $path"
       done
       echo "Package contents verified"
 
