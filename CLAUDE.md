@@ -154,8 +154,11 @@ references in them use the full path (`wshowlyrics/wshowlyrics#9`), not `#9`.
   (and `deepl` only if its path is hit). `component:translator:llm` is reserved for
   the not-yet-introduced provider abstraction and future LLM providers (#2).
 - **`tools/` gets `component:tools:*`, one per feature** (#27): `furigana`
-  (`add_furigana.py`, `add_furigana_ai.py`) and `youtube` (`tag_youtube_media.py`,
-  `link_spotify_lyrics.py`). Scripts of one feature share code, so a change hits both.
+  (`add_furigana.py`, `add_furigana_ai.py`, `restore_ruby.py` — all handle ruby markup),
+  `youtube` (`tag_youtube_media.py`, `link_spotify_lyrics.py`) and `subtitle`
+  (`retime_srt.py`, `convert_vtt_to_srt.py` — subtitle timing and format). Scripts of
+  one feature share code, so a change hits both; a change across features (e.g. a
+  shared ruby helper also used by `retime_srt.py`, #42) carries both labels.
   Not `component:translator:*`, even when a script calls the same LLM APIs (#26):
   those labels mean the app's `src/translator/`.
 - **`packaging:*` makes it ours.** A channel-specific failure (e.g. NixOS not enabling
