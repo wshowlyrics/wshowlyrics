@@ -40,8 +40,18 @@ READING_RE = re.compile(r'\{[^}]*\}')
 LOW_COVERAGE = 0.6
 
 
+def strip_braces(text):
+    """Drop ruby readings, but unwrap a whole-line {translation} instead of
+    dropping it: SRT inline translations are written that way, and --line -1
+    (the default) matches exactly those lines."""
+    stripped = text.strip()
+    if stripped.startswith('{') and stripped.endswith('}') and stripped.count('{') == 1:
+        return stripped[1:-1]
+    return READING_RE.sub('', text)
+
+
 def norm_chars(text):
-    return [c for c in READING_RE.sub('', text) if not PUNCT_RE.match(c)]
+    return [c for c in strip_braces(text) if not PUNCT_RE.match(c)]
 
 
 _KAKASI = None
@@ -50,7 +60,7 @@ _KAKASI = None
 def romaji_chars(text, convert):
     """Lowercase a-z only; convert=True romanises Japanese first (pykakasi)."""
     global _KAKASI
-    text = READING_RE.sub('', text)
+    text = strip_braces(text)
     if convert:
         if _KAKASI is None:
             import pykakasi
