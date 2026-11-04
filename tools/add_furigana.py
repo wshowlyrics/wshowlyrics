@@ -35,6 +35,55 @@ def find_common_suffix(s1, s2):
         i += 1
     return s1_rev[:i][::-1]
 
+MIXED_TOKEN_RE = re.compile(f'[{KANJI_CLASS}]+|[^{KANJI_CLASS}]+')
+
+
+def split_mixed_reading(base, reading):
+    """Split one reading over a base that mixes kanji and kana.
+
+    A dictionary word such as 引き換え comes back with one reading for the whole
+    word, so stripping the okurigana leaves 引き換 / ひきか. The renderer only
+    takes the kanji run right before '{' as the ruby base, so 引き換{ひきか}
+    would draw ひきか over 換 and leave 引 bare. The kana inside the base anchor
+    the split: 引{ひ}き換{か}.
+
+    Returns [(start, end, reading)] for each kanji run of base, offsets into
+    base, or None when the kana do not line up with the reading. A base that is
+    one kanji run gives a single span. Katakana in the base (好キナ) is matched
+    as hiragana, since the reading is hiragana.
+    """
+    tokens = [(m.start(), m.end(), m.group()) for m in MIXED_TOKEN_RE.finditer(base)]
+    spans, pos = [], 0
+    for i, (start, end, tok) in enumerate(tokens):
+        if KANJI_RE.match(tok):
+            if i + 1 < len(tokens):
+                # Each kanji run reads at least one character, so search after pos.
+                cut = reading.find(jaconv.kata2hira(tokens[i + 1][2]), pos + 1)
+                if cut == -1:
+                    return None
+            else:
+                cut = len(reading)
+                if cut <= pos:
+                    return None
+            spans.append((start, end, reading[pos:cut]))
+            pos = cut
+        else:
+            kana = jaconv.kata2hira(tok)
+            if not reading.startswith(kana, pos):
+                return None
+            pos += len(kana)
+    return spans if pos == len(reading) else None
+
+
+def ruby_from_spans(base, spans):
+    """base with each (start, end, reading) span written as ruby."""
+    out, pos = [], 0
+    for start, end, reading in spans:
+        out.append(base[pos:start] + f'{base[start:end]}{{{reading}}}')
+        pos = end
+    return ''.join(out) + base[pos:]
+
+
 def add_furigana_to_text(text):
     # Only process text that contains Japanese characters.
     if not re.search('[぀-ゟ゠-ヿ一-龯]', text):
@@ -75,8 +124,13 @@ def add_furigana_to_text(text):
                     # -> \u3044\u3068\u30fc\u3057\u3044) which misaligns the okurigana split and leaves
                     # kana at the end of the base (\u611b\u304a{\u3044\u3068\u30fc}) -- that is not
                     # expressible as ruby, so leave the token unannotated.
+                    # A base mixing kanji and kana (引き換) gets one reading per
+                    # kanji run, see split_mixed_reading.
+                    spans = None
                     if KANJI_TAIL_RE.search(kanji_part) and PURE_HIRAGANA_RE.match(hira_part):
-                        processed_chunk += f"{kanji_part}{{{hira_part}}}{suffix}"
+                        spans = split_mixed_reading(kanji_part, hira_part)
+                    if spans:
+                        processed_chunk += ruby_from_spans(kanji_part, spans) + suffix
                     else:
                         processed_chunk += orig
                 else:
@@ -251,8 +305,13 @@ def pyopenjtalk_runs(original):
         pos = original.find(kanji, cursor)
         if pos == -1:            # normalised mismatch (e.g. 2 -> 二) -> skip safely
             continue
-        runs.append((pos, pos + len(kanji), hira))
         cursor = pos + len(kanji)
+        # 引き換え -> 引き換 / ひきか: one run per kanji run, or the run would be
+        # written back as 引き換{ひきか} over a bare span (see split_mixed_reading).
+        spans = split_mixed_reading(kanji, hira)
+        if spans is None:
+            continue
+        runs.extend((pos + start, pos + end, reading) for start, end, reading in spans)
     return runs
 
 
