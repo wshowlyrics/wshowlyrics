@@ -378,6 +378,65 @@ def annotate_line(text):
     return result if strip_readings(result) == base else text
 
 
+INLINE_TIME_RE = re.compile(r'(\[\d+:\d+[.:]\d+\]|<\d+:\d+[.:]\d+>)')
+
+
+def annotate_timed(text, annotate_fn):
+    """Annotate a line that may carry inline word timestamps (.lrcx).
+
+    Annotating each piece between timestamps hands the engines broken words:
+    閉じ込[00:21.50]めちゃって was read as 閉じ込 + めちゃって (閉{と}じ込{こみ}). The
+    line is therefore annotated without its timestamps, and each timestamp goes
+    back after the same base character, past that character's ruby.
+
+    A timestamp inside a kanji run that got one ruby (夜[t]空 -> 夜空{よぞら}) has
+    no place to go back to, so such a line falls back to piece by piece.
+    """
+    pieces = INLINE_TIME_RE.split(text)
+    if len(pieces) == 1:
+        return annotate_fn(text)
+
+    clean, marks = '', []           # marks: (offset in clean, timestamp)
+    for i, piece in enumerate(pieces):
+        if i % 2:
+            marks.append((len(clean), piece))
+        else:
+            clean += piece
+
+    def piecewise():
+        return ''.join(p if i % 2 else annotate_fn(p) for i, p in enumerate(pieces))
+
+    annotated = annotate_fn(clean)
+    if strip_readings(annotated) != clean:
+        return piecewise()
+
+    # where[k]: index in `annotated` just past base char k-1 and any ruby on it.
+    where, idx = [0], 0
+    for _ in clean:
+        idx += 1
+        if idx < len(annotated) and annotated[idx] == '{':
+            idx = annotated.index('}', idx) + 1
+        where.append(idx)
+
+    def has_ruby_after(k):          # base char k-1 is followed by its ruby
+        return annotated[where[k] - 1] == '}'
+
+    for off, _ in marks:
+        if 0 < off < len(clean) and KANJI_RE.match(clean[off - 1]) \
+                and KANJI_RE.match(clean[off]) and not has_ruby_after(off):
+            end = off
+            while end < len(clean) and KANJI_RE.match(clean[end]):
+                end += 1
+            if has_ruby_after(end):     # one ruby spans the timestamp
+                return piecewise()
+
+    out, last = [], 0
+    for off, stamp in marks:
+        out.append(annotated[last:where[off]] + stamp)
+        last = where[off]
+    return ''.join(out) + annotated[last:]
+
+
 def process_file(filepath, annotate_fn=annotate_line, regenerate=False):
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -427,7 +486,7 @@ def process_file(filepath, annotate_fn=annotate_line, regenerate=False):
             # scratch (upgrades old pykakasi readings like 2\u4EBA{\u306B\u3093} -> \u3075\u305F\u308A).
             if regenerate:
                 text_to_process = strip_readings(text_to_process)
-            new_lines.append(prefix + annotate_fn(text_to_process))
+            new_lines.append(prefix + annotate_timed(text_to_process, annotate_fn))
         else:
             new_lines.append(cleaned_line)
 
