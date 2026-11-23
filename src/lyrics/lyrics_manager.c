@@ -90,6 +90,13 @@ static void handle_no_player_found(struct lyrics_state *state) {
 
     log_info("=== No player found, clearing lyrics ===");
 
+    // Drop a lyrics search or artwork fetch still running for the track that
+    // just went away. Left alone, its result would be installed once it
+    // finishes: lyrics for a track nobody is playing, a notification with an
+    // empty title, an iTunes lookup and - with translation on - API calls.
+    lyrics_manager_cancel_fetch(state);
+    lyrics_manager_cancel_art_fetch(state);
+
     // Cancel ongoing translation
     cancel_and_wait_translation(&state->playback.lyrics);
 
