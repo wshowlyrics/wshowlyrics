@@ -14,16 +14,16 @@
 // Cooperative cancellation for the async artwork worker (iTunes search request).
 // Set by the worker to its should_cancel flag; the progress callback aborts the
 // in-flight search when the flag is set, so a track skip need not wait the timeout.
-static _Atomic(_Atomic bool *) g_itunes_cancel_flag = NULL;
+static _Atomic(const _Atomic bool *) g_itunes_cancel_flag = NULL;
 
-void itunes_set_cancel_flag(_Atomic bool *flag) {
+void itunes_set_cancel_flag(const _Atomic bool *flag) {
     atomic_store(&g_itunes_cancel_flag, flag);
 }
 
 static int itunes_progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
                               curl_off_t ultotal, curl_off_t ulnow) {
     (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
-    _Atomic bool *flag = atomic_load(&g_itunes_cancel_flag);
+    const _Atomic bool *flag = atomic_load(&g_itunes_cancel_flag);
     return (flag && atomic_load(flag)) ? 1 : 0;
 }
 

@@ -17,9 +17,9 @@
 // afterwards; the curl progress callback aborts the in-flight transfer when the
 // flag is set, so a track skip does not have to wait out the full transfer
 // timeout. Only one fetch runs at a time, so a single file-global suffices.
-static _Atomic(_Atomic bool *) g_lrclib_cancel_flag = NULL;
+static _Atomic(const _Atomic bool *) g_lrclib_cancel_flag = NULL;
 
-void lrclib_set_cancel_flag(_Atomic bool *flag) {
+void lrclib_set_cancel_flag(const _Atomic bool *flag) {
     atomic_store(&g_lrclib_cancel_flag, flag);
 }
 
@@ -27,7 +27,7 @@ void lrclib_set_cancel_flag(_Atomic bool *flag) {
 static int lrclib_progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
                               curl_off_t ultotal, curl_off_t ulnow) {
     (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
-    _Atomic bool *flag = atomic_load(&g_lrclib_cancel_flag);
+    const _Atomic bool *flag = atomic_load(&g_lrclib_cancel_flag);
     return (flag && atomic_load(flag)) ? 1 : 0;
 }
 

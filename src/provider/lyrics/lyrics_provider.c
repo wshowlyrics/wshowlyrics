@@ -613,12 +613,15 @@ static bool local_search(const char *title, const char *artist, const char *albu
     // filename, so "<filename>.lrc" kept in e.g. ~/.lyrics is found only here,
     // and with a custom search_dirs the first entry need not be {music_dir}.
     bool found = false;
-    for (int i = 0; i < dir_count && !found; i++) {
+    for (int i = 0; i < dir_count; i++) {
         if (!search_dirs[i]) continue;
 
-        found = try_exact_filename(search_dirs[i], filename_from_url, extensions, data) ||
-                try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data,
-                                   skip_bare_title);
+        if (try_exact_filename(search_dirs[i], filename_from_url, extensions, data) ||
+            try_title_patterns(search_dirs[i], title_safe, artist_safe, extensions, data,
+                               skip_bare_title)) {
+            found = true;
+            break;
+        }
     }
 
     cleanup_search_resources(extensions, title_safe, artist_safe, current_dir, filename_from_url,

@@ -96,7 +96,7 @@ static bool is_allowed_image_format(const unsigned char *data, size_t len) {
 // Capped write callback: abort the transfer if artwork exceeds the ceiling
 // (defends against a server that streams without a Content-Length).
 static size_t artwork_write_capped(void *contents, size_t size, size_t nmemb, void *userp) {
-    struct curl_memory_buffer *mem = (struct curl_memory_buffer *)userp;
+    const struct curl_memory_buffer *mem = (const struct curl_memory_buffer *)userp;
     size_t realsize = size * nmemb;
     if (realsize > MAX_ARTWORK_DOWNLOAD_BYTES ||
         mem->size > MAX_ARTWORK_DOWNLOAD_BYTES - realsize) {
@@ -110,16 +110,16 @@ static size_t artwork_write_capped(void *contents, size_t size, size_t nmemb, vo
 // Cooperative cancellation for the async artwork worker (iTunes image download).
 // The worker points this at its should_cancel flag; the curl progress callback
 // aborts the transfer when set, so a track skip need not wait out the timeout.
-static _Atomic(_Atomic bool *) g_art_cancel_flag = NULL;
+static _Atomic(const _Atomic bool *) g_art_cancel_flag = NULL;
 
-void system_tray_set_art_cancel_flag(_Atomic bool *flag) {
+void system_tray_set_art_cancel_flag(const _Atomic bool *flag) {
     atomic_store(&g_art_cancel_flag, flag);
 }
 
 static int art_download_progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
                                     curl_off_t ultotal, curl_off_t ulnow) {
     (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
-    _Atomic bool *flag = atomic_load(&g_art_cancel_flag);
+    const _Atomic bool *flag = atomic_load(&g_art_cancel_flag);
     return (flag && atomic_load(flag)) ? 1 : 0;
 }
 
@@ -1278,10 +1278,15 @@ void system_tray_apply_cached_icon(const char *metadata_hash) {
     g_object_unref(art);
 }
 
-enum tray_art_status system_tray_update_icon_fast(const char *art_url, const char *file_url,
-                                                  const char *artist, const char *album,
-                                                  const char *track, char *md5_out, size_t md5_sz,
+enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request *request,
+                                                  char *md5_out, size_t md5_sz,
                                                   char *cache_out, size_t cache_sz) {
+    const char *art_url = request->art_url;
+    const char *file_url = request->file_url;
+    const char *artist = request->artist;
+    const char *album = request->album;
+    const char *track = request->track;
+
     if (md5_out && md5_sz) md5_out[0] = '\0';
     if (cache_out && cache_sz) cache_out[0] = '\0';
 

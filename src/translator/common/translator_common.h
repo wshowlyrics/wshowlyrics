@@ -122,7 +122,7 @@ bool translator_should_skip_translation(const char *stripped_text, const char *t
  *
  * @param flag Cancel flag to watch, or NULL
  */
-void translator_set_cancel_flag(_Atomic bool *flag);
+void translator_set_cancel_flag(const _Atomic bool *flag);
 
 /**
  * Whether the translation thread has been asked to stop.

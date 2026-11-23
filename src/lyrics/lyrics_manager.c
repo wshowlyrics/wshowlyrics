@@ -230,16 +230,26 @@ static void reset_for_new_lyrics(struct lyrics_state *state) {
 
 // Free the artwork worker's owned input / deferred-notification strings.
 static void free_art_fetch_inputs(struct async_art_fetch *af) {
-    free(af->artist); free(af->album); free(af->track);
-    af->artist = af->album = af->track = NULL;
-    free(af->notif_title); free(af->notif_artist);
-    free(af->notif_album); free(af->notif_player);
-    af->notif_title = af->notif_artist = af->notif_album = af->notif_player = NULL;
+    free(af->artist);
+    free(af->album);
+    free(af->track);
+    af->artist = NULL;
+    af->album = NULL;
+    af->track = NULL;
+
+    free(af->notif_title);
+    free(af->notif_artist);
+    free(af->notif_album);
+    free(af->notif_player);
+    af->notif_title = NULL;
+    af->notif_artist = NULL;
+    af->notif_album = NULL;
+    af->notif_player = NULL;
     af->notify_pending = false;
 }
 
 // Send the track-change desktop notification (main thread).
-static void send_track_notification(struct lyrics_state *state, const char *artist,
+static void send_track_notification(const struct lyrics_state *state, const char *artist,
                                     const char *album, const char *title) {
     if (!g_config.lyrics.enable_notifications) {
         return;
@@ -316,9 +326,15 @@ static void finalize_common(struct lyrics_state *state, const char *art_url,
 
     char md5[MD5_DIGEST_STRING_LENGTH];
     char cache_path[512];
+    const struct tray_art_request request = {
+        .art_url = art_url,
+        .file_url = file_url,
+        .artist = artist,
+        .album = album,
+        .track = title,
+    };
     enum tray_art_status st = system_tray_update_icon_fast(
-        art_url, file_url, artist, album, title,
-        md5, sizeof(md5), cache_path, sizeof(cache_path));
+        &request, md5, sizeof(md5), cache_path, sizeof(cache_path));
 
     if (st == TRAY_ART_NEED_ITUNES) {
         begin_art_fetch(state, artist, album, title, md5, cache_path);

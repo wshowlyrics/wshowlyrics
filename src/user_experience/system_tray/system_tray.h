@@ -37,15 +37,25 @@ enum tray_art_status {
     TRAY_ART_NONE,         // no source and iTunes disabled; default icon set
 };
 
+// What to resolve album art for: where the player says the art and the media
+// are, and the metadata the cache key and the iTunes search are built from.
+// Any field may be NULL.
+struct tray_art_request {
+    const char *art_url;   // mpris:artUrl
+    const char *file_url;  // xesam:url (file:// for local media)
+    const char *artist;
+    const char *album;
+    const char *track;
+};
+
 // Resolve album art from the FAST sources only (cache, MPRIS artUrl, local
 // embedded cover, local video thumbnail) and set the tray icon on success.
 // The iTunes API (network) is NOT tried here — on a miss this returns
 // TRAY_ART_NEED_ITUNES and fills md5_out/cache_out for the caller to resolve on
 // a worker thread (system_tray_resolve_itunes_art) and then apply with
 // system_tray_apply_cached_icon. Main thread only.
-enum tray_art_status system_tray_update_icon_fast(const char *art_url, const char *file_url,
-                                                  const char *artist, const char *album,
-                                                  const char *track, char *md5_out, size_t md5_sz,
+enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request *request,
+                                                  char *md5_out, size_t md5_sz,
                                                   char *cache_out, size_t cache_sz);
 
 // Worker-safe: resolve iTunes artwork into out_path ({md5}.png). Blocking
@@ -60,7 +70,7 @@ bool system_tray_render_art_to_cache(const char *art_url, const char *out_path);
 void system_tray_apply_cached_icon(const char *metadata_hash);
 
 // Point the artwork worker's in-flight image download at a cancel flag (or NULL).
-void system_tray_set_art_cancel_flag(_Atomic bool *flag);
+void system_tray_set_art_cancel_flag(const _Atomic bool *flag);
 
 // Reset icon to default (called before track change)
 void system_tray_reset_icon(void);

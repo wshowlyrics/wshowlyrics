@@ -426,14 +426,14 @@ static const char* find_reusable_translation(const struct lyrics_data *data,
 // progress callback watch it, so cancelling does not have to wait out a rate
 // limit delay, a retry backoff or a stalled request. Same pattern as
 // lrclib_set_cancel_flag(): one translation thread runs at a time.
-static _Atomic(_Atomic bool *) g_translator_cancel_flag = NULL;
+static _Atomic(const _Atomic bool *) g_translator_cancel_flag = NULL;
 
-void translator_set_cancel_flag(_Atomic bool *flag) {
+void translator_set_cancel_flag(const _Atomic bool *flag) {
     atomic_store(&g_translator_cancel_flag, flag);
 }
 
 bool translator_cancel_requested(void) {
-    _Atomic bool *flag = atomic_load(&g_translator_cancel_flag);
+    const _Atomic bool *flag = atomic_load(&g_translator_cancel_flag);
     return flag && atomic_load(flag);
 }
 
