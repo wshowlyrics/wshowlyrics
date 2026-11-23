@@ -3,6 +3,7 @@
 #define _LYRICS_FILE_UTILS_H
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <stddef.h>
 #include "../../user_experience/config/config.h"
 
@@ -106,5 +107,12 @@ bool auto_cleanup_old_cache(int max_days);
 // Updates both access and modification time to current time
 // Returns true on success, false if file doesn't exist or error
 bool touch_cache_file(const char *filepath);
+
+// Open path for writing ("w"), creating it readable and writable by the owner
+// only. The mode is given to open(2) directly instead of narrowing the
+// process-wide umask around fopen(): umask is shared by every thread, so two
+// threads toggling it at once could create a file with the wrong mode or leave
+// the process umask changed. Returns NULL on failure (errno set).
+FILE* fopen_private(const char *path);
 
 #endif

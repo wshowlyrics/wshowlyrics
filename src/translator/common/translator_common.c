@@ -190,9 +190,7 @@ bool translator_save_to_cache(const char *cache_path, struct lyrics_data *data,
     const char *json_str = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
 
     // Write to file (owner-only access for privacy)
-    mode_t old_mask = umask(0077);  // Ensure rw------- permissions
-    FILE *f = fopen(cache_path, "w");
-    umask(old_mask);
+    FILE *f = fopen_private(cache_path);
     bool success = false;
     if (f) {
         fprintf(f, "%s", json_str);

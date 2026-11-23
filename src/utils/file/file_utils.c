@@ -735,3 +735,15 @@ bool touch_cache_file(const char *filepath) {
 
     return false;
 }
+
+FILE* fopen_private(const char *path) {
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if (fd < 0) {
+        return NULL;
+    }
+    FILE *f = fdopen(fd, "w");
+    if (!f) {
+        close(fd);
+    }
+    return f;
+}

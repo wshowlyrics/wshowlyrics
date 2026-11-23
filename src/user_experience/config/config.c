@@ -1300,9 +1300,8 @@ static char* try_load_user_config(struct config *cfg, const char *path) {
 
     // Try to create config file atomically - if it exists, open() will fail
     // This eliminates TOCTOU by combining check and create into single atomic operation
-    mode_t old_mask = umask(0077);  // Ensure rw------- permissions (privacy)
+    // Mode 0600 keeps it owner-only (privacy) whatever the umask is
     int fd = open(path, O_CREAT | O_EXCL | O_WRONLY, 0600);
-    umask(old_mask);
 
     // If file was just created (fd >= 0), copy from system config
     if (fd >= 0 &&

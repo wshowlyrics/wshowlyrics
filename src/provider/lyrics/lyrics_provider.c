@@ -725,9 +725,7 @@ static void cache_lrclib_lyrics(const struct track_metadata *track, struct lyric
         return;
     }
 
-    mode_t old_mask = umask(0077);
-    FILE *f = fopen(cache_path, "w");
-    umask(old_mask);
+    FILE *f = fopen_private(cache_path);
 
     if (!f) {
         log_warn("Failed to cache lyrics");

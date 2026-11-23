@@ -207,6 +207,33 @@ static GdkPixbuf* crop_to_square(GdkPixbuf *const pixbuf) {
     return square;
 }
 
+// Write pixbuf to path as a PNG readable and writable by the owner only. The
+// image is encoded in memory and written through fopen_private(), so no umask
+// toggle is needed (see fopen_private) and it is safe to call from the artwork
+// worker thread. On failure returns false and sets *error (if given).
+static bool save_png_private(GdkPixbuf *pixbuf, const char *path, GError **error) {
+    gchar *data = NULL;
+    gsize size = 0;
+    if (!gdk_pixbuf_save_to_buffer(pixbuf, &data, &size, "png", error, NULL)) {
+        return false;
+    }
+
+    FILE *f = fopen_private(path);
+    bool ok = (f != NULL);
+    if (f) {
+        ok = (fwrite(data, 1, size, f) == size);
+        if (fclose(f) != 0) {
+            ok = false;
+        }
+    }
+    if (!ok) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "cannot write %s: %s", path, g_strerror(errno));
+    }
+    g_free(data);
+    return ok;
+}
+
 // Save default icon from theme to file
 static bool save_default_icon(const char *output_path) {
     GtkIconTheme *icon_theme = gtk_icon_theme_get_default();
@@ -236,9 +263,7 @@ static bool save_default_icon(const char *output_path) {
 
     // Save to file (owner-only access for privacy)
     g_clear_error(&error);
-    mode_t old_mask = umask(0077);
-    bool save_result = gdk_pixbuf_save(icon, output_path, "png", &error, NULL);
-    umask(old_mask);
+    bool save_result = save_png_private(icon, output_path, &error);
     if (!save_result) {
         log_error("Failed to save default icon: %s", error->message);
         g_error_free(error);
@@ -701,9 +726,7 @@ bool system_tray_render_art_to_cache(const char *art_url, const char *out_path) 
 
     // Save as PNG (owner-only access for privacy)
     GError *error = NULL;
-    mode_t old_mask = umask(0077);
-    bool save_result = gdk_pixbuf_save(rounded, out_path, "png", &error, NULL);
-    umask(old_mask);
+    bool save_result = save_png_private(rounded, out_path, &error);
     g_object_unref(rounded);
     if (!save_result) {
         log_error("Failed to save icon: %s", error ? error->message : "unknown");
@@ -885,7 +908,7 @@ static const char* create_badged_icon(const char *player_display,
     if (badged) {
         // Save badged image
         GError *save_error = NULL;
-        if (gdk_pixbuf_save(badged, notification_icon_path, "png", &save_error, NULL)) {
+        if (save_png_private(badged, notification_icon_path, &save_error)) {
             log_info("Created notification icon with %s badge", player_display);
             g_object_unref(badged);
             if (player_icon) g_object_unref(player_icon);
@@ -979,9 +1002,7 @@ static bool cache_current_artwork(const char *cache_path) {
     GdkPixbuf *current = gdk_pixbuf_new_from_file(g_icon_path, &error);
 
     if (current) {
-        mode_t old_mask = umask(0077);
-        bool success = gdk_pixbuf_save(current, cache_path, "png", NULL, NULL);
-        umask(old_mask);
+        bool success = save_png_private(current, cache_path, NULL);
         g_object_unref(current);
         if (success) {
             log_info("Cached album art: %s", sanitize_path(cache_path));
@@ -1057,9 +1078,7 @@ static bool load_cached_album_art(const char *cache_path, const char *metadata_h
         GdkPixbuf *scaled = gdk_pixbuf_scale_simple(cached, 48, 48, GDK_INTERP_BILINEAR);
         g_object_unref(cached);
 
-        mode_t old_mask = umask(0077);
-        bool save_result = gdk_pixbuf_save(scaled, g_icon_path, "png", NULL, NULL);
-        umask(old_mask);
+        bool save_result = save_png_private(scaled, g_icon_path, NULL);
         if (save_result) {
             g_object_unref(scaled);
             app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
@@ -1338,16 +1357,14 @@ void system_tray_apply_cached_icon(const char *metadata_hash) {
         if (error) g_error_free(error);
         return;
     }
-    mode_t old_mask = umask(0077);
     // error is NULL here (the load above succeeded); reuse it for the save.
     // A failed mirror is non-fatal — the tray icon is already set above; this
     // only keeps the notification badge in sync — so warn and continue.
-    if (!gdk_pixbuf_save(art, g_icon_path, "png", &error, NULL)) {
+    if (!save_png_private(art, g_icon_path, &error)) {
         log_warn("system_tray: failed to mirror art to notification icon: %s",
                  error ? error->message : "unknown error");
         if (error) g_error_free(error);
     }
-    umask(old_mask);
     g_object_unref(art);
 }
 
@@ -1542,9 +1559,7 @@ void system_tray_set_overlay_state(bool enabled) {
 
         // Save as PNG
         GError *error = NULL;
-        mode_t old_mask = umask(0077);
-        bool save_result = gdk_pixbuf_save(disabled, g_disabled_icon_path, "png", &error, NULL);
-        umask(old_mask);
+        bool save_result = save_png_private(disabled, g_disabled_icon_path, &error);
 
         if (!save_result) {
             log_error("Failed to save disabled icon: %s", error ? error->message : "unknown");
