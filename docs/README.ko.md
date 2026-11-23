@@ -292,6 +292,10 @@ TERMINAL=foot
 | `-F FONT` | `--font=FONT` | 폰트 설정 | `"Sans 20"` |
 | `-a POSITION` | `--anchor=POSITION` | 화면 위치 (top/bottom/left/right) | `bottom` |
 | `-m PIXELS` | `--margin=PIXELS` | 화면 가장자리 여백 (픽셀) | `32` |
+| - | `--allow-browsers` | 브라우저 MPRIS 플레이어도 추적 (아래 참고) | 꺼짐 |
+
+**브라우저 플레이어:**
+브라우저 MPRIS 플레이어(Chromium, Firefox, Vivaldi, Brave, Edge, Opera)는 기본적으로 무시합니다. 브라우저는 모든 탭을 MPRIS 플레이어 하나로 알리기 때문에, "재생 중"이 광고나 자동 재생 영상, 음소거된 탭인 경우가 많습니다. 그러면 lrclib 에서 제목과 길이가 비슷한 엉뚱한 곡과 매칭될 수 있습니다. `--allow-browsers` 를 붙이면 그 실행에 한해 브라우저도 추적합니다. 상시 설정이 아니라 브라우저로 음악을 듣는 동안(예: YouTube Music, 노래방 사이트)에만 쓰세요. AI 번역을 켜 두었다면 브라우저의 곡이 바뀔 때마다 번역 API 비용도 듭니다. 이를 상기시키기 위해 시작할 때 경고를 로그에 남깁니다. `preferred_players` 를 설정했다면 브라우저 이름(예: `vivaldi`)도 목록에 넣으세요. 그러지 않으면 목록에 있는 플레이어가 멈춰 있어도 그쪽이 우선합니다. 이 기능은 의도적으로 `settings.ini` 옵션으로 두지 않았습니다.
 
 **색상 형식:**
 - `#RRGGBB`: RGB 값 (예: `#FF0000` = 빨강)

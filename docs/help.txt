@@ -12,6 +12,11 @@ Options:
                                Examples: "Sans Bold 24", "Noto Sans CJK KR 18"
   -a, --anchor=POSITION        Anchor position: top, bottom, left, right (default: bottom)
   -m, --margin=PIXELS          Margin from screen edge in pixels (default: 32)
+      --allow-browsers         Also track browser MPRIS players (Chromium, Firefox, ...),
+                               which are ignored by default. Use it only for a browser
+                               listening session: the browser reports any tab as playing
+                               (ads, autoplay), so unrelated lyrics may appear and, with
+                               AI translation on, translation API calls are billed for them
 
 Configuration Files (in priority order):
   1. ~/.config/wshowlyrics/settings.ini (user config)

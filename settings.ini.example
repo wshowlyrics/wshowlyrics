@@ -103,7 +103,10 @@ extensions = lrcx,lrc,srt,vtt
 # This setting allows you to prioritize specific music players
 # Common player names: mpv, spotify, vlc, rhythmbox, audacious
 # Example: preferred_players = mpv,spotify
-# Note: Browsers (chromium, firefox) are always ignored regardless of this setting
+# Note: Browsers (chromium, firefox, ...) are ignored regardless of this setting,
+#       unless wshowlyrics is started with --allow-browsers. With that flag, add the
+#       browser (e.g. vivaldi) here too if you set a list, or a paused player listed
+#       here keeps priority over it
 preferred_players =
 
 # Online lyrics provider (lrclib.net)

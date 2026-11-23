@@ -54,15 +54,29 @@ static char* find_best_player(void);
 static void setup_player_subscription(char *player);
 static void populate_initial_name_mapping(void);
 
-// Helper: Check if player is a browser or MPRIS proxy (should be ignored)
-static inline bool is_browser_or_proxy(const char *player_name) {
+// Browsers are ignored unless --allow-browsers is given (#50): one MPRIS player
+// covers every tab, so "playing" is often an ad or autoplay, not the music
+static bool allow_browsers = false;
+
+void mpris_set_allow_browsers(bool allow) {
+    allow_browsers = allow;
+}
+
+// Helper: Check if player should be ignored (browser, or the playerctld proxy)
+static inline bool should_ignore_player(const char *player_name) {
+    // playerctld only mirrors another player, so it is never tracked
+    if (strcmp(player_name, "playerctld") == 0) {
+        return true;
+    }
+    if (allow_browsers) {
+        return false;
+    }
     return strstr(player_name, "chromium") ||
            strstr(player_name, "firefox") ||
            strstr(player_name, "vivaldi") ||
            strstr(player_name, "brave") ||
            strstr(player_name, "edge") ||
-           strstr(player_name, "opera") ||
-           strcmp(player_name, "playerctld") == 0;
+           strstr(player_name, "opera");
 }
 
 // Helper: Build MPRIS D-Bus service name from player name
@@ -248,8 +262,8 @@ static char** list_mpris_players(int *count) {
 
         const char *player_name = name + 23;
 
-        // Skip browsers and playerctld (MPRIS proxy)
-        if (is_browser_or_proxy(player_name)) {
+        // Skip ignored players (browsers unless --allow-browsers, playerctld)
+        if (should_ignore_player(player_name)) {
             continue;
         }
 
@@ -494,8 +508,8 @@ static const char* extract_and_validate_player_name(const char *well_known_name)
 
     const char *player_name = well_known_name + 23;
 
-    // Skip browsers and playerctld
-    if (is_browser_or_proxy(player_name)) {
+    // Skip ignored players (browsers unless --allow-browsers, playerctld)
+    if (should_ignore_player(player_name)) {
         return NULL;
     }
 
@@ -785,8 +799,8 @@ static void on_name_owner_changed(
 
     const char *player_name = name + 23;
 
-    // Skip browsers and playerctld (MPRIS proxy)
-    if (is_browser_or_proxy(player_name)) {
+    // Skip ignored players (browsers unless --allow-browsers, playerctld)
+    if (should_ignore_player(player_name)) {
         return;
     }
 
@@ -1095,8 +1109,8 @@ static void populate_initial_name_mapping(void) {
 
         const char *player_name = name + 23;
 
-        // Skip browsers and playerctld
-        if (is_browser_or_proxy(player_name)) {
+        // Skip ignored players (browsers unless --allow-browsers, playerctld)
+        if (should_ignore_player(player_name)) {
             continue;
         }
 

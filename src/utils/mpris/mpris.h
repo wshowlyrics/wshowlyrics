@@ -17,6 +17,9 @@ struct track_metadata {
     int64_t position_us; // Current position in microseconds
 };
 
+// Track browser MPRIS players too (--allow-browsers); call before mpris_init()
+void mpris_set_allow_browsers(bool allow);
+
 // Initialize MPRIS connection
 bool mpris_init(void);
 

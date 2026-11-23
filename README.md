@@ -296,6 +296,10 @@ After creating this file, log out and log back in (or run `systemctl --user daem
 | `-F FONT` | `--font=FONT` | Font setting | `"Sans 20"` |
 | `-a POSITION` | `--anchor=POSITION` | Screen position (top/bottom/left/right) | `bottom` |
 | `-m PIXELS` | `--margin=PIXELS` | Screen edge margin (pixels) | `32` |
+| - | `--allow-browsers` | Also track browser MPRIS players (see below) | off |
+
+**Browser Players:**
+Browser MPRIS players (Chromium, Firefox, Vivaldi, Brave, Edge, Opera) are ignored by default. A browser exposes one MPRIS player for all of its tabs, so "playing" is often an ad, an autoplaying video or a muted tab, and lrclib can match it to an unrelated song with a similar title and length. `--allow-browsers` tracks them anyway, for one run only. Use it for a browser listening session (e.g. YouTube Music or a karaoke site), not as a permanent setting. With AI translation enabled, every track change in the browser also costs translation API calls; a warning is logged at startup as a reminder. If you set `preferred_players`, add the browser (e.g. `vivaldi`) to it as well; otherwise a paused player from that list keeps priority. There is deliberately no `settings.ini` option for this.
 
 **Color Format:**
 - `#RRGGBB`: RGB value (e.g., `#FF0000` = red)

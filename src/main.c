@@ -227,6 +227,9 @@ static bool initialize_subsystems(struct lyrics_state *state) {
     return true;
 }
 
+// getopt_long values for options with no short form
+enum { OPT_ALLOW_BROWSERS = 256 };
+
 // Parse command-line options
 static int parse_command_line_options(int argc, char *argv[], struct lyrics_state *state,
                                       uint32_t *anchor, int *margin, char **font_from_config,
@@ -238,6 +241,8 @@ static int parse_command_line_options(int argc, char *argv[], struct lyrics_stat
         {"font", required_argument, 0, 'F'},
         {"anchor", required_argument, 0, 'a'},
         {"margin", required_argument, 0, 'm'},
+        // Long-only: a value outside the char range so it has no short form
+        {"allow-browsers", no_argument, 0, OPT_ALLOW_BROWSERS},
         {0, 0, 0, 0}
     };
 
@@ -261,6 +266,11 @@ static int parse_command_line_options(int argc, char *argv[], struct lyrics_stat
             break;
         case 'm':
             *margin = atoi(optarg);
+            break;
+        case OPT_ALLOW_BROWSERS:
+            mpris_set_allow_browsers(true);
+            log_warn("--allow-browsers: browser players are tracked; any tab (ads, autoplay) "
+                     "may trigger lyrics lookups and translation API calls");
             break;
         default:
             fprintf(stderr, "Error: Invalid option\n");
