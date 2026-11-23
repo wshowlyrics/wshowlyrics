@@ -343,8 +343,16 @@ static GdkPixbuf* load_image_from_url(const char *url) {
         // file is never opened (CWE-73). Read the bytes once, then sniff and
         // decode from that same copy so the file cannot be swapped between the
         // format check and the decode.
+        //
+        // A file:// URI is percent-encoded ("My%20Album/cover.jpg"), so decode
+        // it first. Fall back to the text as given for players that pass a raw
+        // path, where a literal "%41" in a file name must not turn into "A".
         char resolved[PATH_MAX];
-        if (!realpath(file_path, resolved)) {
+        char *decoded = url_decode_string(file_path);
+        const bool found = (decoded && realpath(decoded, resolved)) ||
+                           realpath(file_path, resolved);
+        free(decoded);
+        if (!found) {
             log_warn("system_tray: cannot resolve art file path, ignoring");
             return NULL;
         }
@@ -784,21 +792,76 @@ void system_tray_reset_icon(void) {
     log_info("Icon reset to default: %s", g_icon_path);
 }
 
-// Helper: Build notification body with artist, album, and player
-static void build_notification_body(const struct notification_info *info,
-                                   char *body, size_t body_size,
-                                   char *player_capitalized, size_t player_cap_size) {
+// How long to wait for the notification server to list its capabilities
+#define NOTIFY_CAPABILITIES_TIMEOUT_MS 1000
+
+// Whether the notification server renders markup in the body ("body-markup"
+// capability of org.freedesktop.Notifications). Asked once and remembered.
+// Servers with it treat <b>, <a href> and "&" in the body as markup; servers
+// without it show the text as is. If the server cannot be asked, assume markup:
+// escaping for a plain-text server only costs a literal "&amp;", while leaving
+// metadata unescaped for a markup server lets it inject links or break the text.
+static bool notification_body_is_markup(void) {
+    static bool asked = false;
+    static bool markup = true;
+    if (asked) {
+        return markup;
+    }
+    asked = true;
+
+    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+    if (!bus) {
+        return markup;
+    }
+    GVariant *reply = g_dbus_connection_call_sync(
+        bus, "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications", "GetCapabilities", NULL,
+        G_VARIANT_TYPE("(as)"), G_DBUS_CALL_FLAGS_NONE,
+        NOTIFY_CAPABILITIES_TIMEOUT_MS, NULL, NULL);
+    g_object_unref(bus);
+    if (!reply) {
+        return markup;
+    }
+
+    const gchar **capabilities = NULL;
+    g_variant_get(reply, "(^a&s)", &capabilities);
+    markup = capabilities && g_strv_contains(capabilities, "body-markup");
+    g_free(capabilities);
+    g_variant_unref(reply);
+
+    log_info("Notification server %s body markup", markup ? "renders" : "does not render");
+    return markup;
+}
+
+// Copy of text for the notification body: markup-escaped when the server
+// renders markup, so metadata is always shown as the text it is. Caller g_free()s.
+static char* notification_body_text(const char *text) {
+    return notification_body_is_markup() ? g_markup_escape_text(text, -1) : g_strdup(text);
+}
+
+// Helper: Build notification body with artist, album, and player.
+// Returns a newly allocated string the caller g_free()s.
+static char* build_notification_body(const struct notification_info *info) {
     const char *artist = (info->artist && info->artist[0]) ? info->artist : "Unknown";
     const char *album = (info->album && info->album[0]) ? info->album : "Unknown";
     const char *player = (info->player_name && info->player_name[0]) ? info->player_name : "Unknown";
 
     // Capitalize first letter of player name
-    snprintf(player_capitalized, player_cap_size, "%s", player);
+    char player_capitalized[256];
+    snprintf(player_capitalized, sizeof(player_capitalized), "%s", player);
     if (player_capitalized[0] >= 'a' && player_capitalized[0] <= 'z') {
         player_capitalized[0] = player_capitalized[0] - 'a' + 'A';
     }
 
-    snprintf(body, body_size, "%s · %s\n%s", album, artist, player_capitalized);
+    // These come from MPRIS metadata (with --allow-browsers, from a web page)
+    char *album_text = notification_body_text(album);
+    char *artist_text = notification_body_text(artist);
+    char *player_text = notification_body_text(player_capitalized);
+    char *body = g_strdup_printf("%s · %s\n%s", album_text, artist_text, player_text);
+    g_free(album_text);
+    g_free(artist_text);
+    g_free(player_text);
+    return body;
 }
 
 // Helper: Create badged notification icon (album art + player badge)
@@ -870,9 +933,7 @@ void system_tray_send_notification(const struct notification_info *info) {
     snprintf(notification_title, sizeof(notification_title), "🎵 %s", info->title);
 
     // Build notification body
-    char body[512];
-    char player_capitalized[256];
-    build_notification_body(info, body, sizeof(body), player_capitalized, sizeof(player_capitalized));
+    char *body = build_notification_body(info);
 
     // Get player display name for logging
     const char *player_display = (info->player_name && info->player_name[0]) ? info->player_name : "Unknown";
@@ -893,7 +954,10 @@ void system_tray_send_notification(const struct notification_info *info) {
     char timeout_str[16];
     snprintf(timeout_str, sizeof(timeout_str), "%d", g_config.lyrics.notification_timeout);
     char *icon_arg = strdup(icon_path);
-    if (!icon_arg) return;
+    if (!icon_arg) {
+        g_free(body);
+        return;
+    }
     char *argv[] = {
         "notify-send", "-a", "wshowlyrics",
         "-i", icon_arg,
@@ -906,6 +970,7 @@ void system_tray_send_notification(const struct notification_info *info) {
         g_error_free(error);
     }
     free(icon_arg);
+    g_free(body);
 }
 
 // Cache current artwork from g_icon_path to cache_path
@@ -1063,6 +1128,12 @@ static bool resolve_local_media_path(const char *file_url, char *resolved) {
     return true;
 }
 
+// Protocols ffmpeg may open while reading the local media file. The input is
+// always a regular local file, so "file" is all it needs. Without this, a
+// playlist-type input dressed up as a media file (HLS, concat) could make
+// ffmpeg open other local files or network URLs.
+#define FFMPEG_INPUT_PROTOCOLS "file"
+
 // Run ffmpeg with the given argument vector and report whether it produced a
 // usable PNG at out_path. g_spawn_sync runs ffmpeg with no shell interpretation
 // so the resolved path can never be reinterpreted as arguments. ffmpeg exits
@@ -1143,6 +1214,7 @@ static bool try_local_embedded_artwork(const char *file_url, const char *cache_p
     // non-zero, which we treat as "no embedded artwork".
     char *argv[] = {
         ffmpeg, "-y", "-loglevel", "error",
+        "-protocol_whitelist", FFMPEG_INPUT_PROTOCOLS,
         "-i", resolved,
         "-map", "0:v", "-map", "-0:V",
         "-frames:v", "1",
@@ -1200,6 +1272,7 @@ static bool try_local_video_thumbnail(const char *file_url, const char *cache_pa
     char *argv[] = {
         ffmpeg, "-y", "-loglevel", "error",
         "-ss", VIDEO_THUMBNAIL_SEEK_SECONDS,
+        "-protocol_whitelist", FFMPEG_INPUT_PROTOCOLS,
         "-i", resolved,
         "-map", "0:V:0", "-frames:v", "1",
         "-vf", "thumbnail,crop=min(iw\\,ih):min(iw\\,ih),scale=256:256",
