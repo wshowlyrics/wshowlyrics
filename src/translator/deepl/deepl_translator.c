@@ -118,6 +118,9 @@ static bool setup_deepl_curl_request(CURL **curl_out,
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, response) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, TRANSLATOR_CONNECT_TIMEOUT_SEC) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, translator_curl_cancel_cb) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
         curl_slist_free_all(headers);
@@ -146,6 +149,11 @@ static int handle_deepl_response(CURLcode res, long http_code,
         return 0;  // Success
     }
 
+    if (res == CURLE_ABORTED_BY_CALLBACK) {
+        // Translation was cancelled mid-request - not an error, no retry
+        return -1;
+    }
+
     if (http_code == HTTP_UNAUTHORIZED || http_code == 403) {
         // Authentication error - don't retry
         log_error("deepl_translator: Authentication error (HTTP %ld)", http_code);
@@ -157,12 +165,8 @@ static int handle_deepl_response(CURLcode res, long http_code,
     log_warn("deepl_translator: HTTP error %ld, retrying in %dms (attempt %d/%d)",
             http_code, retry_delay_ms, attempt, max_retries);
 
-    if (attempt < max_retries) {
-        struct timespec delay = {
-            .tv_sec = retry_delay_ms / 1000,
-            .tv_nsec = (retry_delay_ms % 1000) * 1000000L
-        };
-        nanosleep(&delay, NULL);
+    if (attempt < max_retries && !translator_sleep_cancellable(retry_delay_ms)) {
+        return -1;  // Cancelled during the backoff - no further request
     }
 
     return 1;  // Retry

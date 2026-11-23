@@ -9,6 +9,7 @@
 #include "../../user_experience/config/config.h"
 #include <curl/curl.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -420,16 +421,47 @@ static const char* find_reusable_translation(const struct lyrics_data *data,
     return NULL;
 }
 
-void translator_rate_limit_delay(int delay_ms) {
-    if (delay_ms <= 0) {
-        return;
-    }
+// Cooperative cancellation for the translation thread. The worker points this
+// at its lyrics' translation_should_cancel; the waits below and the curl
+// progress callback watch it, so cancelling does not have to wait out a rate
+// limit delay, a retry backoff or a stalled request. Same pattern as
+// lrclib_set_cancel_flag(): one translation thread runs at a time.
+static _Atomic(_Atomic bool *) g_translator_cancel_flag = NULL;
 
-    struct timespec delay = {
-        .tv_sec = delay_ms / 1000,
-        .tv_nsec = (delay_ms % 1000) * 1000000L
-    };
-    nanosleep(&delay, NULL);
+void translator_set_cancel_flag(_Atomic bool *flag) {
+    atomic_store(&g_translator_cancel_flag, flag);
+}
+
+bool translator_cancel_requested(void) {
+    _Atomic bool *flag = atomic_load(&g_translator_cancel_flag);
+    return flag && atomic_load(flag);
+}
+
+// Longest stretch slept without checking for cancellation
+#define TRANSLATOR_SLEEP_SLICE_MS 50
+
+bool translator_sleep_cancellable(int delay_ms) {
+    int remaining_ms = delay_ms;
+    while (remaining_ms > 0) {
+        if (translator_cancel_requested()) {
+            return false;
+        }
+        const int slice_ms = remaining_ms < TRANSLATOR_SLEEP_SLICE_MS
+                                 ? remaining_ms : TRANSLATOR_SLEEP_SLICE_MS;
+        struct timespec delay = {
+            .tv_sec = 0,
+            .tv_nsec = slice_ms * 1000000L
+        };
+        nanosleep(&delay, NULL);
+        remaining_ms -= slice_ms;
+    }
+    return !translator_cancel_requested();
+}
+
+int translator_curl_cancel_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
+                              curl_off_t ultotal, curl_off_t ulnow) {
+    (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
+    return translator_cancel_requested() ? 1 : 0;
 }
 
 void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_ms,
@@ -697,6 +729,18 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
     *api_called = true;
     char *translation = args->translate_line_fn(stripped, args->target_lang,
                                                 args->api_key, args->model_name);
+    if (!translation && data->translation_should_cancel) {
+        // The request was cut short by cancellation, so its failure says
+        // nothing about this line: do not count it as a failed attempt, and
+        // leave it for the next run. (A request that still came back with a
+        // translation is kept below - it is already paid for.)
+        free(stripped);
+        (*current)--;
+        data->translation_current = *current;
+        log_info("%s: Translation cancelled (%d/%d completed)",
+                 args->provider_name, *current, translatable_count);
+        return false;  // Break
+    }
     if (translation) {
         // Language validation
         if (is_same_language(stripped, translation)) {
@@ -799,11 +843,13 @@ void* translator_async_worker(void *arg) {
     }
 
     data->translation_in_progress = true;
+    translator_set_cancel_flag(&data->translation_should_cancel);
 
     // Try loading from cache
     int already_translated = 0;
     if (!translator_handle_cache_loading_ex(args, data, translatable_count, &already_translated)) {
         // Translation already complete from cache
+        translator_set_cancel_flag(NULL);
         free(args->target_lang);
         free(args->api_key);
         free(args->model_name);
@@ -832,7 +878,11 @@ void* translator_async_worker(void *arg) {
         // already-in-target-language lines cost nothing to wait for (#14).
         if (api_called && line->next) {
             const struct config *cfg = config_get();
-            translator_rate_limit_delay(cfg->translation.rate_limit_ms);
+            if (!translator_sleep_cancellable(cfg->translation.rate_limit_ms)) {
+                log_info("%s: Translation cancelled (%d/%d completed)",
+                         args->provider_name, current, translatable_count);
+                break;  // Cancelled during the rate limit delay
+            }
         }
 
         line = line->next;
@@ -842,6 +892,7 @@ void* translator_async_worker(void *arg) {
     translator_save_to_cache_ex(args->cache_path, data, args->target_lang,
                                   args->provider_name);
 
+    translator_set_cancel_flag(NULL);
     data->translation_in_progress = false;
 
     // Free thread args
@@ -916,6 +967,10 @@ static struct curl_slist* setup_translator_curl_request(CURL *curl,
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, params->request_body) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, translator_curl_write_callback) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, response) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, TRANSLATOR_REQUEST_TIMEOUT_SEC) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, TRANSLATOR_CONNECT_TIMEOUT_SEC) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, translator_curl_cancel_cb) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK) {
         log_error("%s: Failed to set CURL options", params->provider_name);
         return NULL;
@@ -967,14 +1022,10 @@ static char* handle_translator_http_response(long http_code,
     log_warn("%s: HTTP error %ld, retrying in %dms (attempt %d/%d)",
             params->provider_name, http_code, retry_delay_ms, attempt, params->max_retries);
 
-    // Sleep before retry (if not last attempt)
+    // Sleep before retry (if not last attempt). A cancelled wait gives up the
+    // retry instead of sending one more request for a track that is gone.
     if (attempt < params->max_retries) {
-        struct timespec delay = {
-            .tv_sec = retry_delay_ms / 1000,
-            .tv_nsec = (retry_delay_ms % 1000) * 1000000L
-        };
-        nanosleep(&delay, NULL);
-        *should_retry = true;
+        *should_retry = translator_sleep_cancellable(retry_delay_ms);
     }
 
     return NULL;
@@ -1006,7 +1057,11 @@ static char* perform_single_http_attempt(CURL *local_curl,
     curl_slist_free_all(headers);
 
     if (res != CURLE_OK) {
-        log_error("%s: CURL error: %s", params->provider_name, curl_easy_strerror(res));
+        if (res == CURLE_ABORTED_BY_CALLBACK) {
+            log_info("%s: Request aborted (translation cancelled)", params->provider_name);
+        } else {
+            log_error("%s: CURL error: %s", params->provider_name, curl_easy_strerror(res));
+        }
         translator_curl_response_free(&response);
         *cleanup_and_return = true;
         return NULL;

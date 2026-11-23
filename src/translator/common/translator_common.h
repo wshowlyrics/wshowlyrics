@@ -6,6 +6,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <curl/curl.h>
+#include <stdatomic.h>
+
+// Limits for one translation request. Thinking models can take tens of seconds
+// to answer a line, so the total is generous; the connect phase is not.
+#define TRANSLATOR_REQUEST_TIMEOUT_SEC 60L
+#define TRANSLATOR_CONNECT_TIMEOUT_SEC 5L
 
 // A translation backend, registered once per translator module. The dispatcher
 // and the startup/shutdown lifecycle walk translator_providers[] instead of
@@ -109,11 +115,36 @@ bool translator_should_skip_translation(const char *stripped_text, const char *t
                                          char **out_translation);
 
 /**
- * Apply rate limit delay between translation requests.
+ * Point the translation thread's waits and transfers at a cancel flag (or NULL
+ * to clear). The worker sets it to its lyrics' translation_should_cancel; while
+ * the flag is true, translator_sleep_cancellable() returns early and the curl
+ * progress callback aborts the request. One translation thread runs at a time.
+ *
+ * @param flag Cancel flag to watch, or NULL
+ */
+void translator_set_cancel_flag(_Atomic bool *flag);
+
+/**
+ * Whether the translation thread has been asked to stop.
+ */
+bool translator_cancel_requested(void);
+
+/**
+ * Sleep for delay_ms, waking early if cancellation is requested. Used for the
+ * rate limit between requests and for the backoff before a retry, so a track
+ * change never has to wait out the whole delay.
  *
  * @param delay_ms Delay in milliseconds
+ * @return true if the full delay elapsed, false if cancelled
  */
-void translator_rate_limit_delay(int delay_ms);
+bool translator_sleep_cancellable(int delay_ms);
+
+/**
+ * curl CURLOPT_XFERINFOFUNCTION callback: aborts the transfer on cancellation.
+ * Set it together with CURLOPT_NOPROGRESS = 0.
+ */
+int translator_curl_cancel_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
+                              curl_off_t ultotal, curl_off_t ulnow);
 
 /**
  * Check if translation will complete enough lines to be cached.

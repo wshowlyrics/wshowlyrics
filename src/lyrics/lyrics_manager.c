@@ -7,6 +7,7 @@
 #include "../provider/lyrics/lyrics_provider.h"
 #include "../provider/lrclib/lrclib_provider.h"
 #include "../provider/itunes/itunes_artwork.h"
+#include "../translator/common/translator_common.h"
 #include "../user_experience/system_tray/system_tray.h"
 #include "../parser/lrc/lrc_common.h"
 #include "../utils/file/file_utils.h"
@@ -76,6 +77,9 @@ void cancel_and_wait_translation(struct lyrics_data *lyrics) {
 
     pthread_join(lyrics->translation_thread, NULL);
     lyrics->translation_thread_active = false;
+    // The thread clears this itself on a normal exit; a cancelled one cannot,
+    // and the flag lives in the lyrics that are about to be freed.
+    translator_set_cancel_flag(NULL);
 }
 
 // Helper: Handle case when no player is found
