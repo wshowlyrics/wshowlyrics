@@ -819,27 +819,24 @@ void* translator_async_worker(void *arg) {
     // Translate each line
     struct lyrics_line *line = data->lines;
     int current = already_translated;
-    while (line) {
+    bool cancelled = false;
+    while (line && !cancelled) {
         bool api_called = false;
-        if (!translator_process_line_translation_ex(line, args, data, &current,
-                                                    translatable_count, &api_called)) {
-            break;  // Cancelled
-        }
+        cancelled = !translator_process_line_translation_ex(line, args, data, &current,
+                                                            translatable_count, &api_called);
 
         // Rate limiting - only after a real request. Empty, cached, reused and
         // already-in-target-language lines cost nothing to wait for (#14).
-        if (api_called && line->next) {
+        // The wait itself can be cut short by a cancel.
+        if (!cancelled && api_called && line->next) {
             const struct config *cfg = config_get();
-            if (!translator_sleep_cancellable(cfg->translation.rate_limit_ms)) {
-                break;  // Cancelled during the rate limit delay
-            }
+            cancelled = !translator_sleep_cancellable(cfg->translation.rate_limit_ms);
         }
 
         line = line->next;
     }
 
-    // The loop only stops early when cancelled
-    if (line) {
+    if (cancelled) {
         log_info("%s: Translation cancelled (%d/%d completed)",
                  args->provider_name, current, translatable_count);
     }
