@@ -886,7 +886,10 @@ void system_tray_send_notification(const struct notification_info *info) {
     log_info("Sending desktop notification: %s - %s · %s (%s)",
             notification_title, album, artist, player_display);
 
-    // Execute notify-send via g_spawn_async (no shell interpretation)
+    // Execute notify-send via g_spawn_async (no shell interpretation).
+    // "--" ends option parsing: the body starts with the album name, and an
+    // album such as "-ERROR" would otherwise be read as an option, making
+    // notify-send exit with "Unknown option" and no notification.
     char timeout_str[16];
     snprintf(timeout_str, sizeof(timeout_str), "%d", g_config.lyrics.notification_timeout);
     char *icon_arg = strdup(icon_path);
@@ -895,7 +898,7 @@ void system_tray_send_notification(const struct notification_info *info) {
         "notify-send", "-a", "wshowlyrics",
         "-i", icon_arg,
         "-e", "-t", timeout_str,
-        notification_title, body, NULL
+        "--", notification_title, body, NULL
     };
     GError *error = NULL;
     if (!g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error)) {
