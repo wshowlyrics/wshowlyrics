@@ -84,6 +84,14 @@ the CI files:
   profile that returns errno 38 for post-4.4 syscalls (`openat2`, `clone3`,
   `fchmodat2`, `faccessat2`, ...) — `statx` and the `fs*` mount calls cannot be
   blocked because runc itself needs them.
+- **Fedora 45 cannot install packages there at all.** Its systemd sysusers
+  scriptlets fail with `Failed to chase '/usr/lib/sysusers.d': Protocol driver
+  not attached`, and even `copr-cli` alone pulls in a package that runs one
+  (`unbound-libs`). A container-wide profile does not reproduce it, since that
+  needs `statx` blocked; a filter on the process inside the container does.
+  `libseccomp-python` on Fedora can load one before `exec`ing `dnf` (#48). The
+  COPR jobs avoid Fedora entirely: they run on `alpine:latest` and upload only
+  the `.spec`, and COPR fetches `Source0` from the GitHub mirror itself.
 - **Heavy apt installs nearly exhaust the Synology runner's 1h limit** (its
   `maximum_timeout` is 3600, so a job-level `timeout:` cannot raise it): deb,
   AppImage and both PPA jobs took 3454–3520 s there (#13), which is why they run

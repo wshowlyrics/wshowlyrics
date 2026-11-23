@@ -186,9 +186,14 @@ publish:nur-stable:
 
 # ─── COPR Nightly ─────────────────────────────────────────────────────
 
+# Both COPR jobs upload only the .spec: COPR fetches Source0 from the GitHub
+# mirror and builds the SRPM itself, so the job needs no rpm-build. That keeps
+# it off Fedora, whose systemd sysusers scriptlets fail on the Synology runner's
+# 4.4 kernel since Fedora 45 (#48). The spec sets _disable_source_fetch 0
+# because rpmbuild does not download remote sources by default.
 publish:copr-nightly:
   stage: publish
-  image: fedora:latest
+  image: alpine:latest
   extends: .nontag-master-rules
   needs:
     - job: build:makepkg
@@ -198,7 +203,8 @@ publish:copr-nightly:
   variables:
     GIT_DEPTH: 0
   script:
-    - dnf install -y --setopt=install_weak_deps=False copr-cli rpm-build git
+    # python3 so uvx uses it instead of downloading its own interpreter
+    - apk add --no-cache git curl python3 uv
 
     # Setup COPR config
     - |
@@ -211,6 +217,7 @@ publish:copr-nightly:
 
     # Package version
     - |
+      COMMIT=$(git rev-parse HEAD)
       VER=$(printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)")
       COMMIT_SHORT=$(git rev-parse --short HEAD)
       CHANGELOG_DATE=$(date +"%a %b %d %Y")
@@ -218,6 +225,8 @@ publish:copr-nightly:
     # Create .spec
     - |
       cat > wshowlyrics.spec << SPECEOF
+      %global _disable_source_fetch 0
+
       Name:           wshowlyrics
       Version:        ${VER}
       Release:        1%{?dist}
@@ -225,7 +234,7 @@ publish:copr-nightly:
 
       License:        GPL-3.0-or-later
       URL:            https://github.com/wshowlyrics/wshowlyrics
-      Source0:        wshowlyrics-${VER}.tar.gz
+      Source0:        https://github.com/wshowlyrics/wshowlyrics/archive/${COMMIT}.tar.gz#/wshowlyrics-${VER}.tar.gz
 
       BuildRequires:  meson >= 0.48.0
       BuildRequires:  ninja-build
@@ -273,7 +282,7 @@ publish:copr-nightly:
       - System tray integration with album art
 
       %prep
-      %autosetup -n lyrics-${VER}
+      %autosetup -n wshowlyrics-${COMMIT}
 
       %build
       %meson
@@ -304,20 +313,21 @@ publish:copr-nightly:
       - Nightly build from master branch (commit ${COMMIT_SHORT})
       SPECEOF
 
-    # Create source tarball
-    - git archive --format=tar.gz --prefix="lyrics-${VER}/" -o "wshowlyrics-${VER}.tar.gz" HEAD
-
-    # Build SRPM
+    # COPR fetches Source0 from the GitHub mirror, so wait until it has this commit
     - |
-      mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-      cp "wshowlyrics-${VER}.tar.gz" ~/rpmbuild/SOURCES/
-      cp wshowlyrics.spec ~/rpmbuild/SPECS/
-      rpmbuild -bs ~/rpmbuild/SPECS/wshowlyrics.spec
+      SRC_URL="https://github.com/wshowlyrics/wshowlyrics/archive/${COMMIT}.tar.gz"
+      for i in $(seq 1 20); do
+        curl -sfIL -o /dev/null "$SRC_URL" && break
+        if [ "$i" -eq 20 ]; then
+          echo "GitHub mirror never got ${COMMIT}" >&2
+          exit 1
+        fi
+        echo "Waiting for the GitHub mirror to have ${COMMIT} ($i/20)"
+        sleep 30
+      done
 
-    # Upload to COPR
-    - |
-      SRPM=$(find ~/rpmbuild/SRPMS -name "wshowlyrics-*.src.rpm" | head -1)
-      copr-cli build unstable-code/wshowlyrics-nightly "$SRPM"
+    # Upload the spec to COPR
+    - uvx --from copr-cli copr-cli build unstable-code/wshowlyrics-nightly wshowlyrics.spec
 
     - |
       echo "COPR nightly build submitted (version: ${VER})"
@@ -327,7 +337,7 @@ publish:copr-nightly:
 
 publish:copr-stable:
   stage: publish
-  image: fedora:latest
+  image: alpine:latest
   extends: .tag-only-rules
   needs:
     - job: build:makepkg
@@ -336,7 +346,8 @@ publish:copr-stable:
     GIT_DEPTH: 0
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
-    - dnf install -y --setopt=install_weak_deps=False copr-cli rpm-build wget git
+    # python3 so uvx uses it instead of downloading its own interpreter
+    - apk add --no-cache git python3 uv
 
     # Setup COPR config
     - |
@@ -349,6 +360,8 @@ publish:copr-stable:
     # Create .spec
     - |
       cat > wshowlyrics.spec << SPECEOF
+      %global _disable_source_fetch 0
+
       Name:           wshowlyrics
       Version:        ${VERSION}
       Release:        1%{?dist}
@@ -430,22 +443,11 @@ publish:copr-stable:
       - Release ${VERSION}
       SPECEOF
 
-    # Download source tarball from the GitHub mirror, once it has the tag at this commit
+    # COPR fetches Source0 from the GitHub mirror, so wait until it has the tag at this commit
     - !reference [.wait-github-tag, script]
-    # -O matches the Source0 "#/" fragment, so rpmbuild finds the expected filename
-    - wget -O "wshowlyrics-${VERSION}.tar.gz" "https://github.com/wshowlyrics/wshowlyrics/archive/refs/tags/v${VERSION}.tar.gz"
 
-    # Build SRPM
-    - |
-      mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-      cp "wshowlyrics-${VERSION}.tar.gz" ~/rpmbuild/SOURCES/
-      cp wshowlyrics.spec ~/rpmbuild/SPECS/
-      rpmbuild -bs ~/rpmbuild/SPECS/wshowlyrics.spec
-
-    # Upload to COPR
-    - |
-      SRPM=$(find ~/rpmbuild/SRPMS -name "wshowlyrics-*.src.rpm" | head -1)
-      copr-cli build unstable-code/wshowlyrics "$SRPM"
+    # Upload the spec to COPR
+    - uvx --from copr-cli copr-cli build unstable-code/wshowlyrics wshowlyrics.spec
 
     - |
       echo "COPR stable build submitted (version: ${VERSION})"
