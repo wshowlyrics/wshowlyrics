@@ -56,6 +56,10 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
     }
 }
 
+// A join slower than this is logged: the translation thread is expected to
+// notice the cancel flag within a sleep slice or one curl progress callback
+#define TRANSLATION_JOIN_WARN_MS 1000
+
 // Cancel ongoing translation and wait for it to finish
 // Prevents use-after-free errors when freeing lyrics data
 void cancel_and_wait_translation(struct lyrics_data *lyrics) {
@@ -63,22 +67,28 @@ void cancel_and_wait_translation(struct lyrics_data *lyrics) {
 
     lyrics->translation_should_cancel = true;
 
-    int wait_count = 0;
-    struct timespec wait_delay = {0, 50000000L}; // 50ms
-    while (lyrics->translation_in_progress && wait_count < 100) {
-        nanosleep(&wait_delay, NULL);
-        wait_count++;
-    }
-
-    if (wait_count >= 100) {
-        log_warn("Translation thread did not stop in time (waited 5s), force cancelling");
-        pthread_cancel(lyrics->translation_thread);
-    }
-
+    // Plain join, no pthread_cancel fallback. The thread spends its time inside
+    // libcurl/OpenSSL, which do not support being cancelled: killing it there
+    // can leave their internal locks held and stall the next request, and it
+    // skips the thread's own cleanup and cache save. Its waits and requests all
+    // watch the cancel flag and are bounded by timeouts (see
+    // translator_sleep_cancellable / translator_curl_cancel_cb), so it exits on
+    // its own; a slow exit is reported instead of papered over.
+    struct timespec start;
+    struct timespec end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
     pthread_join(lyrics->translation_thread, NULL);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+
+    const long elapsed_ms = (end.tv_sec - start.tv_sec) * 1000L +
+                            (end.tv_nsec - start.tv_nsec) / 1000000L;
+    if (elapsed_ms > TRANSLATION_JOIN_WARN_MS) {
+        log_warn("Translation thread took %ld ms to stop after cancel", elapsed_ms);
+    }
+
     lyrics->translation_thread_active = false;
-    // The thread clears this itself on a normal exit; a cancelled one cannot,
-    // and the flag lives in the lyrics that are about to be freed.
+    // Normally cleared by the thread itself; the flag lives in the lyrics that
+    // are about to be freed, so make sure nothing still points at it.
     translator_set_cancel_flag(NULL);
 }
 
