@@ -353,8 +353,11 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
     // provider chain, and a config reload here would config_free() those strings
     // out from under it (use-after-free). Fetches are short; the reload just
     // waits for the next check.
-    if (!state->playback.async_fetch.thread_active &&
-        (*update_counter)++ % TRACK_UPDATE_CHECK_INTERVAL == 0) {
+    // The counter advances on every tick, outside the condition: inside it, as
+    // the right operand of &&, it would only count while no fetch is running.
+    const bool check_due = (*update_counter % TRACK_UPDATE_CHECK_INTERVAL == 0);
+    (*update_counter)++;
+    if (check_due && !state->playback.async_fetch.thread_active) {
         if (state->playback.lyrics.source_file_path &&
             !path_is_in_cache_dir(state->playback.lyrics.source_file_path)) {
             file_monitor_check_and_reload(
