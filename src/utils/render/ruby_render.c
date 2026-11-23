@@ -268,21 +268,30 @@ static int render_original_text(const struct ruby_render_context *ctx,
 // Helper: Render translation text and return width
 static int render_translation_text(const struct ruby_render_context *ctx,
                                    const char *translation, double translation_scale,
-                                   int y_offset) {
-    // Use custom opacity from config
-    const struct config *cfg = config_get();
-    uint32_t dimmed = create_color_with_opacity(ctx->foreground,
-                                                cfg->translation.translation_opacity);
-    cairo_set_source_u32(ctx->cairo, dimmed);
+                                   int y_offset, bool below_original) {
+    // Dim it with the configured opacity only when it sits under the original;
+    // alone (translation_only) it is the main text and keeps the foreground
+    if (below_original) {
+        const struct config *cfg = config_get();
+        uint32_t dimmed = create_color_with_opacity(ctx->foreground,
+                                                    cfg->translation.translation_opacity);
+        cairo_set_source_u32(ctx->cairo, dimmed);
+    }
 
     int trans_w;
     int trans_h;
     get_text_size(ctx->cairo, ctx->font, &trans_w, &trans_h,
                  NULL, translation_scale, translation);
 
-    // Place translation below main text (adjust spacing based on ruby presence)
-    double spacing_factor = (ctx->max_ruby_height > 0) ? 1.5 : 1.0;
-    cairo_move_to(ctx->cairo, 0, y_offset + (ctx->base_text_h * spacing_factor));
+    // Place translation below main text (adjust spacing based on ruby presence).
+    // With no original drawn (translation_only) it starts at the top: the buffer
+    // is only translation_h tall, so any offset would push it out of view.
+    double y = y_offset;
+    if (below_original) {
+        double spacing_factor = (ctx->max_ruby_height > 0) ? 1.5 : 1.0;
+        y += ctx->base_text_h * spacing_factor;
+    }
+    cairo_move_to(ctx->cairo, 0, y);
     pango_printf(ctx->cairo, ctx->font, translation_scale, translation);
 
     return trans_w;
@@ -333,7 +342,8 @@ void render_ruby_segments_with_translation(const struct translation_params *para
     int base_text_h;
     get_text_size(cairo, font, NULL, &base_text_h, NULL, scale, "A");
 
-    double translation_scale = scale * 0.7;
+    // Smaller under the original; full size when shown alone (translation_only)
+    double translation_scale = show_original ? scale * 0.7 : scale;
     int translation_h = 0;
     if (show_translation) {
         get_text_size(cairo, font, NULL, &translation_h, NULL, translation_scale, "A");
@@ -362,7 +372,8 @@ void render_ruby_segments_with_translation(const struct translation_params *para
     // Render translation text if needed
     if (show_translation) {
         int trans_w = render_translation_text(&ctx, translation,
-                                             translation_scale, y_offset);
+                                             translation_scale, y_offset,
+                                             show_original);
         if (trans_w > total_width) {
             total_width = trans_w;
         }
