@@ -92,6 +92,16 @@ void cancel_and_wait_translation(struct lyrics_data *lyrics) {
     translator_set_cancel_flag(NULL);
 }
 
+// Stop everything still running in the background for the current track: the
+// lyrics search, the artwork fetch and the translation. One call so that a path
+// which ends a track (track change, player gone, shutdown) cannot stop some of
+// them and forget another.
+void lyrics_manager_cancel_track_work(struct lyrics_state *state) {
+    lyrics_manager_cancel_fetch(state);
+    lyrics_manager_cancel_art_fetch(state);
+    cancel_and_wait_translation(&state->playback.lyrics);
+}
+
 // Helper: Handle case when no player is found
 static void handle_no_player_found(struct lyrics_state *state) {
     if (!state->playback.current_track.title) {
@@ -104,11 +114,7 @@ static void handle_no_player_found(struct lyrics_state *state) {
     // just went away. Left alone, its result would be installed once it
     // finishes: lyrics for a track nobody is playing, a notification with an
     // empty title, an iTunes lookup and - with translation on - API calls.
-    lyrics_manager_cancel_fetch(state);
-    lyrics_manager_cancel_art_fetch(state);
-
-    // Cancel ongoing translation
-    cancel_and_wait_translation(&state->playback.lyrics);
+    lyrics_manager_cancel_track_work(state);
 
     // Free track metadata
     mpris_free_metadata(&state->playback.current_track);
@@ -466,8 +472,7 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
 // immediately), snapshot the track, and kick off the fetch worker. Non-blocking;
 // the result is consumed later by lyrics_manager_poll_load.
 void lyrics_manager_begin_load(struct lyrics_state *state) {
-    lyrics_manager_cancel_fetch(state);       // supersede any prior in-flight fetch
-    lyrics_manager_cancel_art_fetch(state);   // and the previous track's artwork fetch
+    lyrics_manager_cancel_track_work(state);  // supersede the previous track's work
     reset_for_new_lyrics(state);
 
     struct async_lyrics_fetch *fetch = &state->playback.async_fetch;

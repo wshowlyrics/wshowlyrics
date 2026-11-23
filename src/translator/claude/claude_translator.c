@@ -285,20 +285,8 @@ static bool claude_matches(const char *provider) {
 const struct translator_provider claude_provider = {
     .name             = "claude",
     .matches          = claude_matches,
-    .init             = claude_translator_init,
-    .cleanup          = claude_translator_cleanup,
     .translate_lyrics = claude_translate_lyrics,
 };
-
-// Nothing to set up or tear down: each request creates and frees its own curl
-// handle in translator_perform_http_request(). Kept for the provider interface.
-bool claude_translator_init(void) {
-    return true;
-}
-
-void claude_translator_cleanup(void) {
-    // Nothing to release (see claude_translator_init)
-}
 
 bool claude_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
     return translator_translate_lyrics_generic(data, track_length_us,

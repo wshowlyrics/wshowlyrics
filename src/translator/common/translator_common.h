@@ -20,8 +20,8 @@
 struct translator_provider {
     const char *name;                              // module name, for logging
     bool (*matches)(const char *provider_string);  // does config provider select this?
-    bool (*init)(void);                            // called once at startup
-    void (*cleanup)(void);                         // called once at shutdown
+    bool (*init)(void);                            // called once at startup; NULL if nothing to set up
+    void (*cleanup)(void);                         // called once at shutdown; NULL if nothing to release
     bool (*translate_lyrics)(struct lyrics_data *data, int64_t track_length_us);
 };
 
@@ -123,11 +123,6 @@ bool translator_should_skip_translation(const char *stripped_text, const char *t
  * @param flag Cancel flag to watch, or NULL
  */
 void translator_set_cancel_flag(const _Atomic bool *flag);
-
-/**
- * Whether the translation thread has been asked to stop.
- */
-bool translator_cancel_requested(void);
 
 /**
  * Sleep for delay_ms, waking early if cancellation is requested. Used for the

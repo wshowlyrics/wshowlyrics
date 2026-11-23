@@ -88,6 +88,15 @@ void lyrics_manager_poll_art(struct lyrics_state *state);
 void lyrics_manager_cancel_art_fetch(struct lyrics_state *state);
 
 /**
+ * Stop all background work for the current track: the lyrics search, the
+ * artwork fetch and the translation. Call whenever the track ends (track
+ * change, player gone, shutdown).
+ *
+ * @param state Lyrics state
+ */
+void lyrics_manager_cancel_track_work(struct lyrics_state *state);
+
+/**
  * Update current line based on playback position
  * Updates current_line, prev_line, next_line pointers
  *

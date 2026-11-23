@@ -125,20 +125,8 @@ static bool openai_matches(const char *provider) {
 const struct translator_provider openai_provider = {
     .name             = "openai",
     .matches          = openai_matches,
-    .init             = openai_translator_init,
-    .cleanup          = openai_translator_cleanup,
     .translate_lyrics = openai_translate_lyrics,
 };
-
-// Nothing to set up or tear down: each request creates and frees its own curl
-// handle in translator_perform_http_request(). Kept for the provider interface.
-bool openai_translator_init(void) {
-    return true;
-}
-
-void openai_translator_cleanup(void) {
-    // Nothing to release (see openai_translator_init)
-}
 
 bool openai_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
     return translator_translate_lyrics_generic(data, track_length_us,

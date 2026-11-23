@@ -213,7 +213,9 @@ static char *build_font_string(void) {
 // Initialize subsystems (translation, language detection, D-Bus)
 static bool initialize_subsystems(struct lyrics_state *state) {
     for (const struct translator_provider *const *p = translator_providers; *p; p++) {
-        (*p)->init();
+        if ((*p)->init) {
+            (*p)->init();
+        }
     }
     lang_detect_init();
 
@@ -353,8 +355,7 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
     // provider chain, and a config reload here would config_free() those strings
     // out from under it (use-after-free). Fetches are short; the reload just
     // waits for the next check.
-    // The counter advances on every tick, outside the condition: inside it, as
-    // the right operand of &&, it would only count while no fetch is running.
+    // The counter advances on every tick, so it is updated outside the condition.
     const bool check_due = (*update_counter % TRACK_UPDATE_CHECK_INTERVAL == 0);
     (*update_counter)++;
     if (check_due && !state->playback.async_fetch.thread_active) {
@@ -517,15 +518,15 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
 
     dbus_control_cleanup();
     system_tray_cleanup();
-    lyrics_manager_cancel_art_fetch(state);
-    lyrics_manager_cancel_fetch(state);
-    cancel_and_wait_translation(&state->playback.lyrics);
+    lyrics_manager_cancel_track_work(state);
     lrc_free_data(&state->playback.lyrics);
     mpris_free_metadata(&state->playback.current_track);
     mpris_cleanup();
     lyrics_providers_cleanup();
     for (const struct translator_provider *const *p = translator_providers; *p; p++) {
-        (*p)->cleanup();
+        if ((*p)->cleanup) {
+            (*p)->cleanup();
+        }
     }
     lang_detect_cleanup();
 

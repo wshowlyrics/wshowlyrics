@@ -16,22 +16,4 @@
  */
 bool claude_translate_lyrics(struct lyrics_data *data, int64_t track_length_us);
 
-/**
- * Initialize Claude translator
- *
- * Sets up CURL and other resources needed for Claude API calls.
- * Must be called before using claude_translate_lyrics().
- *
- * @return true if initialization succeeded, false otherwise
- */
-bool claude_translator_init(void);
-
-/**
- * Cleanup Claude translator
- *
- * Releases resources allocated by claude_translator_init().
- * Should be called on application shutdown.
- */
-void claude_translator_cleanup(void);
-
 #endif // _CLAUDE_TRANSLATOR_H

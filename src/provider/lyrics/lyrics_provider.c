@@ -16,7 +16,6 @@
 #include <stdint.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <limits.h>
 

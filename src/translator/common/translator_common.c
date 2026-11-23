@@ -16,8 +16,6 @@
 #include <strings.h>
 #include <time.h>
 #include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <json-c/json.h>
 
 // Registry of all translation providers, walked by the startup/shutdown
@@ -430,7 +428,8 @@ void translator_set_cancel_flag(const _Atomic bool *flag) {
     atomic_store(&g_translator_cancel_flag, flag);
 }
 
-bool translator_cancel_requested(void) {
+// Whether the translation thread has been asked to stop
+static bool translator_cancel_requested(void) {
     const _Atomic bool *flag = atomic_load(&g_translator_cancel_flag);
     return flag && atomic_load(flag);
 }
@@ -622,8 +621,6 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
 
     // Check cancellation
     if (data->translation_should_cancel) {
-        log_info("%s: Translation cancelled (%d/%d completed)",
-                 args->provider_name, *current, translatable_count);
         return false;  // Break
     }
 
@@ -686,7 +683,7 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
     *api_called = true;
     char *translation = args->translate_line_fn(stripped, args->target_lang,
                                                 args->api_key, args->model_name);
-    if (!translation && data->translation_should_cancel) {
+    if (!translation && translator_cancel_requested()) {
         // The request was cut short by cancellation, so its failure says
         // nothing about this line: do not count it as a failed attempt, and
         // leave it for the next run. (A request that still came back with a
@@ -694,8 +691,6 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
         free(stripped);
         (*current)--;
         data->translation_current = *current;
-        log_info("%s: Translation cancelled (%d/%d completed)",
-                 args->provider_name, *current, translatable_count);
         return false;  // Break
     }
     if (translation) {
@@ -836,13 +831,17 @@ void* translator_async_worker(void *arg) {
         if (api_called && line->next) {
             const struct config *cfg = config_get();
             if (!translator_sleep_cancellable(cfg->translation.rate_limit_ms)) {
-                log_info("%s: Translation cancelled (%d/%d completed)",
-                         args->provider_name, current, translatable_count);
                 break;  // Cancelled during the rate limit delay
             }
         }
 
         line = line->next;
+    }
+
+    // The loop only stops early when cancelled
+    if (line) {
+        log_info("%s: Translation cancelled (%d/%d completed)",
+                 args->provider_name, current, translatable_count);
     }
 
     // Save to cache

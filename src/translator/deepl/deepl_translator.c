@@ -12,7 +12,6 @@
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <time.h>
 
 // HTTP status codes
 #define HTTP_OK 200
