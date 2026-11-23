@@ -434,6 +434,20 @@ static int count_morae(const char *s) {
     return morae;
 }
 
+// Helper: Step back over the run of ASCII/fullwidth digits that ends just
+// before p. Returns the start of the run (p itself if no digit precedes it).
+static const char* skip_digits_backward(const char *p, const char *limit,
+                                        const char *text_end) {
+    while (p > limit) {
+        const char *digit = move_back_one_utf8_char(p, limit);
+        if (!is_ascii_or_fullwidth_digit(digit, limit, text_end)) {
+            break;
+        }
+        p = digit;
+    }
+    return p;
+}
+
 // Helper: Find kanji-based word boundary. When group_digits is true, leading
 // ASCII/fullwidth digits are absorbed into the base (so "2人{ふたり}" covers the
 // numeral); otherwise the scan stops at the first non-kanji.
@@ -460,14 +474,7 @@ static const char* find_kanji_boundary(const char *p, const char *limit,
         // naturally long -- so the digit must stay outside the base.
         if (group_digits && kanji_count == 1 &&
             is_ascii_or_fullwidth_digit(prev, limit, text_end)) {
-            p = prev;
-            while (p > limit) {
-                const char *digit = move_back_one_utf8_char(p, limit);
-                if (!is_ascii_or_fullwidth_digit(digit, limit, text_end)) {
-                    break;
-                }
-                p = digit;
-            }
+            p = skip_digits_backward(prev, limit, text_end);
         }
         return p;  // Found word boundary
     }

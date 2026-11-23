@@ -169,22 +169,24 @@ bool wayland_manager_flush(struct wayland_connection *conn) {
             stall_count = 0;
             return false;
         }
-        if (pr <= 0) {
-            // Timeout or interrupted: leave the remaining data buffered and let
-            // the main loop iterate (re-checking run / handling signals). It
-            // flushes again next pass, so shutdown and reconnect stay responsive.
-            // But a compositor that never drains would buffer without bound, so
-            // escalate to a lost connection after a sustained stall. Only a real
-            // timeout (pr == 0) counts; EINTR (pr < 0) is not progress-less.
-            if (pr == 0) {
-                stall_count++;
-                if (stall_count >= WAYLAND_FLUSH_MAX_STALLS) {
-                    log_error("Wayland flush stalled for ~%d ms — treating connection as lost",
-                            WAYLAND_FLUSH_MAX_STALLS * POLL_TIMEOUT_MS);
-                    conn->connected = false;
-                    stall_count = 0;
-                    return false;
-                }
+        // Timeout or interrupted: leave the remaining data buffered and let the
+        // main loop iterate (re-checking run / handling signals). It flushes
+        // again next pass, so shutdown and reconnect stay responsive.
+        if (pr < 0) {
+            // Interrupted (EINTR; other errors returned above). Not a stall.
+            return true;
+        }
+        if (pr == 0) {
+            // A real timeout. A compositor that never drains would buffer
+            // without bound, so escalate to a lost connection after a
+            // sustained stall.
+            stall_count++;
+            if (stall_count >= WAYLAND_FLUSH_MAX_STALLS) {
+                log_error("Wayland flush stalled for ~%d ms — treating connection as lost",
+                        WAYLAND_FLUSH_MAX_STALLS * POLL_TIMEOUT_MS);
+                conn->connected = false;
+                stall_count = 0;
+                return false;
             }
             return true;
         }
