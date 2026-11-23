@@ -13,7 +13,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Install dependencies
       run: |
@@ -28,7 +28,7 @@ jobs:
 
     - name: Cache Coverity Build Tool
       id: cache-coverity
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: coverity-tool
         key: coverity-tool-${{ runner.os }}-2024.12
@@ -73,7 +73,7 @@ jobs:
 
     - name: Upload build log on failure
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: coverity-build-log
         path: cov-int/build-log.txt
