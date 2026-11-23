@@ -14,9 +14,6 @@
 // OpenAI API endpoint
 #define OPENAI_API_ENDPOINT "https://api.openai.com/v1/chat/completions"
 
-// Global CURL handle
-static CURL *curl_handle = NULL;
-
 /**
  * Build OpenAI API request JSON
  * Request format: {"model": "...", "messages": [{"role": "user", "content": "..."}], "temperature": 0.3}
@@ -133,19 +130,17 @@ const struct translator_provider openai_provider = {
     .translate_lyrics = openai_translate_lyrics,
 };
 
+// Nothing to set up or tear down: each request creates and frees its own curl
+// handle in translator_perform_http_request(). Kept for the provider interface.
 bool openai_translator_init(void) {
-    return translator_init_curl_handle(&curl_handle, "openai_translator");
+    return true;
 }
 
 void openai_translator_cleanup(void) {
-    translator_cleanup_curl_handle(&curl_handle);
+    // Nothing to release (see openai_translator_init)
 }
 
 bool openai_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
-    if (!curl_handle) {
-        return false;
-    }
-
     return translator_translate_lyrics_generic(data, track_length_us,
                                                 "openai_translator",
                                                 translate_single_line);

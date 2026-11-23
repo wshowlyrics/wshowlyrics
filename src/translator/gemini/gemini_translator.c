@@ -14,9 +14,6 @@
 // Gemini API endpoint template
 #define GEMINI_API_ENDPOINT "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"
 
-// Global CURL handle
-static CURL *curl_handle = NULL;
-
 /**
  * Build Gemini API request JSON
  * Request format: {"contents": [{"parts": [{"text": "..."}]}]}
@@ -133,19 +130,17 @@ const struct translator_provider gemini_provider = {
     .translate_lyrics = gemini_translate_lyrics,
 };
 
+// Nothing to set up or tear down: each request creates and frees its own curl
+// handle in translator_perform_http_request(). Kept for the provider interface.
 bool gemini_translator_init(void) {
-    return translator_init_curl_handle(&curl_handle, "gemini_translator");
+    return true;
 }
 
 void gemini_translator_cleanup(void) {
-    translator_cleanup_curl_handle(&curl_handle);
+    // Nothing to release (see gemini_translator_init)
 }
 
 bool gemini_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
-    if (!curl_handle) {
-        return false;
-    }
-
     return translator_translate_lyrics_generic(data, track_length_us,
                                                 "gemini_translator",
                                                 translate_single_line);
