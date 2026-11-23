@@ -1256,20 +1256,29 @@ static bool try_local_embedded_artwork(const char *file_url, const char *cache_p
     return success;
 }
 
-// Seek offset (seconds) for the video-thumbnail grab. A small non-zero offset
-// skips black/blank intro frames that many videos open with; the `thumbnail`
-// filter then picks a representative frame from the following batch.
-#define VIDEO_THUMBNAIL_SEEK_SECONDS "3"
+// Where in the video the thumbnail is taken from: this share of its length,
+// rounded to a whole second, so the frame comes from the song itself rather
+// than from the logo, title card or fade-in a music video opens with.
+//
+// The frame at that point is used as is. ffmpeg's `thumbnail` filter was tried
+// instead: it picks, out of the next 100 frames (~4 s), the one closest to their
+// average colour histogram. In a music video those 4 s span several cuts, so
+// the pick is an arbitrary one of them rather than a "representative" frame.
+#define VIDEO_THUMBNAIL_SEEK_PERCENT 20
 
-// Grab a representative frame from a local video file as the tray icon, used
+// Seek offset (seconds) when the length is unknown: just enough to skip a
+// black opening frame.
+#define VIDEO_THUMBNAIL_FALLBACK_SEEK_SECONDS 3
+
+// Grab a frame from a local video file as the tray icon, used
 // only when the file has no embedded cover (e.g. a downloaded music-video
 // .mkv). Selects the first real (non-attached-picture) video stream via
 // "0:V:0" — an audio-only file matches no stream and ffmpeg exits non-zero, so
 // this never fires for pure audio. The frame is centre-cropped to a square and
 // scaled so it passes the tray's square-image requirement. Runs before iTunes
 // so a local video resolves offline. Returns true only when a thumbnail was set.
-static bool try_local_video_thumbnail(const char *file_url, const char *cache_path,
-                                      const char *metadata_hash) {
+static bool try_local_video_thumbnail(const char *file_url, int64_t length_us,
+                                      const char *cache_path, const char *metadata_hash) {
     char resolved[PATH_MAX];
     if (!resolve_local_media_path(file_url, resolved)) {
         return false;
@@ -1285,16 +1294,25 @@ static bool try_local_video_thumbnail(const char *file_url, const char *cache_pa
     snprintf(out_path, sizeof(out_path), "%s/video-thumb.png", get_runtime_dir());
     unlink(out_path);
 
+    // The length comes from MPRIS (mpris:length), so no ffprobe run is needed
+    int64_t seek_seconds = VIDEO_THUMBNAIL_FALLBACK_SEEK_SECONDS;
+    if (length_us > 0) {
+        // Microseconds at the chosen share, rounded to the nearest second
+        seek_seconds = (length_us / 100 * VIDEO_THUMBNAIL_SEEK_PERCENT + 500000) / 1000000;
+    }
+    char seek_arg[32];
+    snprintf(seek_arg, sizeof(seek_arg), "%lld", (long long)seek_seconds);
+
     // Filtergraph commas inside min(iw,ih) are escaped (\,) so ffmpeg does not
     // read them as filter separators. No shell is involved (g_spawn_sync), so
     // the backslashes are passed literally as ffmpeg wants.
     char *argv[] = {
         ffmpeg, "-y", "-loglevel", "error",
-        "-ss", VIDEO_THUMBNAIL_SEEK_SECONDS,
+        "-ss", seek_arg,
         "-protocol_whitelist", FFMPEG_INPUT_PROTOCOLS,
         "-i", resolved,
         "-map", "0:V:0", "-frames:v", "1",
-        "-vf", "thumbnail,crop=min(iw\\,ih):min(iw\\,ih),scale=256:256",
+        "-vf", "crop=min(iw\\,ih):min(iw\\,ih),scale=256:256",
         "-f", "image2", "-c:v", "png",
         out_path, NULL
     };
@@ -1376,6 +1394,7 @@ enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request 
     const char *artist = request->artist;
     const char *album = request->album;
     const char *track = request->track;
+    const int64_t length_us = request->length_us;
 
     if (md5_out && md5_sz) md5_out[0] = '\0';
     if (cache_out && cache_sz) cache_out[0] = '\0';
@@ -1407,7 +1426,7 @@ enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request 
     if ((cache_path[0] != '\0' && load_cached_album_art(cache_path, metadata_hash)) ||
         try_mpris_artwork(art_url, cache_path, metadata_hash) ||
         try_local_embedded_artwork(file_url, cache_path, metadata_hash) ||
-        try_local_video_thumbnail(file_url, cache_path, metadata_hash)) {
+        try_local_video_thumbnail(file_url, length_us, cache_path, metadata_hash)) {
         set_indicator_icon_cached(metadata_hash);
         return TRAY_ART_APPLIED;
     }

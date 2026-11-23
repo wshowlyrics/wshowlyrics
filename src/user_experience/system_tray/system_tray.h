@@ -3,6 +3,7 @@
 #define _LYRICS_SYSTEM_TRAY_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <stdatomic.h>
 
@@ -46,6 +47,7 @@ struct tray_art_request {
     const char *artist;
     const char *album;
     const char *track;
+    int64_t length_us;     // mpris:length, 0 if unknown (places the video thumbnail)
 };
 
 // Resolve album art from the FAST sources only (cache, MPRIS artUrl, local

@@ -332,6 +332,7 @@ static void finalize_common(struct lyrics_state *state, const char *art_url,
         .artist = artist,
         .album = album,
         .track = title,
+        .length_us = state->playback.current_track.length_us,
     };
     enum tray_art_status st = system_tray_update_icon_fast(
         &request, md5, sizeof(md5), cache_path, sizeof(cache_path));
