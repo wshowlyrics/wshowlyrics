@@ -83,6 +83,8 @@ struct async_lyrics_fetch {
     _Atomic bool ready;           // worker finished; result awaits consumption
     _Atomic bool should_cancel;   // ask the worker (and its curl transfer) to abort
     _Atomic bool found;           // worker outcome: lyrics were found
+    bool same_track;              // search repeated for the track already playing:
+                                  // install the lyrics, but no artwork or notification
     struct lyrics_data result;    // worker-private result buffer
     struct track_metadata track;  // deep-copied track snapshot the worker fetches for
 };

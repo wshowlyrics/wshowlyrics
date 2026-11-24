@@ -198,11 +198,11 @@ bool lyrics_manager_update_track_info(struct lyrics_state *state) {
     return changed;
 }
 
-// Reset per-track state before loading new lyrics: stop any running translation,
-// free the currently displayed lyrics, and clear the line cursors. After this
-// the live lyrics is empty, so the render loop draws nothing until new lyrics
-// are installed (synchronously below, or by lyrics_manager_poll_load).
-static void reset_for_new_lyrics(struct lyrics_state *state) {
+// Stop any running translation, free the currently displayed lyrics, and clear
+// the line cursors. After this the live lyrics is empty, so the render loop
+// draws nothing until new lyrics are installed (synchronously, or by
+// lyrics_manager_poll_load).
+static void clear_live_lyrics(struct lyrics_state *state) {
     // Cancel ongoing translation and wait for it to finish. This prevents a race
     // where old and new translation threads write to the same cache file.
     cancel_and_wait_translation(&state->playback.lyrics);
@@ -211,6 +211,12 @@ static void reset_for_new_lyrics(struct lyrics_state *state) {
     state->playback.current_line = NULL;
     state->playback.prev_line = NULL;
     state->playback.next_line = NULL;
+}
+
+// Reset per-track state before loading new lyrics: the lyrics themselves, and
+// what the user adjusted for the previous track.
+static void reset_for_new_lyrics(struct lyrics_state *state) {
+    clear_live_lyrics(state);
 
     // Reset timing offset to global offset for new track
     state->playback.timing_offset_ms = g_config.lyrics.global_offset_ms;
@@ -360,10 +366,13 @@ static void finalize_common(struct lyrics_state *state, const char *art_url,
     send_track_notification(state, artist, album, title);
 }
 
-// Post-processing when no lyrics were found: album art + notification.
-// Runs on the main thread (touches GTK), never on the fetch worker.
-static void finalize_not_found(struct lyrics_state *state) {
+// Post-processing when no lyrics were found: album art + notification, unless
+// same_track. Runs on the main thread (touches GTK), never on the fetch worker.
+static void finalize_not_found(struct lyrics_state *state, bool same_track) {
     log_info("No lyrics found for current track");
+    if (same_track) {
+        return;
+    }
     finalize_common(state,
                     state->playback.current_track.art_url,
                     state->playback.current_track.url,
@@ -372,20 +381,8 @@ static void finalize_not_found(struct lyrics_state *state) {
                     state->playback.current_track.title);
 }
 
-// Post-processing when lyrics are installed in the live state: album art,
-// notification, and starting translation. Runs on the main thread against the
-// LIVE lyrics — starting translation here (not inside the provider chain) is
-// what makes the fetch safe to run on a worker thread.
-static void finalize_found(struct lyrics_state *state) {
-    state->playback.lyrics.translation_should_cancel = false;
-
-    log_info("Loaded %d lines of lyrics", state->playback.lyrics.line_count);
-
-    // Set initial line to NULL so first update will trigger line_changed
-    // This ensures prev/next lines are set for multiline display
-    state->playback.current_line = NULL;
-    state->playback.track_changed = false;
-
+// Album art and notification for a track whose lyrics were just installed.
+static void announce_track(struct lyrics_state *state) {
     // Update album art with best available metadata
     // Prefer lyrics metadata (more accurate) over MPRIS metadata
     const char *artist = state->playback.lyrics.metadata.artist;
@@ -406,6 +403,26 @@ static void finalize_found(struct lyrics_state *state) {
              artist ? artist : "Unknown", album ? album : "Unknown", title ? title : "Unknown");
     finalize_common(state, state->playback.current_track.art_url,
                     state->playback.current_track.url, artist, album, title);
+}
+
+// Post-processing when lyrics are installed in the live state: album art,
+// notification, and starting translation. Runs on the main thread against the
+// LIVE lyrics — starting translation here (not inside the provider chain) is
+// what makes the fetch safe to run on a worker thread. same_track skips the art
+// and the notification (see lyrics_manager_begin_reload).
+static void finalize_found(struct lyrics_state *state, bool same_track) {
+    state->playback.lyrics.translation_should_cancel = false;
+
+    log_info("Loaded %d lines of lyrics", state->playback.lyrics.line_count);
+
+    // Set initial line to NULL so first update will trigger line_changed
+    // This ensures prev/next lines are set for multiline display
+    state->playback.current_line = NULL;
+    state->playback.track_changed = false;
+
+    if (!same_track) {
+        announce_track(state);
+    }
 
     // Start translation on the live lyrics (was previously started inside the
     // provider chain; moved out so the fetch can run off the main thread).
@@ -464,30 +481,33 @@ static void *lyrics_fetch_worker(void *arg) {
     return NULL;
 }
 
-// Synchronous load — used by the local-file hot-reload path, where the search
-// hits the fast local provider. Frees old lyrics, searches, and finalizes inline.
+// Synchronous load — used when the lyrics file or the translation settings
+// change. Frees old lyrics, searches, and finalizes inline. The search is the
+// whole provider chain: it is fast while the local file is found, but falls
+// through to lrclib on the main thread when it is not (e.g. the track had no
+// lyrics, or the file is caught half-written). It also treats the reload as a
+// new track: timing offset and overlay state are reset and the notification is
+// sent again.
 bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
     lyrics_manager_cancel_fetch(state);   // drop any pending async fetch first
     reset_for_new_lyrics(state);
 
     if (!lyrics_find_for_track(&state->playback.current_track, &state->playback.lyrics)) {
-        finalize_not_found(state);
+        finalize_not_found(state, false);
         return false;
     }
-    finalize_found(state);
+    finalize_found(state, false);
     return true;
 }
 
-// Begin an asynchronous load: reset per-track state (so the overlay clears
-// immediately), snapshot the track, and kick off the fetch worker. Non-blocking;
-// the result is consumed later by lyrics_manager_poll_load.
-void lyrics_manager_begin_load(struct lyrics_state *state) {
-    lyrics_manager_cancel_track_work(state);  // supersede the previous track's work
-    reset_for_new_lyrics(state);
-
+// Snapshot the track and kick off the fetch worker for it. The live lyrics must
+// already be empty. Non-blocking; the result is consumed later by
+// lyrics_manager_poll_load, which treats it as same_track says.
+static void start_fetch(struct lyrics_state *state, bool same_track) {
     struct async_lyrics_fetch *fetch = &state->playback.async_fetch;
     memset(&fetch->result, 0, sizeof(fetch->result));
     copy_track_metadata(&fetch->track, &state->playback.current_track);
+    fetch->same_track = same_track;
     fetch->should_cancel = false;
     fetch->found = false;
     fetch->ready = false;
@@ -499,13 +519,31 @@ void lyrics_manager_begin_load(struct lyrics_state *state) {
         mpris_free_metadata(&fetch->track);
         memset(&fetch->track, 0, sizeof(fetch->track));
         if (lyrics_find_for_track(&state->playback.current_track, &state->playback.lyrics)) {
-            finalize_found(state);
+            finalize_found(state, same_track);
         } else {
-            finalize_not_found(state);
+            finalize_not_found(state, same_track);
         }
         return;
     }
     fetch->thread_active = true;
+}
+
+// Begin an asynchronous load for a new track: reset per-track state (so the
+// overlay clears immediately) and search off the main thread.
+void lyrics_manager_begin_load(struct lyrics_state *state) {
+    lyrics_manager_cancel_track_work(state);  // supersede the previous track's work
+    reset_for_new_lyrics(state);
+    start_fetch(state, false);
+}
+
+// Search again for the track already playing, off the main thread. What belongs
+// to the track rather than to its lyrics is left alone: the timing offset and
+// overlay state the user set, the artwork (and its fetch, if still running),
+// and the notification, which is not sent a second time.
+void lyrics_manager_begin_reload(struct lyrics_state *state) {
+    lyrics_manager_cancel_fetch(state);
+    clear_live_lyrics(state);
+    start_fetch(state, true);
 }
 
 // Consume a completed async fetch (call every main-loop tick). Swaps the fetched
@@ -527,15 +565,15 @@ void lyrics_manager_poll_load(struct lyrics_state *state) {
     memset(&fetch->track, 0, sizeof(fetch->track));
 
     if (found) {
-        // reset_for_new_lyrics already freed the live lyrics, so this move-assign
+        // The live lyrics were freed when the fetch began, so this move-assign
         // does not leak; zero the source so we never double-free the buffer.
         state->playback.lyrics = fetch->result;
         memset(&fetch->result, 0, sizeof(fetch->result));
-        finalize_found(state);
+        finalize_found(state, fetch->same_track);
     } else {
         lrc_free_data(&fetch->result);
         memset(&fetch->result, 0, sizeof(fetch->result));
-        finalize_not_found(state);
+        finalize_not_found(state, fetch->same_track);
     }
 
     rendering_manager_set_dirty(state);

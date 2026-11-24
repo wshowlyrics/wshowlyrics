@@ -428,23 +428,12 @@ static void handle_instrumental_break(struct lyrics_state *state) {
         if (file_exists) {
             log_info("Lyrics file is back at original location: %s", sanitize_path(state->playback.lyrics.source_file_path));
         } else {
+            // The search (local, then lrclib) runs on the fetch worker; the
+            // result is installed by lyrics_manager_poll_load. The old lyrics
+            // are dropped now, since their file is gone.
             log_info("Searching for lyrics again...");
-            cancel_and_wait_translation(&state->playback.lyrics);
-            lrc_free_data(&state->playback.lyrics);
-            memset(&state->playback.lyrics, 0, sizeof(state->playback.lyrics));
-            if (lyrics_find_for_track(&state->playback.current_track, &state->playback.lyrics)) {
-                log_info("Found new lyrics, replacing old ones");
-                state->playback.current_line = NULL;
-                state->playback.prev_line = NULL;
-                state->playback.next_line = NULL;
-                // The provider chain no longer starts translation itself.
-                state->playback.lyrics.translation_should_cancel = false;
-                lyrics_provider_translate(&state->playback.lyrics,
-                                          state->playback.current_track.length_us);
-                rendering_manager_set_dirty(state);
-            } else {
-                log_info("No lyrics found, keeping existing lyrics displayed");
-            }
+            lyrics_manager_begin_reload(state);
+            rendering_manager_set_dirty(state);
         }
         state->runtime.need_lyrics_search = false;
         state->playback.in_instrumental_break = false;

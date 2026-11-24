@@ -54,9 +54,19 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state);
 void lyrics_manager_begin_load(struct lyrics_state *state);
 
 /**
+ * Begin an asynchronous lyrics search for the track that is already playing,
+ * e.g. after its lyrics file disappeared. Like lyrics_manager_begin_load, but
+ * keeps the timing offset and overlay state and sends no track notification.
+ *
+ * @param state Lyrics state
+ */
+void lyrics_manager_begin_reload(struct lyrics_state *state);
+
+/**
  * Consume a completed asynchronous lyrics load, if any.
  * Swaps the fetched lyrics into the live state and runs album-art/notification/
- * translation finalization on the main thread. No-op while the fetch is running.
+ * translation finalization on the main thread (a reload skips art and
+ * notification). No-op while the fetch is running.
  *
  * @param state Lyrics state
  */
