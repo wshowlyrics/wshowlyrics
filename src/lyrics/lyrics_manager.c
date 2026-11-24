@@ -11,6 +11,7 @@
 #include "../user_experience/system_tray/system_tray.h"
 #include "../parser/lrc/lrc_common.h"
 #include "../utils/file/file_utils.h"
+#include "../utils/string/string_utils.h"
 #include "../parser/lrc/lrcx_parser.h"
 #include <strings.h>
 #include <string.h>
@@ -35,13 +36,7 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
     snprintf(dest, dest_size, "%s", title);
 
     // Remove file extension
-    char *ext = strrchr(dest, '.');
-    if (ext && (strcmp(ext, ".mkv") == 0 || strcmp(ext, ".mp4") == 0 ||
-                strcmp(ext, ".webm") == 0 || strcmp(ext, ".mp3") == 0 ||
-                strcmp(ext, ".flac") == 0 || strcmp(ext, ".opus") == 0 ||
-                strcmp(ext, ".ogg") == 0 || strcmp(ext, ".m4a") == 0)) {
-        *ext = '\0';
-    }
+    strip_media_extension(dest);
 
     // Remove YouTube ID pattern [xxxxx]
     char *youtube_id = strrchr(dest, '[');

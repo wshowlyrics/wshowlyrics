@@ -86,30 +86,13 @@ static char* sanitize_filename(const char *str) {
     return result;
 }
 
+// Copy of a track title without a media file extension (see
+// strip_media_extension for why only known ones are cut).
 static char* remove_extension(const char *str) {
     if (!str) return NULL;
 
     char *result = strdup(str);
-    if (!result) return NULL;
-
-    // Find the last dot
-    char *dot = strrchr(result, '.');
-    if (dot && dot != result) {
-        // Common audio/video extensions to remove
-        const char *exts[] = {
-            ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav",
-            ".mp4", ".mkv", ".avi", ".webm", ".mov",
-            NULL
-        };
-
-        for (int i = 0; exts[i]; i++) {
-            if (strcasecmp(dot, exts[i]) == 0) {
-                *dot = '\0';
-                break;
-            }
-        }
-    }
-
+    strip_media_extension(result);
     return result;
 }
 
@@ -310,8 +293,10 @@ static char* get_filename_from_url(const char *url) {
     const char *last_slash = strrchr(decoded, '/');
     const char *filename = last_slash ? (last_slash + 1) : decoded;
 
-    // Remove extension
-    char *result = remove_extension(filename);
+    char *result = strdup(filename);
+    if (result) {
+        strip_file_extension(result);
+    }
 
     free(decoded);
     return result;

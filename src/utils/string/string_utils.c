@@ -1,8 +1,59 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "string_utils.h"
+#include <stdbool.h>
 #include <string.h>
 #include <strings.h>
 #include <ctype.h>
+
+static bool is_media_extension(const char *ext) {
+    static const char *const media_exts[] = {
+        // audio
+        ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".m4b", ".aac", ".wav",
+        ".wma", ".ape", ".wv", ".mpc", ".tta", ".aiff", ".mka",
+        // video
+        ".mp4", ".mkv", ".avi", ".webm", ".mov", ".flv", ".wmv", ".ts", ".m2ts", ".3gp",
+        NULL
+    };
+
+    for (int i = 0; media_exts[i]; i++) {
+        if (strcasecmp(ext, media_exts[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void strip_media_extension(char *name) {
+    if (!name) {
+        return;
+    }
+    char *dot = strrchr(name, '.');
+    if (dot && dot != name && is_media_extension(dot)) {
+        *dot = '\0';
+    }
+}
+
+// Longest tail after the last dot that is still taken for a file extension
+#define MAX_FILE_EXTENSION_CHARS 5
+
+void strip_file_extension(char *filename) {
+    if (!filename) {
+        return;
+    }
+    char *dot = strrchr(filename, '.');
+    if (!dot || dot == filename) {
+        return;
+    }
+
+    const char *end = dot + 1;
+    while (isalnum((unsigned char)*end)) {
+        end++;
+    }
+    size_t length = (size_t)(end - dot - 1);
+    if (*end == '\0' && length > 0 && length <= MAX_FILE_EXTENSION_CHARS) {
+        *dot = '\0';
+    }
+}
 
 // Sanitize title by removing YouTube ID and file extensions
 // Example: "[4K60FPS] Song Title [AbCdEfG1234].mkv" -> "Song Title"
@@ -12,21 +63,7 @@ char* sanitize_title(const char *title) {
     char *result = strdup(title);
     if (!result) return NULL;
 
-    // Remove file extensions (.mkv, .mp4, .mp3, .flac, .m4a, .webm, etc.)
-    char *ext = strrchr(result, '.');
-    if (ext) {
-        const char *common_exts[] = {
-            ".mkv", ".mp4", ".avi", ".webm", ".mov", ".flv",
-            ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav",
-            NULL
-        };
-        for (int i = 0; common_exts[i]; i++) {
-            if (strcasecmp(ext, common_exts[i]) == 0) {
-                *ext = '\0';
-                break;
-            }
-        }
-    }
+    strip_media_extension(result);
 
     // Remove YouTube ID pattern: [alphanumeric 11 chars] or (alphanumeric 11 chars)
     // Also remove quality tags like [4K], [60FPS], etc.

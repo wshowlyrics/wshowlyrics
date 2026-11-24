@@ -4,6 +4,22 @@
 
 #include <stddef.h>
 
+// Cut a trailing audio/video file extension (".mkv", ".flac", ...) off name, in
+// place. Case-insensitive. NULL-safe.
+//
+// For names that are not known to be file names: a track title is a file name
+// only when the file has no title tag, and a real title may contain a dot
+// ("Mr.Children", "Ver.2"), so its tail is cut only when it is a known
+// extension. A name that is nothing but an extension is left alone.
+void strip_media_extension(char *name);
+
+// Cut the extension off a file name, in place. NULL-safe. Unlike a title, a
+// file name's last dot does start its extension, whatever the format, so no
+// list is consulted — one left "song.mka" searching for "song.mka.lrc". The
+// tail must still look like an extension (a few letters or digits), so a file
+// saved without one, such as "Mr.Children - Song", keeps its name.
+void strip_file_extension(char *filename);
+
 // Sanitize title by removing YouTube ID and file extensions
 // Example: "[4K60FPS] Song Title [AbCdEfG1234].mkv" -> "Song Title"
 // Caller must free the returned string
