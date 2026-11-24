@@ -86,16 +86,6 @@ static char* sanitize_filename(const char *str) {
     return result;
 }
 
-// Copy of a track title without a media file extension (see
-// strip_media_extension for why only known ones are cut).
-static char* remove_extension(const char *str) {
-    if (!str) return NULL;
-
-    char *result = strdup(str);
-    strip_media_extension(result);
-    return result;
-}
-
 static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
     // Check file extension to determine parser
     // Note: No stat() call here to avoid TOCTOU race condition
@@ -561,10 +551,8 @@ static bool local_search(const char *title, const char *artist, const char *albu
     }
 
     // Prepare sanitized filenames
-    char *title_no_ext = remove_extension(title);
-    char *title_safe = sanitize_filename(title_no_ext ? title_no_ext : title);
+    char *title_safe = sanitize_filename(title);
     char *artist_safe = artist ? sanitize_filename(artist) : NULL;
-    free(title_no_ext);
 
     // Extract paths from URL
     char *current_dir = get_directory_from_url(url);

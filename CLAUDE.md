@@ -269,7 +269,7 @@ To hide the overlay (e.g. during an instrumental break), `rendering_manager_rend
 
 ### MPRIS, Monitoring, D-Bus Control
 
-- `src/utils/mpris/mpris.c` — uses `playerctl` to extract metadata and playback position, tracks file changes to trigger re-search.
+- `src/utils/mpris/mpris.c` — uses `playerctl` to extract metadata and playback position, tracks file changes to trigger re-search. `parse_metadata_from_dict` is also the **one place a title loses its media file extension** (`strip_title_extension`): a title that is exactly the file name of a `file://` `xesam:url` (mpv reports that for a file with no title tag) loses whatever extension it has; any other title loses only an extension on the list in `strip_media_extension` (`src/utils/string/string_utils.c`), because a real title may contain a dot (`Mr.Children`, `Ver.2`). Every consumer — lyrics search, LRCLIB/iTunes queries, the notification, the art cache key — gets that title, so do not strip extensions again downstream; a title from a lyrics file's `[ti:]` tag is used as written.
 - `src/monitor/file_monitor.c` — generic MD5-based hot-reload for both lyrics and config files (`file_monitor_check_and_reload`).
 - `src/utils/dbus_control/dbus_control.c` — exposes `org.wshowlyrics.Control` D-Bus service used by the `wshowlyrics-offset` shell helper. Methods: `AdjustTimingOffset(int16)`, `SetTimingOffset(int16)`, `ResetTimingOffset()`, `ToggleOverlay()`, `SetOverlay(bool)`. Range −10000..+10000 ms; session offset auto-resets on track change, global offset comes from `[lyrics] global_offset_ms`.
 - `src/utils/lock/lock_file.c` — single-instance lock at `$XDG_RUNTIME_DIR/wshowlyrics/wshowlyrics.lock` (path provided by `src/utils/runtime/runtime_dir.c`).

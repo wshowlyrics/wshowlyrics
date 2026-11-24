@@ -16,7 +16,7 @@
 bool lyrics_manager_is_format(const struct lyrics_state *state, const char *extension);
 
 /**
- * Clean track title (remove file extensions, YouTube IDs)
+ * Clean track title for display (remove a trailing YouTube ID)
  *
  * @param dest Destination buffer
  * @param dest_size Size of destination buffer

@@ -55,15 +55,14 @@ void strip_file_extension(char *filename) {
     }
 }
 
-// Sanitize title by removing YouTube ID and file extensions
-// Example: "[4K60FPS] Song Title [AbCdEfG1234].mkv" -> "Song Title"
+// Sanitize title by removing bracketed parts such as a YouTube ID or quality tag.
+// The media file extension is already gone: mpris.c cuts it when it reads the title.
+// Example: "[4K60FPS] Song Title [AbCdEfG1234]" -> "Song Title"
 char* sanitize_title(const char *title) {
     if (!title) return NULL;
 
     char *result = strdup(title);
     if (!result) return NULL;
-
-    strip_media_extension(result);
 
     // Remove YouTube ID pattern: [alphanumeric 11 chars] or (alphanumeric 11 chars)
     // Also remove quality tags like [4K], [60FPS], etc.

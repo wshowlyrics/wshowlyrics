@@ -16,6 +16,8 @@
 #include "mpris.h"
 #include "../../constants.h"
 #include "../../user_experience/config/config.h"
+#include "../string/string_utils.h"
+#include "../url/url_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -137,6 +139,41 @@ static char* dup_string_variant(GVariant *value) {
     return strdup(g_variant_get_string(value, NULL));
 }
 
+// Whether the title is exactly the file name of the track's file:// URL.
+static bool title_is_file_name(const struct track_metadata *metadata) {
+    if (!metadata->url || strncmp(metadata->url, "file://", 7) != 0) {
+        return false;
+    }
+
+    char *path = url_decode_string(metadata->url + 7);
+    if (!path) {
+        return false;
+    }
+    const char *last_slash = strrchr(path, '/');
+    const char *file_name = last_slash ? last_slash + 1 : path;
+    bool same = strcmp(metadata->title, file_name) == 0;
+    free(path);
+    return same;
+}
+
+// A player reports the file name as the title when the file has no title tag
+// (mpv: "song.mka"). The extension is cut here, once, for everything that uses
+// the title: the lyrics search, the artwork search, the notification.
+//
+// A title that equals the URL's file name is known to be one, so it loses its
+// extension whatever the format. Any other title may be a real one with a dot
+// in it ("Mr.Children", "Ver.2") and loses only a known media extension.
+static void strip_title_extension(struct track_metadata *metadata) {
+    if (!metadata->title) {
+        return;
+    }
+    if (title_is_file_name(metadata)) {
+        strip_file_extension(metadata->title);
+    } else {
+        strip_media_extension(metadata->title);
+    }
+}
+
 // Helper: Parse metadata from GVariant dictionary into track_metadata struct
 // Returns newly allocated track_metadata, caller must free with mpris_free_metadata()
 static struct track_metadata* parse_metadata_from_dict(GVariant *metadata_dict, const char *player_name) {
@@ -207,6 +244,8 @@ static struct track_metadata* parse_metadata_from_dict(GVariant *metadata_dict, 
         }
         g_variant_unref(value);
     }
+
+    strip_title_extension(metadata);
 
     return metadata;
 }

@@ -11,7 +11,6 @@
 #include "../user_experience/system_tray/system_tray.h"
 #include "../parser/lrc/lrc_common.h"
 #include "../utils/file/file_utils.h"
-#include "../utils/string/string_utils.h"
 #include "../parser/lrc/lrcx_parser.h"
 #include <strings.h>
 #include <string.h>
@@ -34,9 +33,6 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
     }
 
     snprintf(dest, dest_size, "%s", title);
-
-    // Remove file extension
-    strip_media_extension(dest);
 
     // Remove YouTube ID pattern [xxxxx]
     char *youtube_id = strrchr(dest, '[');
