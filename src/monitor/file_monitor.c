@@ -31,7 +31,10 @@ bool file_monitor_check_and_reload(
         // Call the reload callback
         reload_callback(state, file_path);
 
-        // Update stored checksum
+        // Update stored checksum. For the config this is what the next check
+        // compares against. For lyrics the callback has emptied the struct this
+        // points into (and freed file_path), and the reloaded lyrics bring
+        // their own checksum, so the value written here is not used.
         snprintf(stored_checksum, checksum_size, "%s", current_checksum);
 
         rendering_manager_set_dirty(state);
@@ -72,32 +75,19 @@ static void update_state_colors(struct lyrics_state *state) {
         ((uint32_t)(g_config.display.color_active[3] * 255));
 }
 
-// Helper: Check if translation config changed and reload if needed
-// Returns: true if translation was reloaded
-static bool check_translation_config_changed(struct lyrics_state *state,
+// Helper: Start a lyrics reload if the translation config changed
+static void check_translation_config_changed(struct lyrics_state *state,
                                              const char *old_api_key,
                                              const char *old_provider,
                                              const char *old_target_lang) {
-    bool changed = false;
-
-    // Check if any translation setting changed
     if (has_string_changed(old_api_key, g_config.translation.api_key) ||
         has_string_changed(old_provider, g_config.translation.provider) ||
         has_string_changed(old_target_lang, g_config.translation.target_language)) {
-        changed = true;
-    }
-
-    if (changed) {
         log_info("Translation config changed, reloading lyrics...");
 
-        // Cancel current translation if in progress
-        cancel_and_wait_translation(&state->playback.lyrics);
-
-        // Reload lyrics with new translation config
-        lyrics_manager_load_lyrics(state);
+        // This also stops the translation that is running with the old config
+        lyrics_manager_begin_reload(state);
     }
-
-    return changed;
 }
 
 // Helper: Check if font settings changed and warn if needed
@@ -131,7 +121,7 @@ static void check_layout_changed(const char *old_anchor, int old_margin) {
 void file_monitor_reload_lyrics(struct lyrics_state *state, const char *path) {
     (void)path;  // Required by callback signature
     rendering_manager_render_transparent(state);
-    lyrics_manager_load_lyrics(state);
+    lyrics_manager_begin_reload(state);
 }
 
 void file_monitor_reload_config(struct lyrics_state *state, const char *path) {

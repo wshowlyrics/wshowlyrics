@@ -34,16 +34,6 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
 bool lyrics_manager_update_track_info(struct lyrics_state *state);
 
 /**
- * Load lyrics for current track synchronously
- * Searches local files and online sources, blocking until done. Used by the
- * local-file hot-reload path; track changes use the async begin/poll pair below.
- *
- * @param state Lyrics state
- * @return true if lyrics loaded, false if not found
- */
-bool lyrics_manager_load_lyrics(struct lyrics_state *state);
-
-/**
  * Begin an asynchronous lyrics load for the current track.
  * Clears the current lyrics immediately and runs the (blocking, network) search
  * on a worker thread. Non-blocking; call lyrics_manager_poll_load each tick to
@@ -54,9 +44,10 @@ bool lyrics_manager_load_lyrics(struct lyrics_state *state);
 void lyrics_manager_begin_load(struct lyrics_state *state);
 
 /**
- * Begin an asynchronous lyrics search for the track that is already playing,
- * e.g. after its lyrics file disappeared. Like lyrics_manager_begin_load, but
- * keeps the timing offset and overlay state and sends no track notification.
+ * Begin an asynchronous lyrics search for the track that is already playing:
+ * its lyrics file changed or disappeared, or the translation settings changed.
+ * Like lyrics_manager_begin_load, but keeps the timing offset and overlay state
+ * and sends no track notification.
  *
  * @param state Lyrics state
  */
@@ -114,12 +105,5 @@ void lyrics_manager_cancel_track_work(struct lyrics_state *state);
  */
 void lyrics_manager_update_current_line(struct lyrics_state *state);
 
-/**
- * Cancel ongoing translation and wait for thread to finish
- * Prevents use-after-free errors when freeing lyrics data
- *
- * @param lyrics Lyrics data containing translation state
- */
-void cancel_and_wait_translation(struct lyrics_data *lyrics);
 
 #endif // LYRICS_MANAGER_H

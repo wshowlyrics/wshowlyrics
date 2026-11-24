@@ -53,7 +53,7 @@ void lyrics_manager_clean_title(char *dest, size_t dest_size, const char *title)
 
 // Cancel ongoing translation and wait for it to finish
 // Prevents use-after-free errors when freeing lyrics data
-void cancel_and_wait_translation(struct lyrics_data *lyrics) {
+static void cancel_and_wait_translation(struct lyrics_data *lyrics) {
     if (!lyrics->translation_thread_active) return;
 
     lyrics->translation_should_cancel = true;
@@ -200,8 +200,7 @@ bool lyrics_manager_update_track_info(struct lyrics_state *state) {
 
 // Stop any running translation, free the currently displayed lyrics, and clear
 // the line cursors. After this the live lyrics is empty, so the render loop
-// draws nothing until new lyrics are installed (synchronously, or by
-// lyrics_manager_poll_load).
+// draws nothing until lyrics_manager_poll_load installs new ones.
 static void clear_live_lyrics(struct lyrics_state *state) {
     // Cancel ongoing translation and wait for it to finish. This prevents a race
     // where old and new translation threads write to the same cache file.
@@ -215,7 +214,7 @@ static void clear_live_lyrics(struct lyrics_state *state) {
 
 // Reset per-track state before loading new lyrics: the lyrics themselves, and
 // what the user adjusted for the previous track.
-static void reset_for_new_lyrics(struct lyrics_state *state) {
+static void reset_for_new_track(struct lyrics_state *state) {
     clear_live_lyrics(state);
 
     // Reset timing offset to global offset for new track
@@ -481,25 +480,6 @@ static void *lyrics_fetch_worker(void *arg) {
     return NULL;
 }
 
-// Synchronous load — used when the lyrics file or the translation settings
-// change. Frees old lyrics, searches, and finalizes inline. The search is the
-// whole provider chain: it is fast while the local file is found, but falls
-// through to lrclib on the main thread when it is not (e.g. the track had no
-// lyrics, or the file is caught half-written). It also treats the reload as a
-// new track: timing offset and overlay state are reset and the notification is
-// sent again.
-bool lyrics_manager_load_lyrics(struct lyrics_state *state) {
-    lyrics_manager_cancel_fetch(state);   // drop any pending async fetch first
-    reset_for_new_lyrics(state);
-
-    if (!lyrics_find_for_track(&state->playback.current_track, &state->playback.lyrics)) {
-        finalize_not_found(state, false);
-        return false;
-    }
-    finalize_found(state, false);
-    return true;
-}
-
 // Snapshot the track and kick off the fetch worker for it. The live lyrics must
 // already be empty. Non-blocking; the result is consumed later by
 // lyrics_manager_poll_load, which treats it as same_track says.
@@ -532,14 +512,15 @@ static void start_fetch(struct lyrics_state *state, bool same_track) {
 // overlay clears immediately) and search off the main thread.
 void lyrics_manager_begin_load(struct lyrics_state *state) {
     lyrics_manager_cancel_track_work(state);  // supersede the previous track's work
-    reset_for_new_lyrics(state);
+    reset_for_new_track(state);
     start_fetch(state, false);
 }
 
-// Search again for the track already playing, off the main thread. What belongs
-// to the track rather than to its lyrics is left alone: the timing offset and
-// overlay state the user set, the artwork (and its fetch, if still running),
-// and the notification, which is not sent a second time.
+// Search again for the track already playing, off the main thread: its lyrics
+// file changed or disappeared, or the translation settings changed. What
+// belongs to the track rather than to its lyrics is left alone: the timing
+// offset and overlay state the user set, the artwork (and its fetch, if still
+// running), and the notification, which is not sent a second time.
 void lyrics_manager_begin_reload(struct lyrics_state *state) {
     lyrics_manager_cancel_fetch(state);
     clear_live_lyrics(state);

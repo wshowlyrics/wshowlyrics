@@ -359,6 +359,19 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
     const bool check_due = (*update_counter % TRACK_UPDATE_CHECK_INTERVAL == 0);
     (*update_counter)++;
     if (check_due && !state->playback.async_fetch.thread_active) {
+        // Config first. If the translation settings changed, this starts a
+        // reload fetch, which empties the lyrics, so the check below is skipped.
+        // The other way round, a changed lyrics file would start its fetch and
+        // the config reload would then free what that worker reads.
+        file_monitor_check_and_reload(
+            state->config.config_file_path,
+            state->config.config_md5_checksum,
+            sizeof(state->config.config_md5_checksum),
+            "Config",
+            file_monitor_reload_config,
+            state
+        );
+
         if (state->playback.lyrics.source_file_path &&
             !path_is_in_cache_dir(state->playback.lyrics.source_file_path)) {
             file_monitor_check_and_reload(
@@ -370,15 +383,6 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
                 state
             );
         }
-
-        file_monitor_check_and_reload(
-            state->config.config_file_path,
-            state->config.config_md5_checksum,
-            sizeof(state->config.config_md5_checksum),
-            "Config",
-            file_monitor_reload_config,
-            state
-        );
 
         // Keep an in-use cache entry warm during long single-track playback.
         touch_active_track_cache(state);
