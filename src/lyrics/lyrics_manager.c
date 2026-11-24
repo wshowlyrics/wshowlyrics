@@ -232,13 +232,17 @@ static void reset_for_new_lyrics(struct lyrics_state *state) {
     }
 }
 
-// --- Async album-art (iTunes) offload ------------------------------------
+// --- Async album-art offload ---------------------------------------------
 
 // Free the artwork worker's owned input / deferred-notification strings.
 static void free_art_fetch_inputs(struct async_art_fetch *af) {
+    free(af->art_url);
+    free(af->file_url);
     free(af->artist);
     free(af->album);
     free(af->track);
+    af->art_url = NULL;
+    af->file_url = NULL;
     af->artist = NULL;
     af->album = NULL;
     af->track = NULL;
@@ -271,15 +275,24 @@ static void send_track_notification(const struct lyrics_state *state, const char
     system_tray_send_notification(&notif_info);
 }
 
-// Artwork worker: resolve iTunes art into the cache PNG. Touches only the
-// async_art buffers and the network — never GTK/AppIndicator or live state.
+// Artwork worker: resolve the art into the cache PNG. Touches only the
+// async_art buffers, the network and ffmpeg — never GTK/AppIndicator or live state.
 static void *art_fetch_worker(void *arg) {
     struct lyrics_state *state = arg;
     struct async_art_fetch *af = &state->playback.async_art;
 
     itunes_set_cancel_flag(&af->should_cancel);
     system_tray_set_art_cancel_flag(&af->should_cancel);
-    af->found = system_tray_resolve_itunes_art(af->artist, af->album, af->track, af->cache_path);
+    const struct tray_art_request request = {
+        .art_url = af->art_url,
+        .file_url = af->file_url,
+        .artist = af->artist,
+        .album = af->album,
+        .track = af->track,
+        .length_us = af->length_us,
+    };
+    af->found = system_tray_resolve_art(&request, af->use_itunes, af->cache_path,
+                                        &af->from_art_url);
     itunes_set_cancel_flag(NULL);
     system_tray_set_art_cancel_flag(NULL);
 
@@ -287,44 +300,50 @@ static void *art_fetch_worker(void *arg) {
     return NULL;
 }
 
-// Start the iTunes artwork worker for the current track. The track notification
-// is captured and deferred until the art lands (or fails) — see poll_art.
-static void begin_art_fetch(struct lyrics_state *state, const char *artist,
-                            const char *album, const char *title,
+// Start the artwork worker for the current track. The track notification is
+// captured and deferred until the art lands (or fails) — see poll_art.
+static void begin_art_fetch(struct lyrics_state *state, const struct tray_art_request *request,
                             const char *md5, const char *cache_path) {
     struct async_art_fetch *af = &state->playback.async_art;
     snprintf(af->md5, sizeof(af->md5), "%s", md5);
     snprintf(af->cache_path, sizeof(af->cache_path), "%s", cache_path);
-    af->artist = artist ? strdup(artist) : NULL;
-    af->album  = album  ? strdup(album)  : NULL;
-    af->track  = title  ? strdup(title)  : NULL;
+    af->art_url  = request->art_url  ? strdup(request->art_url)  : NULL;
+    af->file_url = request->file_url ? strdup(request->file_url) : NULL;
+    af->artist = request->artist ? strdup(request->artist) : NULL;
+    af->album  = request->album  ? strdup(request->album)  : NULL;
+    af->track  = request->track  ? strdup(request->track)  : NULL;
+    af->length_us = request->length_us;
+    // Copied here so the worker never reads the config the main thread reloads
+    af->use_itunes = g_config.lyrics.enable_itunes;
 
     af->notify_pending = g_config.lyrics.enable_notifications;
     if (af->notify_pending) {
         char cleaned_title[TITLE_BUFFER_SIZE];
-        lyrics_manager_clean_title(cleaned_title, sizeof(cleaned_title), title);
+        lyrics_manager_clean_title(cleaned_title, sizeof(cleaned_title), request->track);
         af->notif_title  = strdup(cleaned_title);
-        af->notif_artist = artist ? strdup(artist) : NULL;
-        af->notif_album  = album  ? strdup(album)  : NULL;
+        af->notif_artist = request->artist ? strdup(request->artist) : NULL;
+        af->notif_album  = request->album  ? strdup(request->album)  : NULL;
         af->notif_player = state->playback.current_track.player_name
                                ? strdup(state->playback.current_track.player_name) : NULL;
     }
 
     af->should_cancel = false;
     af->found = false;
+    af->from_art_url = false;
     af->ready = false;
     if (pthread_create(&af->thread, NULL, art_fetch_worker, state) != 0) {
-        log_warn("Failed to start artwork worker; skipping iTunes art");
+        log_warn("Failed to start artwork worker; using default icon");
         free_art_fetch_inputs(af);
-        send_track_notification(state, artist, album, title);  // deferred notif fires now
+        system_tray_reset_icon();
+        send_track_notification(state, request->artist, request->album, request->track);  // deferred notif fires now
         return;
     }
     af->thread_active = true;
 }
 
-// Resolve album art via the fast (non-network) sources on the main thread, then
-// either send the track notification now, or — when only iTunes can supply it —
-// start the artwork worker and defer the notification until the art resolves.
+// Resolve album art from the cache on the main thread, then either send the
+// track notification now, or — when the art still has to be downloaded or
+// extracted — start the artwork worker and defer the notification until it lands.
 static void finalize_common(struct lyrics_state *state, const char *art_url,
                             const char *file_url, const char *artist,
                             const char *album, const char *title) {
@@ -343,8 +362,8 @@ static void finalize_common(struct lyrics_state *state, const char *art_url,
     enum tray_art_status st = system_tray_update_icon_fast(
         &request, md5, sizeof(md5), cache_path, sizeof(cache_path));
 
-    if (st == TRAY_ART_NEED_ITUNES) {
-        begin_art_fetch(state, artist, album, title, md5, cache_path);
+    if (st == TRAY_ART_NEED_WORKER) {
+        begin_art_fetch(state, &request, md5, cache_path);
         return;   // notification is sent once the art lands (poll_art)
     }
     send_track_notification(state, artist, album, title);
@@ -559,10 +578,9 @@ void lyrics_manager_poll_art(struct lyrics_state *state) {
     itunes_set_cancel_flag(NULL);
     system_tray_set_art_cancel_flag(NULL);
 
-    if (af->found) {
-        system_tray_apply_cached_icon(af->md5);
-    } else {
-        // iTunes had nothing either — fall back to the default icon.
+    // No source had artwork (or its file is unusable) — fall back to the default icon.
+    if (!af->found ||
+        !system_tray_apply_cached_icon(af->md5, af->from_art_url ? af->art_url : NULL)) {
         system_tray_reset_icon();
     }
 

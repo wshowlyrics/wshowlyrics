@@ -15,6 +15,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <errno.h>
+#include <signal.h>
+#include <time.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -29,7 +32,11 @@
 // State
 static AppIndicator *indicator = NULL;
 static GtkWidget *menu = NULL;
+// The art URL of the last download, and the track hash whose cache file holds
+// its image — so the next track with the same URL can copy it (see
+// reuse_art_from_same_url).
 static char *last_art_url = NULL;
+static char last_art_url_hash[MD5_DIGEST_STRING_LENGTH] = {0};
 static char last_metadata_hash[MD5_DIGEST_STRING_LENGTH] = {0};
 
 // Menu items that need dynamic updates
@@ -107,20 +114,26 @@ static size_t artwork_write_capped(void *contents, size_t size, size_t nmemb, vo
     return curl_write_to_memory(contents, size, nmemb, userp);
 }
 
-// Cooperative cancellation for the async artwork worker (iTunes image download).
+// Cooperative cancellation for the async artwork worker (image download, ffmpeg).
 // The worker points this at its should_cancel flag; the curl progress callback
-// aborts the transfer when set, so a track skip need not wait out the timeout.
+// aborts the transfer and the ffmpeg wait kills the child when set, so a track
+// skip need not wait out the timeout.
 static _Atomic(const _Atomic bool *) g_art_cancel_flag = NULL;
 
 void system_tray_set_art_cancel_flag(const _Atomic bool *flag) {
     atomic_store(&g_art_cancel_flag, flag);
 }
 
+// Whether the artwork worker has been asked to stop (track changed, shutdown).
+static bool art_cancel_requested(void) {
+    const _Atomic bool *flag = atomic_load(&g_art_cancel_flag);
+    return flag && atomic_load(flag);
+}
+
 static int art_download_progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
                                     curl_off_t ultotal, curl_off_t ulnow) {
     (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
-    const _Atomic bool *flag = atomic_load(&g_art_cancel_flag);
-    return (flag && atomic_load(flag)) ? 1 : 0;
+    return art_cancel_requested() ? 1 : 0;
 }
 
 // Download image from URL to memory
@@ -699,7 +712,7 @@ bool system_tray_init(void) {
 // standard 48x48 + circular-mask processing. Pure download/decode/pixbuf/save
 // with NO AppIndicator calls, so it is safe to run on a worker thread. The
 // caller must ensure out_path's directory exists.
-bool system_tray_render_art_to_cache(const char *art_url, const char *out_path) {
+static bool render_art_to_cache(const char *art_url, const char *out_path) {
     if (!art_url || !out_path) {
         return false;
     }
@@ -737,49 +750,6 @@ bool system_tray_render_art_to_cache(const char *art_url, const char *out_path) 
     return true;
 }
 
-bool system_tray_update_icon(const char *art_url) {
-    if (!indicator || !art_url) {
-        log_error("update_icon: indicator=%p, art_url=%p", (void*)indicator, (void*)art_url);
-        return false;
-    }
-
-    log_info("Updating tray icon with art URL: %s", art_url);
-
-    // Skip if same as last URL
-    if (last_art_url && strcmp(last_art_url, art_url) == 0) {
-        log_info("Same as last URL, skipping update");
-        return true;
-    }
-
-    // Create directory if it doesn't exist
-    if (mkdir(g_icon_dir, 0700) != 0 && errno != EEXIST) {
-        log_warn("Failed to create icon directory: %s", strerror(errno));
-    }
-
-    if (!system_tray_render_art_to_cache(art_url, g_icon_path)) {
-        // Fallback to default icon
-        log_warn("Failed to load image, using default icon");
-        app_indicator_set_icon(indicator, "audio-player");
-        return false;
-    }
-
-    log_info("Album art saved to: %s", g_icon_path);
-
-    // Set the icon theme path to our directory
-    app_indicator_set_icon_theme_path(indicator, g_icon_dir);
-
-    // Update indicator icon using just the name (without extension or path)
-    app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
-
-    log_info("Icon updated: name=%s, theme_path=%s", ICON_NAME, g_icon_dir);
-
-    // Update last URL
-    free(last_art_url);
-    last_art_url = strdup(art_url);
-
-    return true;
-}
-
 void system_tray_reset_icon(void) {
     if (!indicator) {
         return;
@@ -787,9 +757,8 @@ void system_tray_reset_icon(void) {
 
     log_info("Resetting tray icon to default");
 
-    // Clear last URL and metadata hash to force reload on next update
-    free(last_art_url);
-    last_art_url = NULL;
+    // Clear the metadata hash to force a reload on the next update. The art
+    // URL record stays: it names a cache file, which is still that URL's image.
     last_metadata_hash[0] = '\0';
 
     // Create directory if it doesn't exist
@@ -996,54 +965,23 @@ void system_tray_send_notification(const struct notification_info *info) {
     g_free(body);
 }
 
-// Cache current artwork from g_icon_path to cache_path
-static bool cache_current_artwork(const char *cache_path) {
-    GError *error = NULL;
-    GdkPixbuf *current = gdk_pixbuf_new_from_file(g_icon_path, &error);
-
-    if (current) {
-        bool success = save_png_private(current, cache_path, NULL);
-        g_object_unref(current);
-        if (success) {
-            log_info("Cached album art: %s", sanitize_path(cache_path));
-        }
-        return success;
-    } else if (error) {
-        log_warn("Failed to cache album art: %s", error->message);
-        g_error_free(error);
-    }
-    return false;
-}
-
 // Point the tray indicator at the per-track album-art cache file, using the
 // metadata md5 as the icon name. Because the icon name changes whenever the
 // track changes, this forces the SNI host to invalidate its name-keyed icon
 // cache and re-read the PNG — unlike the fixed ICON_NAME, which the host keeps
 // cached even after album-art.png is overwritten on disk.
-// Returns true if the indicator was set to the cache icon.
-static bool set_indicator_icon_cached(const char *metadata_hash) {
-    if (!indicator || !metadata_hash || metadata_hash[0] == '\0') {
-        return false;
+// cache_path is that file, {album_art_dir}/{md5}.png, and must exist.
+static void set_indicator_icon_cached(const char *metadata_hash, const char *cache_path) {
+    if (!indicator) {
+        return;
     }
 
-    // Resolve the cache file path ({album_art_dir}/{md5}.png)
-    char cache_path[512];
-    if (build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
-        return false;
-    }
-
-    // The cache file must exist for the theme lookup to succeed
-    struct stat st;
-    if (stat(cache_path, &st) != 0) {
-        return false;
-    }
-
-    // Derive the theme directory by stripping "/{md5}.png"
+    // The theme directory is the cache path without "/{md5}.png"
     char theme_dir[512];
     snprintf(theme_dir, sizeof(theme_dir), "%s", cache_path);
     char *slash = strrchr(theme_dir, '/');
     if (!slash) {
-        return false;
+        return;
     }
     *slash = '\0';
 
@@ -1052,68 +990,6 @@ static bool set_indicator_icon_cached(const char *metadata_hash) {
     app_indicator_set_icon_full(indicator, metadata_hash, "Album Art");
 
     log_info("Tray icon set from cache (name=%s)", metadata_hash);
-    return true;
-}
-
-// Load cached album art and set as icon
-static bool load_cached_album_art(const char *cache_path, const char *metadata_hash) {
-    struct stat st;
-    if (stat(cache_path, &st) != 0) {
-        return false;  // Cache doesn't exist
-    }
-
-    // Update access time to prevent automatic cleanup
-    touch_cache_file(cache_path);
-
-    log_success("Found cached album art: %s", sanitize_path(cache_path));
-
-    GError *error = NULL;
-    GdkPixbuf *cached = gdk_pixbuf_new_from_file(cache_path, &error);
-
-    if (cached) {
-        // Set the icon theme path and update
-        app_indicator_set_icon_theme_path(indicator, g_icon_dir);
-
-        // Copy cached file to active icon path
-        GdkPixbuf *scaled = gdk_pixbuf_scale_simple(cached, 48, 48, GDK_INTERP_BILINEAR);
-        g_object_unref(cached);
-
-        bool save_result = save_png_private(scaled, g_icon_path, NULL);
-        if (save_result) {
-            g_object_unref(scaled);
-            app_indicator_set_icon_full(indicator, ICON_NAME, "Album Art");
-
-            // Update state
-            snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
-            log_success("Loaded album art from cache");
-            return true;
-        } else {
-            g_object_unref(scaled);
-        }
-    } else if (error) {
-        log_warn("Failed to load cached album art: %s", error->message);
-        g_error_free(error);
-    }
-
-    return false;
-}
-
-// Try to get artwork from MPRIS art URL
-static bool try_mpris_artwork(const char *art_url, const char *cache_path, const char *metadata_hash) {
-    if (!art_url || art_url[0] == '\0') {
-        return false;
-    }
-
-    log_info("Using MPRIS album art: %s", art_url);
-    bool success = system_tray_update_icon(art_url);
-
-    // Cache MPRIS artwork if successful
-    if (success && metadata_hash[0] != '\0') {
-        cache_current_artwork(cache_path);
-        snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
-    }
-
-    return success;
 }
 
 // Resolve a file:// MPRIS URI to a canonical local regular-file path.
@@ -1153,77 +1029,97 @@ static bool resolve_local_media_path(const char *file_url, char *resolved) {
 // ffmpeg open other local files or network URLs.
 #define FFMPEG_INPUT_PROTOCOLS "file"
 
-// Run ffmpeg with the given argument vector and report whether it produced a
-// usable PNG at out_path. g_spawn_sync runs ffmpeg with no shell interpretation
-// so the resolved path can never be reinterpreted as arguments. ffmpeg exits
-// non-zero when the requested stream is absent; it can also exit zero yet write
-// nothing (e.g. a seek past end-of-file), so the output file is stat-checked
-// explicitly rather than trusting the exit code alone.
-static bool run_ffmpeg_extract(char **argv, const char *out_path) {
-    gint wait_status = 0;
+// How long ffmpeg may run before it is killed, and how often the wait looks
+// for its exit, the time limit and a cancel request.
+#define FFMPEG_TIMEOUT_MS 10000
+#define FFMPEG_POLL_MS 50
+
+enum ffmpeg_result {
+    FFMPEG_EXTRACTED,  // the image was written and rendered
+    FFMPEG_NO_OUTPUT,  // ffmpeg ran to its end; the file has no such picture
+    FFMPEG_STOPPED,    // ffmpeg was killed: cancel request or time limit
+};
+
+// Wait for the ffmpeg child without blocking past a cancel request or
+// FFMPEG_TIMEOUT_MS; in either case the child is killed and reaped. Returns
+// true, with wait_status filled, only when ffmpeg exited on its own. A file on
+// a stalled network mount would otherwise hold the artwork worker (and the
+// track change that joins it) indefinitely.
+static bool wait_ffmpeg(GPid pid, int *wait_status) {
+    const struct timespec slice = { .tv_sec = 0, .tv_nsec = FFMPEG_POLL_MS * 1000000L };
+    int waited_ms = 0;
+    pid_t reaped = waitpid(pid, wait_status, WNOHANG);
+    while (reaped == 0 && waited_ms < FFMPEG_TIMEOUT_MS && !art_cancel_requested()) {
+        nanosleep(&slice, NULL);
+        waited_ms += FFMPEG_POLL_MS;
+        reaped = waitpid(pid, wait_status, WNOHANG);
+    }
+    if (reaped == pid) {
+        return true;
+    }
+    if (reaped != 0) {
+        log_warn("ffmpeg wait failed: %s", strerror(errno));
+        return false;
+    }
+
+    if (waited_ms >= FFMPEG_TIMEOUT_MS) {
+        log_warn("ffmpeg did not finish within %d ms, stopping it", FFMPEG_TIMEOUT_MS);
+    }
+    kill(pid, SIGKILL);
+    do {
+        reaped = waitpid(pid, wait_status, 0);
+    } while (reaped < 0 && errno == EINTR);
+    return false;
+}
+
+// Run ffmpeg with the given argument vector, which must write a PNG to
+// out_path, and render that PNG into cache_path through the validated file://
+// decode path. g_spawn_async runs ffmpeg with no shell interpretation so the
+// resolved path can never be reinterpreted as arguments. ffmpeg exits non-zero
+// when the requested stream is absent; it can also exit zero yet write nothing
+// (e.g. a seek past end-of-file), so the output file is stat-checked explicitly
+// rather than trusting the exit code alone.
+static enum ffmpeg_result run_ffmpeg_extract(char **argv, const char *out_path,
+                                             const char *cache_path) {
+    unlink(out_path);
+
+    GPid pid = 0;
     GError *error = NULL;
-    bool spawned = g_spawn_sync(NULL, argv, NULL,
-                                G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL |
-                                    G_SPAWN_STDERR_TO_DEV_NULL,
-                                NULL, NULL, NULL, NULL, &wait_status, &error);
+    bool spawned = g_spawn_async(NULL, argv, NULL,
+                                 G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD |
+                                     G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL,
+                                 NULL, NULL, &pid, &error);
     if (!spawned) {
         log_warn("ffmpeg spawn failed: %s", error ? error->message : "unknown");
         if (error) {
             g_error_free(error);
         }
-        return false;
+        return FFMPEG_NO_OUTPUT;
     }
 
-    if (!WIFEXITED(wait_status) || WEXITSTATUS(wait_status) != 0) {
-        return false;
-    }
+    int wait_status = 0;
+    bool exited = wait_ffmpeg(pid, &wait_status);
+    g_spawn_close_pid(pid);
 
+    enum ffmpeg_result result = exited ? FFMPEG_NO_OUTPUT : FFMPEG_STOPPED;
     struct stat st;
-    if (stat(out_path, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0) {
-        return false;
+    if (exited && WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0 &&
+        stat(out_path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0) {
+        char out_url[700];
+        snprintf(out_url, sizeof(out_url), "file://%s", out_path);
+        if (render_art_to_cache(out_url, cache_path)) {
+            result = FFMPEG_EXTRACTED;
+        }
     }
-    return true;
+    unlink(out_path);
+    return result;
 }
 
-// Hand a freshly extracted PNG to the validated file:// decode path, remove the
-// temp file, and cache it under the metadata hash on success.
-static bool commit_local_art(const char *out_path, const char *cache_path,
-                             const char *metadata_hash) {
-    char out_url[700];
-    snprintf(out_url, sizeof(out_url), "file://%s", out_path);
-    bool success = system_tray_update_icon(out_url);
-    unlink(out_path);
-
-    if (success && metadata_hash[0] != '\0') {
-        cache_current_artwork(cache_path);
-        snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
-    }
-    return success;
-}
-
-// Extract embedded cover art from a local file via ffmpeg. This is the offline
-// fallback for players (e.g. mpv) that never expose mpris:artUrl even when the
-// file on disk carries an embedded cover. It runs before the iTunes API so a
-// local track resolves without any network round-trip. ffmpeg is an optional
-// runtime dependency: when absent, return false and let the next source take
-// over. Returns true only when a cover was extracted and set as the icon.
-static bool try_local_embedded_artwork(const char *file_url, const char *cache_path,
-                                       const char *metadata_hash) {
-    char resolved[PATH_MAX];
-    if (!resolve_local_media_path(file_url, resolved)) {
-        return false;
-    }
-
-    char *ffmpeg = g_find_program_in_path("ffmpeg");
-    if (!ffmpeg) {
-        log_info("ffmpeg not found, skipping local artwork extraction");
-        return false;
-    }
-
-    char out_path[600];
-    snprintf(out_path, sizeof(out_path), "%s/embedded-art.png", get_runtime_dir());
-    unlink(out_path);
-
+// Extract the cover art embedded in a local file. This is the offline fallback
+// for players (e.g. mpv) that never expose mpris:artUrl even when the file on
+// disk carries an embedded cover.
+static enum ffmpeg_result extract_embedded_cover(char *ffmpeg, char *media_path,
+                                                 char *out_path, const char *cache_path) {
     // The stream selection is deliberate: "-map 0:v -map -0:V" keeps all video
     // streams then removes the non-attached-picture ones, leaving ONLY the
     // attached cover art. A plain "-frames:v 1" would instead grab the first
@@ -1234,26 +1130,20 @@ static bool try_local_embedded_artwork(const char *file_url, const char *cache_p
     char *argv[] = {
         ffmpeg, "-y", "-loglevel", "error",
         "-protocol_whitelist", FFMPEG_INPUT_PROTOCOLS,
-        "-i", resolved,
+        "-i", media_path,
         "-map", "0:v", "-map", "-0:V",
         "-frames:v", "1",
         "-f", "image2", "-c:v", "png",
         out_path, NULL
     };
 
-    bool extracted = run_ffmpeg_extract(argv, out_path);
-    g_free(ffmpeg);
-    if (!extracted) {
-        log_info("No embedded cover art in local file");
-        unlink(out_path);
-        return false;
-    }
-
-    bool success = commit_local_art(out_path, cache_path, metadata_hash);
-    if (success) {
+    enum ffmpeg_result result = run_ffmpeg_extract(argv, out_path, cache_path);
+    if (result == FFMPEG_EXTRACTED) {
         log_info("Using embedded album art from local file");
+    } else if (result == FFMPEG_NO_OUTPUT) {
+        log_info("No embedded cover art in local file");
     }
-    return success;
+    return result;
 }
 
 // Where in the video the thumbnail is taken from: this share of its length,
@@ -1270,30 +1160,15 @@ static bool try_local_embedded_artwork(const char *file_url, const char *cache_p
 // black opening frame.
 #define VIDEO_THUMBNAIL_FALLBACK_SEEK_SECONDS 3
 
-// Grab a frame from a local video file as the tray icon, used
-// only when the file has no embedded cover (e.g. a downloaded music-video
-// .mkv). Selects the first real (non-attached-picture) video stream via
-// "0:V:0" — an audio-only file matches no stream and ffmpeg exits non-zero, so
-// this never fires for pure audio. The frame is centre-cropped to a square and
-// scaled so it passes the tray's square-image requirement. Runs before iTunes
-// so a local video resolves offline. Returns true only when a thumbnail was set.
-static bool try_local_video_thumbnail(const char *file_url, int64_t length_us,
-                                      const char *cache_path, const char *metadata_hash) {
-    char resolved[PATH_MAX];
-    if (!resolve_local_media_path(file_url, resolved)) {
-        return false;
-    }
-
-    char *ffmpeg = g_find_program_in_path("ffmpeg");
-    if (!ffmpeg) {
-        log_info("ffmpeg not found, skipping local video thumbnail");
-        return false;
-    }
-
-    char out_path[600];
-    snprintf(out_path, sizeof(out_path), "%s/video-thumb.png", get_runtime_dir());
-    unlink(out_path);
-
+// Grab a frame from a local video file, used only when the file has no
+// embedded cover (e.g. a downloaded music-video .mkv). Selects the first real
+// (non-attached-picture) video stream via "0:V:0" — an audio-only file matches
+// no stream and ffmpeg exits non-zero, so this never fires for pure audio. The
+// frame is centre-cropped to a square and scaled so it passes the tray's
+// square-image requirement.
+static enum ffmpeg_result extract_video_thumbnail(char *ffmpeg, char *media_path,
+                                                  int64_t length_us, char *out_path,
+                                                  const char *cache_path) {
     // The length comes from MPRIS (mpris:length), so no ffprobe run is needed
     int64_t seek_seconds = VIDEO_THUMBNAIL_FALLBACK_SEEK_SECONDS;
     if (length_us > 0) {
@@ -1304,77 +1179,133 @@ static bool try_local_video_thumbnail(const char *file_url, int64_t length_us,
     snprintf(seek_arg, sizeof(seek_arg), "%lld", (long long)seek_seconds);
 
     // Filtergraph commas inside min(iw,ih) are escaped (\,) so ffmpeg does not
-    // read them as filter separators. No shell is involved (g_spawn_sync), so
+    // read them as filter separators. No shell is involved (g_spawn_async), so
     // the backslashes are passed literally as ffmpeg wants.
     char *argv[] = {
         ffmpeg, "-y", "-loglevel", "error",
         "-ss", seek_arg,
         "-protocol_whitelist", FFMPEG_INPUT_PROTOCOLS,
-        "-i", resolved,
+        "-i", media_path,
         "-map", "0:V:0", "-frames:v", "1",
         "-vf", "crop=min(iw\\,ih):min(iw\\,ih),scale=256:256",
         "-f", "image2", "-c:v", "png",
         out_path, NULL
     };
 
-    bool extracted = run_ffmpeg_extract(argv, out_path);
-    g_free(ffmpeg);
-    if (!extracted) {
+    enum ffmpeg_result result = run_ffmpeg_extract(argv, out_path, cache_path);
+    if (result == FFMPEG_EXTRACTED) {
+        log_info("Using video thumbnail from local file");
+    } else if (result == FFMPEG_NO_OUTPUT) {
         log_info("No video thumbnail extracted from local file");
-        unlink(out_path);
+    }
+    return result;
+}
+
+// Resolve artwork from the local media file itself — its embedded cover, else a
+// frame of its video — into cache_path. Runs before the iTunes API so a local
+// track resolves without any network round-trip. ffmpeg is an optional runtime
+// dependency: when absent, return false and let the next source take over.
+// Worker-safe (no GTK).
+static bool try_local_media_art(const char *file_url, int64_t length_us, const char *cache_path) {
+    char media_path[PATH_MAX];
+    if (!resolve_local_media_path(file_url, media_path)) {
         return false;
     }
 
-    bool success = commit_local_art(out_path, cache_path, metadata_hash);
-    if (success) {
-        log_info("Using video thumbnail from local file");
+    char *ffmpeg = g_find_program_in_path("ffmpeg");
+    if (!ffmpeg) {
+        log_info("ffmpeg not found, skipping local artwork extraction");
+        return false;
     }
-    return success;
+
+    char out_path[600];
+    snprintf(out_path, sizeof(out_path), "%s/extracted-art.png", get_runtime_dir());
+
+    // Only a file with no cover is asked for a frame. One that ffmpeg could not
+    // get through in time, or whose worker was cancelled, is not run again.
+    enum ffmpeg_result result = extract_embedded_cover(ffmpeg, media_path, out_path, cache_path);
+    if (result == FFMPEG_NO_OUTPUT) {
+        result = extract_video_thumbnail(ffmpeg, media_path, length_us, out_path, cache_path);
+    }
+    g_free(ffmpeg);
+    return result == FFMPEG_EXTRACTED;
 }
 
-// Worker-safe: resolve iTunes artwork for the track into out_path ({md5}.png).
-// Blocking network (iTunes search + image download) with no AppIndicator calls,
-// so it runs on the artwork worker thread. Honors the artwork cancel flag.
-bool system_tray_resolve_itunes_art(const char *artist, const char *album,
-                                    const char *track, const char *out_path) {
-    if (!track || track[0] == '\0' || !out_path) {
+// Resolve iTunes artwork for the track into out_path ({md5}.png): the search,
+// then the image download. Honors the artwork cancel flag.
+static bool resolve_itunes_art(const struct tray_art_request *request, const char *out_path) {
+    if (!request->track || request->track[0] == '\0') {
         return false;
     }
 
     log_info("Trying iTunes Search API...");
-    char *itunes_url = itunes_search_artwork(artist, album, track);
+    char *itunes_url = itunes_search_artwork(request->artist, request->album, request->track);
     if (!itunes_url) {
         log_info("iTunes Search API did not return artwork");
         return false;
     }
 
-    bool ok = system_tray_render_art_to_cache(itunes_url, out_path);
+    bool ok = render_art_to_cache(itunes_url, out_path);
     free(itunes_url);
     return ok;
 }
 
-// Main-thread: point the tray at a resolved cache PNG and record it as current.
-void system_tray_apply_cached_icon(const char *metadata_hash) {
-    if (!set_indicator_icon_cached(metadata_hash)) {
-        return;
+bool system_tray_resolve_art(const struct tray_art_request *request, bool use_itunes,
+                             const char *out_path, bool *from_art_url) {
+    *from_art_url = false;
+    if (!out_path || out_path[0] == '\0') {
+        return false;
     }
-    snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
 
-    // Mirror the applied art into the shared scratch PNG (album-art.png) so the
-    // desktop-notification badge — which is built from g_icon_path — shows the
-    // same image. set_indicator_icon_cached only points the tray at {md5}.png;
-    // the fast local sources already write g_icon_path, but the async iTunes
-    // worker wrote only the cache file, leaving the notification icon blank.
-    char cache_path[512];
-    if (build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
-        return;
+    // Priority order: MPRIS art URL → local file embedded cover → local video
+    // thumbnail → iTunes. The two ffmpeg-based local steps come before iTunes
+    // so a local track whose player omits mpris:artUrl still resolves offline.
+    if (request->art_url && request->art_url[0] != '\0') {
+        log_info("Using MPRIS album art: %s", request->art_url);
+        if (render_art_to_cache(request->art_url, out_path)) {
+            *from_art_url = true;
+            return true;
+        }
     }
+    if (!art_cancel_requested() &&
+        try_local_media_art(request->file_url, request->length_us, out_path)) {
+        return true;
+    }
+    if (art_cancel_requested() || !use_itunes) {
+        return false;
+    }
+    return resolve_itunes_art(request, out_path);
+}
+
+bool system_tray_apply_cached_icon(const char *metadata_hash, const char *art_url) {
+    char cache_path[512];
+    if (!metadata_hash || metadata_hash[0] == '\0' ||
+        build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
+        return false;
+    }
+
+    // Decode before pointing the tray at it: a damaged cache file must fall
+    // through to the other sources instead of becoming a blank icon.
     GError *error = NULL;
     GdkPixbuf *art = gdk_pixbuf_new_from_file(cache_path, &error);
     if (!art) {
+        log_warn("Failed to load cached album art: %s", error ? error->message : "unknown error");
         if (error) g_error_free(error);
-        return;
+        return false;
     }
+
+    set_indicator_icon_cached(metadata_hash, cache_path);
+    snprintf(last_metadata_hash, sizeof(last_metadata_hash), "%s", metadata_hash);
+
+    if (art_url) {
+        free(last_art_url);
+        last_art_url = strdup(art_url);
+        snprintf(last_art_url_hash, sizeof(last_art_url_hash), "%s", metadata_hash);
+    }
+
+    // Mirror the applied art into the shared scratch PNG (album-art.png) so the
+    // desktop-notification badge — which is built from g_icon_path — shows the
+    // same image; set_indicator_icon_cached only points the tray at {md5}.png.
     // error is NULL here (the load above succeeded); reuse it for the save.
     // A failed mirror is non-fatal — the tray icon is already set above; this
     // only keeps the notification badge in sync — so warn and continue.
@@ -1384,64 +1315,87 @@ void system_tray_apply_cached_icon(const char *metadata_hash) {
         if (error) g_error_free(error);
     }
     g_object_unref(art);
+    return true;
+}
+
+// A player that reports one art URL for a whole album would otherwise have the
+// same image downloaded again for every track. When art_url is the one the
+// last download was for, copy that track's cache file to cache_path instead.
+static bool reuse_art_from_same_url(const char *art_url, const char *cache_path) {
+    if (!art_url || art_url[0] == '\0' || !last_art_url ||
+        last_art_url_hash[0] == '\0' || strcmp(last_art_url, art_url) != 0) {
+        return false;
+    }
+
+    char previous_path[512];
+    if (build_album_art_cache_path(previous_path, sizeof(previous_path), last_art_url_hash) <= 0) {
+        return false;
+    }
+    GdkPixbuf *previous = gdk_pixbuf_new_from_file(previous_path, NULL);
+    if (!previous) {
+        return false;  // cleaned up or purged since; download it again
+    }
+
+    bool copied = save_png_private(previous, cache_path, NULL);
+    g_object_unref(previous);
+    if (copied) {
+        log_info("Same art URL as the last download, reusing its artwork");
+    }
+    return copied;
 }
 
 enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request *request,
                                                   char *md5_out, size_t md5_sz,
                                                   char *cache_out, size_t cache_sz) {
-    const char *art_url = request->art_url;
-    const char *file_url = request->file_url;
-    const char *artist = request->artist;
-    const char *album = request->album;
-    const char *track = request->track;
-    const int64_t length_us = request->length_us;
-
     if (md5_out && md5_sz) md5_out[0] = '\0';
     if (cache_out && cache_sz) cache_out[0] = '\0';
 
-    // Calculate metadata hash for caching (using artist + track + album)
+    // Metadata hash (artist + track + album): the cache key and the icon name
     char metadata_hash[MD5_DIGEST_STRING_LENGTH];
-    if (!calculate_metadata_md5(artist, track, album, metadata_hash)) {
+    char cache_path[512];
+    if (!calculate_metadata_md5(request->artist, request->track, request->album, metadata_hash) ||
+        build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
         log_error("Failed to calculate metadata hash");
-        metadata_hash[0] = '\0';
+        system_tray_reset_icon();
+        return TRAY_ART_NONE;
     }
 
     // Check if we already loaded this artwork (same metadata hash)
-    if (metadata_hash[0] != '\0' && strcmp(last_metadata_hash, metadata_hash) == 0) {
+    if (strcmp(last_metadata_hash, metadata_hash) == 0) {
         log_info("Same metadata hash, skipping artwork update");
         return TRAY_ART_APPLIED;
     }
 
     ensure_cache_directories();
 
-    char cache_path[512];
-    if (metadata_hash[0] == '\0' || build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
-        cache_path[0] = '\0';  // No cache path available
+    // Only what cannot block runs here: the per-track cache, and a copy of the
+    // previous track's cache when the art URL is unchanged.
+    struct stat st;
+    if (stat(cache_path, &st) == 0) {
+        touch_cache_file(cache_path);  // keeps it out of the automatic cleanup
+        if (system_tray_apply_cached_icon(metadata_hash, NULL)) {
+            log_success("Loaded album art from cache: %s", sanitize_path(cache_path));
+            return TRAY_ART_APPLIED;
+        }
     }
-
-    // Try only the FAST sources (no network) in priority order — local cache →
-    // MPRIS art URL → local file embedded cover → local video thumbnail. The two
-    // ffmpeg-based local steps still resolve offline for local tracks whose
-    // player omits mpris:artUrl. iTunes (network) is deferred to a worker below.
-    if ((cache_path[0] != '\0' && load_cached_album_art(cache_path, metadata_hash)) ||
-        try_mpris_artwork(art_url, cache_path, metadata_hash) ||
-        try_local_embedded_artwork(file_url, cache_path, metadata_hash) ||
-        try_local_video_thumbnail(file_url, length_us, cache_path, metadata_hash)) {
-        set_indicator_icon_cached(metadata_hash);
+    if (reuse_art_from_same_url(request->art_url, cache_path) &&
+        system_tray_apply_cached_icon(metadata_hash, request->art_url)) {
         return TRAY_ART_APPLIED;
     }
 
-    // Fast sources missed. If iTunes is enabled, hand the deterministic md5/cache
-    // path back so the caller can resolve it off the main thread. Leave the
-    // current icon and last_metadata_hash untouched until the worker lands.
-    if (g_config.lyrics.enable_itunes && track && track[0] != '\0' &&
-        metadata_hash[0] != '\0' && cache_path[0] != '\0') {
+    // Everything else downloads or runs ffmpeg, so it belongs to the worker.
+    // Leave the current icon and last_metadata_hash untouched until it lands.
+    const bool has_art_url = request->art_url && request->art_url[0] != '\0';
+    const bool has_local_media = request->file_url && strncmp(request->file_url, "file://", 7) == 0;
+    const bool can_use_itunes = g_config.lyrics.enable_itunes &&
+                                request->track && request->track[0] != '\0';
+    if (has_art_url || has_local_media || can_use_itunes) {
         if (md5_out) snprintf(md5_out, md5_sz, "%s", metadata_hash);
         if (cache_out) snprintf(cache_out, cache_sz, "%s", cache_path);
-        return TRAY_ART_NEED_ITUNES;
+        return TRAY_ART_NEED_WORKER;
     }
 
-    // No artwork available and no online source - reset to default icon
+    // No source to try - reset to default icon
     if (!g_config.lyrics.enable_itunes) {
         log_info("iTunes API disabled in config");
     }

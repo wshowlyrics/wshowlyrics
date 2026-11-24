@@ -87,22 +87,27 @@ struct async_lyrics_fetch {
     struct track_metadata track;  // deep-copied track snapshot the worker fetches for
 };
 
-// Async album-art fetch — the iTunes step (network) of the tray artwork fallback
-// runs on a worker thread that resolves the art into {md5}.png. The fast local
-// sources stay on the main thread; only iTunes is offloaded. The main thread
-// applies the resulting icon (GTK is not thread-safe) and sends the track
-// notification once the art lands (or fails).
+// Async album-art fetch — every step of the tray artwork fallback that can
+// block (art URL download, ffmpeg extraction, iTunes) runs on a worker thread
+// that resolves the art into {md5}.png. Only the cache lookup stays on the main
+// thread. The main thread applies the resulting icon (GTK is not thread-safe)
+// and sends the track notification once the art lands (or fails).
 struct async_art_fetch {
     pthread_t thread;
     _Atomic bool thread_active;
     _Atomic bool ready;
     _Atomic bool should_cancel;
     _Atomic bool found;
+    bool from_art_url;                    // worker outcome: the art is art_url's image
     char md5[MD5_DIGEST_STRING_LENGTH];   // metadata hash / cache icon name
     char cache_path[512];                 // {album_art_dir}/{md5}.png to write
-    char *artist;                         // strdup'd iTunes search inputs
+    char *art_url;                        // strdup'd inputs (see struct tray_art_request)
+    char *file_url;
+    char *artist;
     char *album;
     char *track;
+    int64_t length_us;
+    bool use_itunes;                      // [lyrics] enable_itunes when the fetch began
     bool notify_pending;                  // send the notification below on completion
     char *notif_title;                    // deferred notification fields (cleaned title)
     char *notif_artist;
@@ -115,7 +120,7 @@ struct playback_state {
     struct lyrics_data lyrics;
     struct track_metadata current_track;
     struct async_lyrics_fetch async_fetch;  // off-main-thread lyrics search
-    struct async_art_fetch async_art;        // off-main-thread iTunes artwork
+    struct async_art_fetch async_art;        // off-main-thread tray artwork
     struct lyrics_line *current_line;
     int current_line_index; // 0-based index of current_line in lyrics.lines (-1 if no current line)
     struct word_segment *current_segment; // For karaoke highlighting (LRCX)

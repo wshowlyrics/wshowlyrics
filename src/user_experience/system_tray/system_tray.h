@@ -27,15 +27,11 @@ void system_tray_set_state(struct lyrics_state *state);
 // Update track info displayed in context menu
 void system_tray_update_track_info(const char *artist, const char *title);
 
-// Update tray icon with album art URL (artUrl from MPRIS)
-// Returns true if icon was updated successfully
-bool system_tray_update_icon(const char *art_url);
-
-// Result of the fast (non-network) artwork resolution.
+// Result of the main-thread (non-blocking) artwork resolution.
 enum tray_art_status {
-    TRAY_ART_APPLIED,      // a fast source hit; the tray icon was set
-    TRAY_ART_NEED_ITUNES,  // fast sources missed; resolve iTunes off-thread
-    TRAY_ART_NONE,         // no source and iTunes disabled; default icon set
+    TRAY_ART_APPLIED,      // the cache had it; the tray icon was set
+    TRAY_ART_NEED_WORKER,  // not cached; resolve it off-thread
+    TRAY_ART_NONE,         // no source to try; default icon set
 };
 
 // What to resolve album art for: where the player says the art and the media
@@ -50,28 +46,30 @@ struct tray_art_request {
     int64_t length_us;     // mpris:length, 0 if unknown (places the video thumbnail)
 };
 
-// Resolve album art from the FAST sources only (cache, MPRIS artUrl, local
-// embedded cover, local video thumbnail) and set the tray icon on success.
-// The iTunes API (network) is NOT tried here — on a miss this returns
-// TRAY_ART_NEED_ITUNES and fills md5_out/cache_out for the caller to resolve on
-// a worker thread (system_tray_resolve_itunes_art) and then apply with
-// system_tray_apply_cached_icon. Main thread only.
+// Resolve album art from what cannot block — the per-track cache, or a copy of
+// the previous track's cache when the art URL is unchanged — and set the tray
+// icon on success. Nothing that downloads or runs ffmpeg is tried here: on a
+// miss this returns TRAY_ART_NEED_WORKER and fills md5_out/cache_out for the
+// caller to resolve on a worker thread (system_tray_resolve_art) and then apply
+// with system_tray_apply_cached_icon. Main thread only.
 enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request *request,
                                                   char *md5_out, size_t md5_sz,
                                                   char *cache_out, size_t cache_sz);
 
-// Worker-safe: resolve iTunes artwork into out_path ({md5}.png). Blocking
-// network, no GTK. Honors the cancel flag set via system_tray_set_art_cancel_flag.
-bool system_tray_resolve_itunes_art(const char *artist, const char *album,
-                                    const char *track, const char *out_path);
+// Worker-safe: resolve artwork into out_path ({md5}.png) from the MPRIS art
+// URL, the local file's embedded cover, a local video frame, then (if
+// use_itunes) the iTunes API. Blocking (network, ffmpeg), no GTK. Honors the
+// cancel flag set via system_tray_set_art_cancel_flag. *from_art_url tells
+// whether the image is the art URL's, for system_tray_apply_cached_icon.
+bool system_tray_resolve_art(const struct tray_art_request *request, bool use_itunes,
+                             const char *out_path, bool *from_art_url);
 
-// Render an image URL to a PNG at out_path (48x48 + circular mask). Worker-safe.
-bool system_tray_render_art_to_cache(const char *art_url, const char *out_path);
+// Main thread: apply a resolved cache PNG ({md5}.png) as the tray icon. Pass
+// the art URL the image was downloaded from (NULL for any other source) so the
+// next track with the same URL reuses it. Returns false if the file is unusable.
+bool system_tray_apply_cached_icon(const char *metadata_hash, const char *art_url);
 
-// Main thread: apply a resolved cache PNG ({md5}.png) as the tray icon.
-void system_tray_apply_cached_icon(const char *metadata_hash);
-
-// Point the artwork worker's in-flight image download at a cancel flag (or NULL).
+// Point the artwork worker's image download and ffmpeg wait at a cancel flag (or NULL).
 void system_tray_set_art_cancel_flag(const _Atomic bool *flag);
 
 // Reset icon to default (called before track change)
