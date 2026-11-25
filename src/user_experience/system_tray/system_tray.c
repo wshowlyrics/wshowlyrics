@@ -1227,34 +1227,87 @@ static bool resolve_itunes_art(const struct tray_art_request *request, const cha
     return ok;
 }
 
-bool system_tray_resolve_art(const struct tray_art_request *request, bool use_itunes,
-                             const char *out_path, bool *from_art_url) {
-    *from_art_url = false;
-    if (!out_path || out_path[0] == '\0') {
-        return false;
+// One album art lookup that has to leave the main thread. system_tray_art_prepare
+// fills it, the worker's system_tray_art_run writes the outcome, and the main
+// thread reads that back in system_tray_art_apply - after joining the worker,
+// so no field is ever touched from two threads at once.
+struct tray_art_job {
+    struct tray_art_request request;        // own copies of the strings
+    char md5[MD5_DIGEST_STRING_LENGTH];     // metadata hash: cache key and icon name
+    char cache_path[512];                   // {album_art_dir}/{md5}.png to write
+    bool use_itunes;                        // [lyrics] enable_itunes when prepared
+    bool found;                             // outcome: cache_path was written
+    bool from_art_url;                      // outcome: it is request.art_url's image
+};
+
+static char *dup_or_null(const char *s) {
+    return s ? strdup(s) : NULL;
+}
+
+static struct tray_art_job *art_job_new(const struct tray_art_request *request,
+                                        const char *md5, const char *cache_path) {
+    struct tray_art_job *job = calloc(1, sizeof(*job));
+    if (!job) {
+        return NULL;
     }
+    job->request.art_url = dup_or_null(request->art_url);
+    job->request.file_url = dup_or_null(request->file_url);
+    job->request.artist = dup_or_null(request->artist);
+    job->request.album = dup_or_null(request->album);
+    job->request.track = dup_or_null(request->track);
+    job->request.length_us = request->length_us;
+    snprintf(job->md5, sizeof(job->md5), "%s", md5);
+    snprintf(job->cache_path, sizeof(job->cache_path), "%s", cache_path);
+    // Copied here so the worker never reads the config the main thread reloads
+    job->use_itunes = g_config.lyrics.enable_itunes;
+    return job;
+}
+
+void system_tray_art_free(struct tray_art_job *job) {
+    if (!job) {
+        return;
+    }
+    free((char *)job->request.art_url);
+    free((char *)job->request.file_url);
+    free((char *)job->request.artist);
+    free((char *)job->request.album);
+    free((char *)job->request.track);
+    free(job);
+}
+
+const struct tray_art_request *system_tray_art_request(const struct tray_art_job *job) {
+    return &job->request;
+}
+
+void system_tray_art_run(struct tray_art_job *job) {
+    const struct tray_art_request *request = &job->request;
 
     // Priority order: MPRIS art URL → local file embedded cover → local video
     // thumbnail → iTunes. The two ffmpeg-based local steps come before iTunes
     // so a local track whose player omits mpris:artUrl still resolves offline.
     if (request->art_url && request->art_url[0] != '\0') {
         log_info("Using MPRIS album art: %s", request->art_url);
-        if (render_art_to_cache(request->art_url, out_path)) {
-            *from_art_url = true;
-            return true;
+        if (render_art_to_cache(request->art_url, job->cache_path)) {
+            job->from_art_url = true;
+            job->found = true;
+            return;
         }
     }
     if (!thread_cancel_requested() &&
-        try_local_media_art(request->file_url, request->length_us, out_path)) {
-        return true;
+        try_local_media_art(request->file_url, request->length_us, job->cache_path)) {
+        job->found = true;
+        return;
     }
-    if (thread_cancel_requested() || !use_itunes) {
-        return false;
+    if (thread_cancel_requested() || !job->use_itunes) {
+        return;
     }
-    return resolve_itunes_art(request, out_path);
+    job->found = resolve_itunes_art(request, job->cache_path);
 }
 
-bool system_tray_apply_cached_icon(const char *metadata_hash, const char *art_url) {
+// Apply a cache PNG ({md5}.png) as the tray icon. Pass the art URL the image
+// was downloaded from (NULL for any other source) so the next track with the
+// same URL reuses it. Returns false if the file is unusable.
+static bool apply_cached_icon(const char *metadata_hash, const char *art_url) {
     char cache_path[512];
     if (!metadata_hash || metadata_hash[0] == '\0' ||
         build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
@@ -1321,12 +1374,7 @@ static bool reuse_art_from_same_url(const char *art_url, const char *cache_path)
     return copied;
 }
 
-enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request *request,
-                                                  char *md5_out, size_t md5_sz,
-                                                  char *cache_out, size_t cache_sz) {
-    if (md5_out && md5_sz) md5_out[0] = '\0';
-    if (cache_out && cache_sz) cache_out[0] = '\0';
-
+struct tray_art_job *system_tray_art_prepare(const struct tray_art_request *request) {
     // Metadata hash (artist + track + album): the cache key and the icon name
     char metadata_hash[MD5_DIGEST_STRING_LENGTH];
     char cache_path[512];
@@ -1334,13 +1382,13 @@ enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request 
         build_album_art_cache_path(cache_path, sizeof(cache_path), metadata_hash) <= 0) {
         log_error("Failed to calculate metadata hash");
         system_tray_reset_icon();
-        return TRAY_ART_NONE;
+        return NULL;
     }
 
     // Check if we already loaded this artwork (same metadata hash)
     if (strcmp(last_metadata_hash, metadata_hash) == 0) {
         log_info("Same metadata hash, skipping artwork update");
-        return TRAY_ART_APPLIED;
+        return NULL;
     }
 
     ensure_cache_directories();
@@ -1350,14 +1398,14 @@ enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request 
     struct stat st;
     if (stat(cache_path, &st) == 0) {
         touch_cache_file(cache_path);  // keeps it out of the automatic cleanup
-        if (system_tray_apply_cached_icon(metadata_hash, NULL)) {
+        if (apply_cached_icon(metadata_hash, NULL)) {
             log_success("Loaded album art from cache: %s", sanitize_path(cache_path));
-            return TRAY_ART_APPLIED;
+            return NULL;
         }
     }
     if (reuse_art_from_same_url(request->art_url, cache_path) &&
-        system_tray_apply_cached_icon(metadata_hash, request->art_url)) {
-        return TRAY_ART_APPLIED;
+        apply_cached_icon(metadata_hash, request->art_url)) {
+        return NULL;
     }
 
     // Everything else downloads or runs ffmpeg, so it belongs to the worker.
@@ -1366,19 +1414,29 @@ enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request 
     const bool has_local_media = request->file_url && strncmp(request->file_url, "file://", 7) == 0;
     const bool can_use_itunes = g_config.lyrics.enable_itunes &&
                                 request->track && request->track[0] != '\0';
-    if (has_art_url || has_local_media || can_use_itunes) {
-        if (md5_out) snprintf(md5_out, md5_sz, "%s", metadata_hash);
-        if (cache_out) snprintf(cache_out, cache_sz, "%s", cache_path);
-        return TRAY_ART_NEED_WORKER;
+    if (!has_art_url && !has_local_media && !can_use_itunes) {
+        if (!g_config.lyrics.enable_itunes) {
+            log_info("iTunes API disabled in config");
+        }
+        log_info("No artwork available from any source, using default icon");
+        system_tray_reset_icon();
+        return NULL;
     }
 
-    // No source to try - reset to default icon
-    if (!g_config.lyrics.enable_itunes) {
-        log_info("iTunes API disabled in config");
+    struct tray_art_job *job = art_job_new(request, metadata_hash, cache_path);
+    if (!job) {
+        log_warn("Out of memory for the artwork lookup, using default icon");
+        system_tray_reset_icon();
     }
-    log_info("No artwork available from any source, using default icon");
-    system_tray_reset_icon();
-    return TRAY_ART_NONE;
+    return job;
+}
+
+void system_tray_art_apply(const struct tray_art_job *job) {
+    // No source had artwork (or its file is unusable) - fall back to the default icon
+    if (!job->found ||
+        !apply_cached_icon(job->md5, job->from_art_url ? job->request.art_url : NULL)) {
+        system_tray_reset_icon();
+    }
 }
 
 void system_tray_update(void) {

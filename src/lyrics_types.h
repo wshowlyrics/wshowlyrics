@@ -94,27 +94,14 @@ struct async_lyrics_fetch {
 // that resolves the art into {md5}.png. Only the cache lookup stays on the main
 // thread. The main thread applies the resulting icon (GTK is not thread-safe)
 // and sends the track notification once the art lands (or fails).
+struct tray_art_job;  // system_tray.h
+
 struct async_art_fetch {
     pthread_t thread;
     _Atomic bool thread_active;
     _Atomic bool ready;
     _Atomic bool should_cancel;
-    _Atomic bool found;
-    bool from_art_url;                    // worker outcome: the art is art_url's image
-    char md5[MD5_DIGEST_STRING_LENGTH];   // metadata hash / cache icon name
-    char cache_path[512];                 // {album_art_dir}/{md5}.png to write
-    char *art_url;                        // strdup'd inputs (see struct tray_art_request)
-    char *file_url;
-    char *artist;
-    char *album;
-    char *track;
-    int64_t length_us;
-    bool use_itunes;                      // [lyrics] enable_itunes when the fetch began
-    bool notify_pending;                  // send the notification below on completion
-    char *notif_title;                    // deferred notification fields (cleaned title)
-    char *notif_artist;
-    char *notif_album;
-    char *notif_player;
+    struct tray_art_job *job;             // what to resolve; owned (system_tray_art_free)
 };
 
 // Playback state - currently playing track, current/prev/next lines, timing

@@ -26,13 +26,6 @@ void system_tray_set_state(struct lyrics_state *state);
 // Update track info displayed in context menu
 void system_tray_update_track_info(const char *artist, const char *title);
 
-// Result of the main-thread (non-blocking) artwork resolution.
-enum tray_art_status {
-    TRAY_ART_APPLIED,      // the cache had it; the tray icon was set
-    TRAY_ART_NEED_WORKER,  // not cached; resolve it off-thread
-    TRAY_ART_NONE,         // no source to try; default icon set
-};
-
 // What to resolve album art for: where the player says the art and the media
 // are, and the metadata the cache key and the iTunes search are built from.
 // Any field may be NULL.
@@ -45,28 +38,31 @@ struct tray_art_request {
     int64_t length_us;     // mpris:length, 0 if unknown (places the video thumbnail)
 };
 
-// Resolve album art from what cannot block — the per-track cache, or a copy of
-// the previous track's cache when the art URL is unchanged — and set the tray
-// icon on success. Nothing that downloads or runs ffmpeg is tried here: on a
-// miss this returns TRAY_ART_NEED_WORKER and fills md5_out/cache_out for the
-// caller to resolve on a worker thread (system_tray_resolve_art) and then apply
-// with system_tray_apply_cached_icon. Main thread only.
-enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request *request,
-                                                  char *md5_out, size_t md5_sz,
-                                                  char *cache_out, size_t cache_sz);
+// One album art lookup that has to leave the main thread (opaque; see below).
+struct tray_art_job;
 
-// Worker-safe: resolve artwork into out_path ({md5}.png) from the MPRIS art
-// URL, the local file's embedded cover, a local video frame, then (if
-// use_itunes) the iTunes API. Blocking (network, ffmpeg), no GTK. Stops early when
-// the calling thread is cancelled (thread_cancel_bind). *from_art_url tells
-// whether the image is the art URL's, for system_tray_apply_cached_icon.
-bool system_tray_resolve_art(const struct tray_art_request *request, bool use_itunes,
-                             const char *out_path, bool *from_art_url);
+// Main thread. Resolve album art from what cannot block - the per-track cache,
+// or a copy of the previous track's cache when the art URL is unchanged - and
+// set the tray icon. Nothing that downloads or runs ffmpeg is tried here: when
+// that is needed, a job is returned for the caller to run on a worker thread
+// and then apply. NULL means the icon is settled (applied, or default).
+struct tray_art_job *system_tray_art_prepare(const struct tray_art_request *request);
 
-// Main thread: apply a resolved cache PNG ({md5}.png) as the tray icon. Pass
-// the art URL the image was downloaded from (NULL for any other source) so the
-// next track with the same URL reuses it. Returns false if the file is unusable.
-bool system_tray_apply_cached_icon(const char *metadata_hash, const char *art_url);
+// Worker thread. Resolve the job's artwork into its cache file from the MPRIS
+// art URL, the local file's embedded cover, a local video frame, then (if
+// enabled) the iTunes API. Blocking (network, ffmpeg), no GTK. Stops early when
+// the calling thread is cancelled (thread_cancel_bind).
+void system_tray_art_run(struct tray_art_job *job);
+
+// Main thread, after the worker is joined. Set the tray icon from what the job
+// found, or the default icon if it found nothing.
+void system_tray_art_apply(const struct tray_art_job *job);
+
+// The request the job was prepared for (the job's own copy; valid until freed).
+const struct tray_art_request *system_tray_art_request(const struct tray_art_job *job);
+
+// Free a job, applied or not. NULL is allowed.
+void system_tray_art_free(struct tray_art_job *job);
 
 // Reset icon to default (called before track change)
 void system_tray_reset_icon(void);
