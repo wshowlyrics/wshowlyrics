@@ -555,16 +555,19 @@ static const char* extract_and_validate_player_name(const char *well_known_name)
     return player_name;
 }
 
+// Helper: Is the current player paused or stopped (so another may take over)?
+static bool current_player_is_idle(void) {
+    g_mutex_lock(&mpris_state.mutex);
+    bool idle = mpris_state.playback_status &&
+                (strcmp(mpris_state.playback_status, "Paused") == 0 ||
+                 strcmp(mpris_state.playback_status, "Stopped") == 0);
+    g_mutex_unlock(&mpris_state.mutex);
+    return idle;
+}
+
 // Helper: Handle case when a different player started playing
 static void handle_player_started_playing(const char *player_name) {
-    // Check if current player is paused
-    g_mutex_lock(&mpris_state.mutex);
-    bool current_is_paused = mpris_state.playback_status &&
-                            (strcmp(mpris_state.playback_status, "Paused") == 0 ||
-                             strcmp(mpris_state.playback_status, "Stopped") == 0);
-    g_mutex_unlock(&mpris_state.mutex);
-
-    if (!current_is_paused) {
+    if (!current_player_is_idle()) {
         return;
     }
 
@@ -782,6 +785,13 @@ static void handle_player_appeared(const char *player_name, const char *new_owne
     if (should_switch_to_player(player_name)) {
         char *new_player = strdup(player_name);
         setup_player_subscription(new_player);
+    } else if (current_player_is_idle() && is_player_playing(player_name)) {
+        // A player that registers while already playing (a bridge reconnecting,
+        // a player re-registering mid-track) never sends the PlaybackStatus
+        // change the other switch paths wait for, so treat its appearance as
+        // that change. The cached state is checked first: asking the new player
+        // is a blocking D-Bus call, wasted while the current one is playing.
+        handle_player_started_playing(player_name);
     }
 }
 
