@@ -1,9 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "curl_utils.h"
 #include "../../constants.h"
+#include "../thread/thread_cancel.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// curl runs this on the thread that performs the transfer, so it sees that
+// thread's flag. Non-zero aborts the transfer (CURLE_ABORTED_BY_CALLBACK).
+static int thread_cancel_xferinfo_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
+                                     curl_off_t ultotal, curl_off_t ulnow) {
+    (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
+    return thread_cancel_requested() ? 1 : 0;
+}
+
+bool curl_install_thread_cancel(CURL *curl) {
+    return curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, thread_cancel_xferinfo_cb) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) == CURLE_OK;
+}
 
 void curl_memory_buffer_init(struct curl_memory_buffer *buffer) {
     buffer->data = NULL;

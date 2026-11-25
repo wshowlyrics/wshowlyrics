@@ -6,7 +6,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <curl/curl.h>
-#include <stdatomic.h>
 
 // Limits for one translation request. Thinking models can take tens of seconds
 // to answer a line, so the total is generous; the connect phase is not.
@@ -111,26 +110,6 @@ bool translator_should_translate(struct lyrics_data *data);
  */
 bool translator_should_skip_translation(const char *stripped_text, const char *target_lang,
                                          char **out_translation);
-
-/**
- * Point the translation thread's waits and transfers at a cancel flag (or NULL
- * to clear). The worker sets it to its lyrics' translation_should_cancel; while
- * the flag is true, translator_sleep_cancellable() returns early and the curl
- * progress callback aborts the request. One translation thread runs at a time.
- *
- * @param flag Cancel flag to watch, or NULL
- */
-void translator_set_cancel_flag(const _Atomic bool *flag);
-
-/**
- * Sleep for delay_ms, waking early if cancellation is requested. Used for the
- * rate limit between requests and for the backoff before a retry, so a track
- * change never has to wait out the whole delay.
- *
- * @param delay_ms Delay in milliseconds
- * @return true if the full delay elapsed, false if cancelled
- */
-bool translator_sleep_cancellable(int delay_ms);
 
 /**
  * Check if translation will complete enough lines to be cached.

@@ -309,6 +309,15 @@ if (data->translation_thread_active) {
 }
 ```
 
+### Worker Threads Bind Their Cancel Flag
+
+The three workers (lyrics fetch and artwork in `lyrics_manager.c`, translation in `translator_common.c`) call `thread_cancel_bind(&should_cancel)` once on entry (`src/utils/thread/thread_cancel.h`). The flag is thread-local, so there is nothing to clear and no setter to pair up on the main thread, which only sets the flag and joins. Anything that can block on a worker must watch it:
+
+- a curl transfer: `curl_install_thread_cancel(curl)` in its `curl_easy_setopt` chain;
+- a wait or poll loop: `thread_cancel_requested()` (the ffmpeg wait, `translator_sleep_cancellable`).
+
+A new worker thread that skips the bind is simply never cancelled - no error.
+
 ### Unicode Paths from MPRIS
 
 MPRIS gives `file:///` URIs with percent-encoding. Always URL-decode before opening (`extract_directory_from_url` and friends).

@@ -6,6 +6,8 @@
 #include "../../utils/lang_detect/lang_detect.h"
 #include "../../utils/render/render_common.h"
 #include "../../utils/file/file_utils.h"
+#include "../../utils/curl/curl_utils.h"
+#include "../../utils/thread/thread_cancel.h"
 #include "../../user_experience/config/config.h"
 #include <curl/curl.h>
 #include <pthread.h>
@@ -430,23 +432,6 @@ static const char* find_reusable_translation(const struct lyrics_data *data,
     return NULL;
 }
 
-// Cooperative cancellation for the translation thread. The worker points this
-// at its lyrics' translation_should_cancel; the waits below and the curl
-// progress callback watch it, so cancelling does not have to wait out a rate
-// limit delay, a retry backoff or a stalled request. Same pattern as
-// lrclib_set_cancel_flag(): one translation thread runs at a time.
-static _Atomic(const _Atomic bool *) g_translator_cancel_flag = NULL;
-
-void translator_set_cancel_flag(const _Atomic bool *flag) {
-    atomic_store(&g_translator_cancel_flag, flag);
-}
-
-// Whether the translation thread has been asked to stop
-static bool translator_cancel_requested(void) {
-    const _Atomic bool *flag = atomic_load(&g_translator_cancel_flag);
-    return flag && atomic_load(flag);
-}
-
 // Set when the API answers that no request with this configuration can succeed
 // (bad key, no permission, quota used up, unknown model), so the worker stops
 // instead of sending the same doomed request for every remaining line. Written and read on the
@@ -456,10 +441,14 @@ static atomic_bool g_translator_config_rejected = false;
 // Longest stretch slept without checking for cancellation
 #define TRANSLATOR_SLEEP_SLICE_MS 50
 
-bool translator_sleep_cancellable(int delay_ms) {
+// Sleep for delay_ms, waking early if the thread is cancelled. Used for the
+// rate limit between requests and for the backoff before a retry, so a track
+// change never has to wait out the whole delay. Returns true if the full delay
+// elapsed, false if cancelled.
+static bool translator_sleep_cancellable(int delay_ms) {
     int remaining_ms = delay_ms;
     while (remaining_ms > 0) {
-        if (translator_cancel_requested()) {
+        if (thread_cancel_requested()) {
             return false;
         }
         const int slice_ms = remaining_ms < TRANSLATOR_SLEEP_SLICE_MS
@@ -471,15 +460,7 @@ bool translator_sleep_cancellable(int delay_ms) {
         nanosleep(&delay, NULL);
         remaining_ms -= slice_ms;
     }
-    return !translator_cancel_requested();
-}
-
-// curl CURLOPT_XFERINFOFUNCTION callback: aborts the transfer on cancellation.
-// Set together with CURLOPT_NOPROGRESS = 0.
-static int translator_curl_cancel_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
-                                     curl_off_t ultotal, curl_off_t ulnow) {
-    (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
-    return translator_cancel_requested() ? 1 : 0;
+    return !thread_cancel_requested();
 }
 
 void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_ms,
@@ -705,7 +686,7 @@ static bool translator_process_line_translation_ex(struct lyrics_line *line,
     char *translation = args->translate_line_fn(stripped, args->target_lang,
                                                 args->api_key, args->model_name);
     if (!translation &&
-        (translator_cancel_requested() || atomic_load(&g_translator_config_rejected))) {
+        (thread_cancel_requested() || atomic_load(&g_translator_config_rejected))) {
         // The request was cut short by cancellation, or the API rejected the
         // key or model itself: either way the failure says nothing about this line, so
         // do not count it as a failed attempt, and leave it for the next run.
@@ -818,14 +799,13 @@ static void* translator_async_worker(void *arg) {
     }
 
     data->translation_in_progress = true;
-    translator_set_cancel_flag(&data->translation_should_cancel);
+    thread_cancel_bind(&data->translation_should_cancel);
     atomic_store(&g_translator_config_rejected, false);
 
     // Try loading from cache
     int already_translated = 0;
     if (!translator_handle_cache_loading_ex(args, data, translatable_count, &already_translated)) {
         // Translation already complete from cache
-        translator_set_cancel_flag(NULL);
         free(args->target_lang);
         free(args->api_key);
         free(args->model_name);
@@ -872,7 +852,6 @@ static void* translator_async_worker(void *arg) {
     translator_save_to_cache_ex(args->cache_path, data, args->target_lang,
                                   args->provider_name);
 
-    translator_set_cancel_flag(NULL);
     data->translation_in_progress = false;
 
     // Free thread args
@@ -950,8 +929,7 @@ static struct curl_slist* setup_translator_curl_request(CURL *curl,
         curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, TRANSLATOR_REQUEST_TIMEOUT_SEC) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, TRANSLATOR_CONNECT_TIMEOUT_SEC) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, translator_curl_cancel_cb) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) != CURLE_OK ||
+        !curl_install_thread_cancel(curl) ||
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK) {
         log_error("%s: Failed to set CURL options", params->provider_name);
         return NULL;

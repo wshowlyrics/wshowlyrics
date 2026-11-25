@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
-#include <stdatomic.h>
 
 // Forward declaration
 struct lyrics_state;
@@ -58,8 +57,8 @@ enum tray_art_status system_tray_update_icon_fast(const struct tray_art_request 
 
 // Worker-safe: resolve artwork into out_path ({md5}.png) from the MPRIS art
 // URL, the local file's embedded cover, a local video frame, then (if
-// use_itunes) the iTunes API. Blocking (network, ffmpeg), no GTK. Honors the
-// cancel flag set via system_tray_set_art_cancel_flag. *from_art_url tells
+// use_itunes) the iTunes API. Blocking (network, ffmpeg), no GTK. Stops early when
+// the calling thread is cancelled (thread_cancel_bind). *from_art_url tells
 // whether the image is the art URL's, for system_tray_apply_cached_icon.
 bool system_tray_resolve_art(const struct tray_art_request *request, bool use_itunes,
                              const char *out_path, bool *from_art_url);
@@ -68,9 +67,6 @@ bool system_tray_resolve_art(const struct tray_art_request *request, bool use_it
 // the art URL the image was downloaded from (NULL for any other source) so the
 // next track with the same URL reuses it. Returns false if the file is unusable.
 bool system_tray_apply_cached_icon(const char *metadata_hash, const char *art_url);
-
-// Point the artwork worker's image download and ffmpeg wait at a cancel flag (or NULL).
-void system_tray_set_art_cancel_flag(const _Atomic bool *flag);
 
 // Reset icon to default (called before track change)
 void system_tray_reset_icon(void);

@@ -9,23 +9,6 @@
 #include <string.h>
 #include <strings.h>
 #include <curl/curl.h>
-#include <stdatomic.h>
-
-// Cooperative cancellation for the async artwork worker (iTunes search request).
-// Set by the worker to its should_cancel flag; the progress callback aborts the
-// in-flight search when the flag is set, so a track skip need not wait the timeout.
-static _Atomic(const _Atomic bool *) g_itunes_cancel_flag = NULL;
-
-void itunes_set_cancel_flag(const _Atomic bool *flag) {
-    atomic_store(&g_itunes_cancel_flag, flag);
-}
-
-static int itunes_progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
-                              curl_off_t ultotal, curl_off_t ulnow) {
-    (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
-    const _Atomic bool *flag = atomic_load(&g_itunes_cancel_flag);
-    return (flag && atomic_load(flag)) ? 1 : 0;
-}
 
 // Helper: Build search term with available metadata
 static void build_search_term_with_metadata(char *buffer, size_t buffer_size,
@@ -58,8 +41,7 @@ static bool setup_itunes_request(CURL *curl, const char *url,
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, itunes_progress_cb) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) != CURLE_OK ||
+        !curl_install_thread_cancel(curl) ||
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
         log_error("iTunes: Failed to set CURL options");
         return false;

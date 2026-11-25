@@ -5,12 +5,11 @@
 #include "../core/rendering/rendering_manager.h"
 #include "../utils/mpris/mpris.h"
 #include "../provider/lyrics/lyrics_provider.h"
-#include "../provider/lrclib/lrclib_provider.h"
-#include "../provider/itunes/itunes_artwork.h"
 #include "../translator/common/translator_common.h"
 #include "../user_experience/system_tray/system_tray.h"
 #include "../parser/lrc/lrc_common.h"
 #include "../utils/file/file_utils.h"
+#include "../utils/thread/thread_cancel.h"
 #include "../parser/lrc/lrcx_parser.h"
 #include <strings.h>
 #include <string.h>
@@ -63,8 +62,8 @@ static void cancel_and_wait_translation(struct lyrics_data *lyrics) {
     // can leave their internal locks held and stall the next request, and it
     // skips the thread's own cleanup and cache save. Its waits and requests all
     // watch the cancel flag and are bounded by timeouts (see
-    // translator_sleep_cancellable / translator_curl_cancel_cb), so it exits on
-    // its own; a slow exit is reported instead of papered over.
+    // translator_sleep_cancellable / curl_install_thread_cancel), so it exits
+    // on its own; a slow exit is reported instead of papered over.
     struct timespec start;
     struct timespec end;
     clock_gettime(CLOCK_MONOTONIC, &start);
@@ -78,9 +77,6 @@ static void cancel_and_wait_translation(struct lyrics_data *lyrics) {
     }
 
     lyrics->translation_thread_active = false;
-    // Normally cleared by the thread itself; the flag lives in the lyrics that
-    // are about to be freed, so make sure nothing still points at it.
-    translator_set_cancel_flag(NULL);
 }
 
 // Stop everything still running in the background for the current track: the
@@ -277,8 +273,7 @@ static void *art_fetch_worker(void *arg) {
     struct lyrics_state *state = arg;
     struct async_art_fetch *af = &state->playback.async_art;
 
-    itunes_set_cancel_flag(&af->should_cancel);
-    system_tray_set_art_cancel_flag(&af->should_cancel);
+    thread_cancel_bind(&af->should_cancel);
     const struct tray_art_request request = {
         .art_url = af->art_url,
         .file_url = af->file_url,
@@ -289,8 +284,6 @@ static void *art_fetch_worker(void *arg) {
     };
     af->found = system_tray_resolve_art(&request, af->use_itunes, af->cache_path,
                                         &af->from_art_url);
-    itunes_set_cancel_flag(NULL);
-    system_tray_set_art_cancel_flag(NULL);
 
     atomic_store(&af->ready, true);
     return NULL;
@@ -456,7 +449,6 @@ void lyrics_manager_cancel_fetch(struct lyrics_state *state) {
     fetch->thread_active = false;
     fetch->in_progress = false;
     fetch->ready = false;
-    lrclib_set_cancel_flag(NULL);
 
     lrc_free_data(&fetch->result);
     memset(&fetch->result, 0, sizeof(fetch->result));
@@ -471,9 +463,8 @@ static void *lyrics_fetch_worker(void *arg) {
     struct lyrics_state *state = arg;
     struct async_lyrics_fetch *fetch = &state->playback.async_fetch;
 
-    lrclib_set_cancel_flag(&fetch->should_cancel);
+    thread_cancel_bind(&fetch->should_cancel);
     fetch->found = lyrics_find_for_track(&fetch->track, &fetch->result);
-    lrclib_set_cancel_flag(NULL);
 
     fetch->in_progress = false;
     atomic_store(&fetch->ready, true);
@@ -539,7 +530,6 @@ void lyrics_manager_poll_load(struct lyrics_state *state) {
     pthread_join(fetch->thread, NULL);
     fetch->thread_active = false;
     fetch->ready = false;
-    lrclib_set_cancel_flag(NULL);
 
     bool found = fetch->found;
     mpris_free_metadata(&fetch->track);
@@ -569,8 +559,6 @@ void lyrics_manager_cancel_art_fetch(struct lyrics_state *state) {
     pthread_join(af->thread, NULL);
     af->thread_active = false;
     af->ready = false;
-    itunes_set_cancel_flag(NULL);
-    system_tray_set_art_cancel_flag(NULL);
     free_art_fetch_inputs(af);
 }
 
@@ -585,8 +573,6 @@ void lyrics_manager_poll_art(struct lyrics_state *state) {
     pthread_join(af->thread, NULL);
     af->thread_active = false;
     af->ready = false;
-    itunes_set_cancel_flag(NULL);
-    system_tray_set_art_cancel_flag(NULL);
 
     // No source had artwork (or its file is unusable) — fall back to the default icon.
     if (!af->found ||

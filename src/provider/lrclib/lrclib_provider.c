@@ -10,26 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
-#include <stdatomic.h>
-
-// Cooperative cancellation for the async fetch worker. The manager points this
-// at the worker's should_cancel flag before an off-thread search and clears it
-// afterwards; the curl progress callback aborts the in-flight transfer when the
-// flag is set, so a track skip does not have to wait out the full transfer
-// timeout. Only one fetch runs at a time, so a single file-global suffices.
-static _Atomic(const _Atomic bool *) g_lrclib_cancel_flag = NULL;
-
-void lrclib_set_cancel_flag(const _Atomic bool *flag) {
-    atomic_store(&g_lrclib_cancel_flag, flag);
-}
-
-// curl progress callback: returns non-zero to abort the transfer on cancel.
-static int lrclib_progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
-                              curl_off_t ultotal, curl_off_t ulnow) {
-    (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
-    const _Atomic bool *flag = atomic_load(&g_lrclib_cancel_flag);
-    return (flag && atomic_load(flag)) ? 1 : 0;
-}
 
 // Build search request URL with sanitized title and optional artist
 static bool build_search_request_url(CURL *curl, const char *title, const char *artist,
@@ -84,8 +64,7 @@ static bool perform_lrclib_request(CURL *curl, const char *url, struct curl_memo
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, lrclib_progress_cb) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) != CURLE_OK ||
+        !curl_install_thread_cancel(curl) ||
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
         log_error("lrclib: Failed to set CURL options");
         curl_memory_buffer_free(response);
@@ -278,8 +257,7 @@ static bool setup_lrclib_request(CURL *curl, const char *url,
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, lrclib_progress_cb) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) != CURLE_OK ||
+        !curl_install_thread_cancel(curl) ||
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
         log_error("lrclib: Failed to set CURL options");
         return false;

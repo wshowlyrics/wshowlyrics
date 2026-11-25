@@ -3,6 +3,7 @@
 #include "system_tray.h"
 #include "../../main.h"
 #include "../../utils/curl/curl_utils.h"
+#include "../../utils/thread/thread_cancel.h"
 #include "../../utils/runtime/runtime_dir.h"
 #include "../../provider/itunes/itunes_artwork.h"
 #include "../../utils/file/file_utils.h"
@@ -27,7 +28,6 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <curl/curl.h>
 #include <cairo/cairo.h>
-#include <stdatomic.h>
 
 // State
 static AppIndicator *indicator = NULL;
@@ -114,28 +114,6 @@ static size_t artwork_write_capped(void *contents, size_t size, size_t nmemb, vo
     return curl_write_to_memory(contents, size, nmemb, userp);
 }
 
-// Cooperative cancellation for the async artwork worker (image download, ffmpeg).
-// The worker points this at its should_cancel flag; the curl progress callback
-// aborts the transfer and the ffmpeg wait kills the child when set, so a track
-// skip need not wait out the timeout.
-static _Atomic(const _Atomic bool *) g_art_cancel_flag = NULL;
-
-void system_tray_set_art_cancel_flag(const _Atomic bool *flag) {
-    atomic_store(&g_art_cancel_flag, flag);
-}
-
-// Whether the artwork worker has been asked to stop (track changed, shutdown).
-static bool art_cancel_requested(void) {
-    const _Atomic bool *flag = atomic_load(&g_art_cancel_flag);
-    return flag && atomic_load(flag);
-}
-
-static int art_download_progress_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
-                                    curl_off_t ultotal, curl_off_t ulnow) {
-    (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
-    return art_cancel_requested() ? 1 : 0;
-}
-
 // Download image from URL to memory
 static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
     CURL *curl = curl_easy_init();
@@ -160,8 +138,7 @@ static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, art_download_progress_cb) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) != CURLE_OK) {
+        !curl_install_thread_cancel(curl)) {
         log_error("system_tray: Failed to set CURL options");
         curl_memory_buffer_free(buffer);
         curl_easy_cleanup(curl);
@@ -1049,7 +1026,7 @@ static bool wait_ffmpeg(GPid pid, int *wait_status) {
     const struct timespec slice = { .tv_sec = 0, .tv_nsec = FFMPEG_POLL_MS * 1000000L };
     int waited_ms = 0;
     pid_t reaped = waitpid(pid, wait_status, WNOHANG);
-    while (reaped == 0 && waited_ms < FFMPEG_TIMEOUT_MS && !art_cancel_requested()) {
+    while (reaped == 0 && waited_ms < FFMPEG_TIMEOUT_MS && !thread_cancel_requested()) {
         nanosleep(&slice, NULL);
         waited_ms += FFMPEG_POLL_MS;
         reaped = waitpid(pid, wait_status, WNOHANG);
@@ -1267,11 +1244,11 @@ bool system_tray_resolve_art(const struct tray_art_request *request, bool use_it
             return true;
         }
     }
-    if (!art_cancel_requested() &&
+    if (!thread_cancel_requested() &&
         try_local_media_art(request->file_url, request->length_us, out_path)) {
         return true;
     }
-    if (art_cancel_requested() || !use_itunes) {
+    if (thread_cancel_requested() || !use_itunes) {
         return false;
     }
     return resolve_itunes_art(request, out_path);
