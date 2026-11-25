@@ -447,6 +447,12 @@ static bool translator_cancel_requested(void) {
     return flag && atomic_load(flag);
 }
 
+// Set when the API answers that no request with this configuration can succeed
+// (bad key, no permission, quota used up, unknown model), so the worker stops
+// instead of sending the same doomed request for every remaining line. Written and read on the
+// translation thread only; atomic because that thread changes per track.
+static atomic_bool g_translator_config_rejected = false;
+
 // Longest stretch slept without checking for cancellation
 #define TRANSLATOR_SLEEP_SLICE_MS 50
 
@@ -698,11 +704,13 @@ static bool translator_process_line_translation_ex(struct lyrics_line *line,
     *api_called = true;
     char *translation = args->translate_line_fn(stripped, args->target_lang,
                                                 args->api_key, args->model_name);
-    if (!translation && translator_cancel_requested()) {
-        // The request was cut short by cancellation, so its failure says
-        // nothing about this line: do not count it as a failed attempt, and
-        // leave it for the next run. (A request that still came back with a
-        // translation is kept below - it is already paid for.)
+    if (!translation &&
+        (translator_cancel_requested() || atomic_load(&g_translator_config_rejected))) {
+        // The request was cut short by cancellation, or the API rejected the
+        // key or model itself: either way the failure says nothing about this line, so
+        // do not count it as a failed attempt, and leave it for the next run.
+        // (A request that still came back with a translation is kept below -
+        // it is already paid for.)
         free(stripped);
         (*current)--;
         data->translation_current = *current;
@@ -811,6 +819,7 @@ static void* translator_async_worker(void *arg) {
 
     data->translation_in_progress = true;
     translator_set_cancel_flag(&data->translation_should_cancel);
+    atomic_store(&g_translator_config_rejected, false);
 
     // Try loading from cache
     int already_translated = 0;
@@ -834,24 +843,27 @@ static void* translator_async_worker(void *arg) {
     // Translate each line
     struct lyrics_line *line = data->lines;
     int current = already_translated;
-    bool cancelled = false;
-    while (line && !cancelled) {
+    bool stopped = false;
+    while (line && !stopped) {
         bool api_called = false;
-        cancelled = !translator_process_line_translation_ex(line, args, data, &current,
-                                                            translatable_count, &api_called);
+        stopped = !translator_process_line_translation_ex(line, args, data, &current,
+                                                          translatable_count, &api_called);
 
         // Rate limiting - only after a real request. Empty, cached, reused and
         // already-in-target-language lines cost nothing to wait for (#14).
         // The wait itself can be cut short by a cancel.
-        if (!cancelled && api_called && line->next) {
+        if (!stopped && api_called && line->next) {
             const struct config *cfg = config_get();
-            cancelled = !translator_sleep_cancellable(cfg->translation.rate_limit_ms);
+            stopped = !translator_sleep_cancellable(cfg->translation.rate_limit_ms);
         }
 
         line = line->next;
     }
 
-    if (cancelled) {
+    if (atomic_load(&g_translator_config_rejected)) {
+        log_error("%s: Translation stopped, the API rejected the key or model (%d/%d completed)",
+                  args->provider_name, current, translatable_count);
+    } else if (stopped) {
         log_info("%s: Translation cancelled (%d/%d completed)",
                  args->provider_name, current, translatable_count);
     }
@@ -960,6 +972,22 @@ static struct curl_slist* setup_translator_curl_request(CURL *curl,
     return headers;
 }
 
+// Helper: Name the HTTP errors that mean the configured key or model is
+// rejected, not this one request. Returns NULL for any other code.
+static const char* config_rejection_reason(long http_code) {
+    switch (http_code) {
+        case 401:
+        case 403:
+            return "Authentication error";
+        case 404:
+            return "Unknown model or endpoint";
+        case 456:  // DeepL
+            return "Quota exceeded";
+        default:
+            return NULL;
+    }
+}
+
 // Helper: Handle HTTP response and determine retry behavior
 // Returns: response data (ownership transferred), or NULL to retry/fail
 // Sets should_retry: true to retry, false to abort
@@ -976,22 +1004,28 @@ static char* handle_translator_http_response(long http_code,
         return data;
     }
 
-    if (http_code == 401 || http_code == 403) {
-        // Authentication/permission error - don't retry
-        log_error("%s: Authentication error (HTTP %ld)", params->provider_name, http_code);
+    const char *rejection = config_rejection_reason(http_code);
+    if (rejection) {
+        // Holds for every other line too, so the worker stops as well
+        log_error("%s: %s (HTTP %ld): %.200s", params->provider_name, rejection, http_code,
+                  response->data ? response->data : "");
+        atomic_store(&g_translator_config_rejected, true);
         return NULL;
     }
 
-    if (http_code == 456) {
-        // DeepL: the key's character quota is used up - waiting does not help
-        log_error("%s: Quota exceeded (HTTP %ld)", params->provider_name, http_code);
+    const bool retryable = http_code == 429 || http_code >= 500;
+    if (!retryable) {
+        // Any other client error (bad request, body too large)
+        // comes back the same however often it is sent
+        log_error("%s: HTTP error %ld, not retried: %.200s", params->provider_name, http_code,
+                  response->data ? response->data : "");
         return NULL;
     }
 
-    // Temporary error - determine retry delay
+    // Rate limit (429) or server error (5xx) - determine retry delay
     int retry_delay_ms = translator_parse_retry_delay(response->data);
     if (retry_delay_ms == 0) {
-        retry_delay_ms = 5000 * attempt; // Exponential backoff
+        retry_delay_ms = 5000 * attempt; // Linear backoff: 5 s, 10 s, ...
     }
 
     log_warn("%s: HTTP error %ld, retrying in %dms (attempt %d/%d)",
