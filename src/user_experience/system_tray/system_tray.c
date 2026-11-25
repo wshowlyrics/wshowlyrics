@@ -1077,8 +1077,10 @@ static bool wait_ffmpeg(GPid pid, int *wait_status) {
 // decode path. g_spawn_async runs ffmpeg with no shell interpretation so the
 // resolved path can never be reinterpreted as arguments. ffmpeg exits non-zero
 // when the requested stream is absent; it can also exit zero yet write nothing
-// (e.g. a seek past end-of-file), so the output file is stat-checked explicitly
-// rather than trusting the exit code alone.
+// (e.g. a seek past end-of-file), so the exit code alone is not trusted: the
+// decode path resolves the output, requires a regular file and reads it once,
+// and fails on a missing or empty one. No stat() here - a separate check
+// before that read would only be a check-then-use race (Coverity CID 1709922).
 static enum ffmpeg_result run_ffmpeg_extract(char **argv, const char *out_path,
                                              const char *cache_path) {
     unlink(out_path);
@@ -1102,9 +1104,7 @@ static enum ffmpeg_result run_ffmpeg_extract(char **argv, const char *out_path,
     g_spawn_close_pid(pid);
 
     enum ffmpeg_result result = exited ? FFMPEG_NO_OUTPUT : FFMPEG_STOPPED;
-    struct stat st;
-    if (exited && WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0 &&
-        stat(out_path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0) {
+    if (exited && WIFEXITED(wait_status) && WEXITSTATUS(wait_status) == 0) {
         char out_url[700];
         snprintf(out_url, sizeof(out_url), "file://%s", out_path);
         if (render_art_to_cache(out_url, cache_path)) {
