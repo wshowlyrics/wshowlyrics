@@ -1232,7 +1232,12 @@ static bool resolve_itunes_art(const struct tray_art_request *request, const cha
 // thread reads that back in system_tray_art_apply - after joining the worker,
 // so no field is ever touched from two threads at once.
 struct tray_art_job {
-    struct tray_art_request request;        // own copies of the strings
+    char *art_url;                          // owned copies; request points at them
+    char *file_url;
+    char *artist;
+    char *album;
+    char *track;
+    struct tray_art_request request;        // the lookup, as handed out to callers
     char md5[MD5_DIGEST_STRING_LENGTH];     // metadata hash: cache key and icon name
     char cache_path[512];                   // {album_art_dir}/{md5}.png to write
     bool use_itunes;                        // [lyrics] enable_itunes when prepared
@@ -1250,12 +1255,19 @@ static struct tray_art_job *art_job_new(const struct tray_art_request *request,
     if (!job) {
         return NULL;
     }
-    job->request.art_url = dup_or_null(request->art_url);
-    job->request.file_url = dup_or_null(request->file_url);
-    job->request.artist = dup_or_null(request->artist);
-    job->request.album = dup_or_null(request->album);
-    job->request.track = dup_or_null(request->track);
-    job->request.length_us = request->length_us;
+    job->art_url = dup_or_null(request->art_url);
+    job->file_url = dup_or_null(request->file_url);
+    job->artist = dup_or_null(request->artist);
+    job->album = dup_or_null(request->album);
+    job->track = dup_or_null(request->track);
+    job->request = (struct tray_art_request){
+        .art_url = job->art_url,
+        .file_url = job->file_url,
+        .artist = job->artist,
+        .album = job->album,
+        .track = job->track,
+        .length_us = request->length_us,
+    };
     snprintf(job->md5, sizeof(job->md5), "%s", md5);
     snprintf(job->cache_path, sizeof(job->cache_path), "%s", cache_path);
     // Copied here so the worker never reads the config the main thread reloads
@@ -1267,11 +1279,11 @@ void system_tray_art_free(struct tray_art_job *job) {
     if (!job) {
         return;
     }
-    free((char *)job->request.art_url);
-    free((char *)job->request.file_url);
-    free((char *)job->request.artist);
-    free((char *)job->request.album);
-    free((char *)job->request.track);
+    free(job->art_url);
+    free(job->file_url);
+    free(job->artist);
+    free(job->album);
+    free(job->track);
     free(job);
 }
 
