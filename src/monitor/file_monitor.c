@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "file_monitor.h"
+#include "lyrics_file_watch.h"
 #include "../user_experience/config/config.h"
 #include "../core/rendering/rendering_manager.h"
 #include "../lyrics/lyrics_manager.h"
@@ -22,6 +23,24 @@ bool file_monitor_check_and_reload(
 
     char current_checksum[MD5_DIGEST_STRING_LENGTH];
     if (!calculate_file_md5(file_path, current_checksum)) {
+        return false;
+    }
+
+    return file_monitor_reload_if_changed(file_path, current_checksum, stored_checksum,
+                                          checksum_size, file_type_name, reload_callback, state);
+}
+
+bool file_monitor_reload_if_changed(
+    const char *file_path,
+    const char *current_checksum,
+    char *stored_checksum,
+    size_t checksum_size,
+    const char *file_type_name,
+    file_reload_callback_t reload_callback,
+    struct lyrics_state *state
+) {
+    if (!file_path || !current_checksum || current_checksum[0] == '\0' ||
+        !stored_checksum || stored_checksum[0] == '\0') {
         return false;
     }
 
@@ -121,6 +140,7 @@ static void check_layout_changed(const char *old_anchor, int old_margin) {
 void file_monitor_reload_lyrics(struct lyrics_state *state, const char *path) {
     (void)path;  // Required by callback signature
     rendering_manager_render_transparent(state);
+    lyrics_file_watch_set(NULL);  // what the watcher saw belongs to the old lyrics
     lyrics_manager_begin_reload(state);
 }
 

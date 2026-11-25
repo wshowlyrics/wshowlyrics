@@ -6,6 +6,7 @@
 #include "core/rendering/rendering_manager.h"
 #include "lyrics/lyrics_manager.h"
 #include "monitor/file_monitor.h"
+#include "monitor/lyrics_file_watch.h"
 #include "events/wayland_events.h"
 #include "utils/wayland/wayland_init.h"
 #include "utils/wayland/wayland_manager.h"
@@ -15,7 +16,6 @@
 #include "utils/lock/lock_file.h"
 #include "utils/runtime/runtime_dir.h"
 #include <curl/curl.h>
-#include <sys/stat.h>
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
@@ -344,7 +344,12 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
     // Apply a completed async artwork fetch (iTunes) and its deferred notification.
     lyrics_manager_poll_art(state);
 
-    // Check if lyrics or config files have changed (every 2 seconds).
+    // The lyrics file is looked at by the watcher thread, never from here: it
+    // may sit on a network mount that has stopped answering (#69).
+    lyrics_file_watch_set(state->playback.lyrics.source_file_path);
+
+    // Check if the config file changed, and whether the watcher saw the lyrics
+    // file change (every 2 seconds).
     // Skip while an async fetch is running: the worker reads g_config in the
     // provider chain, and a config reload here would config_free() those strings
     // out from under it (use-after-free). Fetches are short; the reload just
@@ -366,10 +371,13 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
             state
         );
 
+        struct lyrics_file_status lyrics_file;
         if (state->playback.lyrics.source_file_path &&
-            !path_is_in_cache_dir(state->playback.lyrics.source_file_path)) {
-            file_monitor_check_and_reload(
+            !path_is_in_cache_dir(state->playback.lyrics.source_file_path) &&
+            lyrics_file_watch_get(&lyrics_file)) {
+            file_monitor_reload_if_changed(
                 state->playback.lyrics.source_file_path,
+                lyrics_file.md5,
                 state->playback.lyrics.md5_checksum,
                 sizeof(state->playback.lyrics.md5_checksum),
                 "Lyrics",
@@ -414,8 +422,13 @@ static void handle_instrumental_break(struct lyrics_state *state) {
         return;
     }
 
-    struct stat st;
-    bool file_exists = (stat(state->playback.lyrics.source_file_path, &st) == 0);
+    // Nothing known yet (just loaded, or the file system is not answering):
+    // leave the lyrics as they are.
+    struct lyrics_file_status lyrics_file;
+    if (!lyrics_file_watch_get(&lyrics_file)) {
+        return;
+    }
+    const bool file_exists = lyrics_file.exists;
 
     if (!state->runtime.need_lyrics_search && !file_exists) {
         log_info("Lyrics file was deleted or moved: %s", sanitize_path(state->playback.lyrics.source_file_path));
@@ -430,6 +443,7 @@ static void handle_instrumental_break(struct lyrics_state *state) {
             // result is installed by lyrics_manager_poll_load. The old lyrics
             // are dropped now, since their file is gone.
             log_info("Searching for lyrics again...");
+            lyrics_file_watch_set(NULL);  // what the watcher saw belongs to the old lyrics
             lyrics_manager_begin_reload(state);
             rendering_manager_set_dirty(state);
         }
@@ -505,6 +519,7 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
 
     dbus_control_cleanup();
     system_tray_cleanup();
+    lyrics_file_watch_stop();
     lyrics_manager_cancel_track_work(state);
     lrc_free_data(&state->playback.lyrics);
     mpris_free_metadata(&state->playback.current_track);

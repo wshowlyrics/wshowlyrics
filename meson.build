@@ -116,6 +116,7 @@ executable(
 		'src/core/rendering/rendering_manager.c',
 		'src/lyrics/lyrics_manager.c',
 		'src/monitor/file_monitor.c',
+		'src/monitor/lyrics_file_watch.c',
 		'src/events/wayland_events.c',
 		'src/utils/pango/pango_utils.c',
 		'src/utils/shm/shm.c',

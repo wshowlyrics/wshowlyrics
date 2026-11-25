@@ -19,7 +19,9 @@ typedef void (*file_reload_callback_t)(struct lyrics_state *state, const char *p
 
 /**
  * Check if a file has changed and reload if necessary
- * Uses MD5 checksum to detect changes
+ * Uses MD5 checksum to detect changes. Reads the file on the calling thread,
+ * so it is for the config file only; the lyrics file goes through
+ * file_monitor_reload_if_changed.
  *
  * @param file_path Path to file to monitor
  * @param stored_checksum Buffer containing stored MD5 checksum (updated on reload)
@@ -31,6 +33,25 @@ typedef void (*file_reload_callback_t)(struct lyrics_state *state, const char *p
  */
 bool file_monitor_check_and_reload(
     const char *file_path,
+    char *stored_checksum,
+    size_t checksum_size,
+    const char *file_type_name,
+    file_reload_callback_t reload_callback,
+    struct lyrics_state *state
+);
+
+/**
+ * The comparing half of file_monitor_check_and_reload, for a caller that
+ * already has the file's current checksum and must not read the file itself
+ * (the lyrics file: see lyrics_file_watch.h). Reloads if it differs from the
+ * stored one.
+ *
+ * @param current_checksum The file's MD5 as last read
+ * @return true if file was reloaded, false otherwise
+ */
+bool file_monitor_reload_if_changed(
+    const char *file_path,
+    const char *current_checksum,
     char *stored_checksum,
     size_t checksum_size,
     const char *file_type_name,
