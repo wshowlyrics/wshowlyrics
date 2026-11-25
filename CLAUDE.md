@@ -363,6 +363,7 @@ curl -u "${TOKEN}:" -X POST "https://sonarcloud.io/api/hotspots/change_status" \
 | Rule | Disposition | Reason |
 |---|---|---|
 | `c:S107`, `c:S995` in events/wayland_events, system_tray, dbus_control, shm, wayland_manager | wontfix | External callback signatures (Wayland/GTK/GDBus) — parameter list fixed by framework |
+| `c:S995` on a function that edits the string in place through a pointer derived from the parameter (`strip_media_extension`, `strip_file_extension` in string_utils.c: `*dot = 0` via `strrchr`) | falsepositive | The parameter is written through; pointer-to-const would be wrong |
 | `c:S4423` (weak TLS) on any `curl_easy_setopt` site | falsepositive | Code explicitly enforces `CURL_SSLVERSION_TLSv1_2` |
 | `c:S3519` parser_utils.c UTF-8 backwards iter | falsepositive | `NOSONAR` + defensive bounds check already in place |
 | `c:S5813` `strlen` hotspot | SAFE | Inputs are NULL-terminated by call sites (Phase H verified) |
