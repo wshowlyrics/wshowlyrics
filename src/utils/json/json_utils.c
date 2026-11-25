@@ -6,7 +6,7 @@
 #include <string.h>
 
 // Extract string value from JSON starting at specific position
-char* json_extract_string_from(const char *json, const char *key, const char *search_start) {
+static char* json_extract_string_from(const char *json, const char *key, const char *search_start) {
     if (!json || !key) return NULL;
 
     // Build search pattern: "key":"

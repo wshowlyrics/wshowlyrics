@@ -18,9 +18,9 @@
 #include <unistd.h>
 #include <json-c/json.h>
 
-// Registry of all translation providers, walked by the startup/shutdown
-// lifecycle (main.c) and the dispatcher (lyrics_provider.c), which uses the
-// first provider whose matches() accepts the configured name. The matchers are
+// Registry of all translation providers, walked by the dispatcher
+// (lyrics_provider.c), which uses the first provider whose matches() accepts
+// the configured name. The matchers are
 // currently mutually exclusive (distinct name prefixes), so order does not
 // affect dispatch; if a future provider's matcher could overlap another's,
 // place the more specific one first. Add a new provider by defining its
@@ -31,6 +31,19 @@ const struct translator_provider *const translator_providers[] = {
     &gemini_provider,
     &deepl_provider,
     NULL,
+};
+
+// Arguments of the translation thread (translator_async_worker), built by
+// translator_translate_lyrics_generic and freed by the thread.
+struct translator_thread_args {
+    struct lyrics_data *data;
+    char *target_lang;
+    char *api_key;
+    char *model_name;
+    char *cache_path;           // "" when the cache is disabled
+    int64_t track_length_us;
+    const char *provider_name;  // for logs, e.g. "deepl_translator"
+    translator_line_fn translate_line_fn;  // API-specific translation function
 };
 
 /**
@@ -455,8 +468,10 @@ bool translator_sleep_cancellable(int delay_ms) {
     return !translator_cancel_requested();
 }
 
-int translator_curl_cancel_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
-                              curl_off_t ultotal, curl_off_t ulnow) {
+// curl CURLOPT_XFERINFOFUNCTION callback: aborts the transfer on cancellation.
+// Set together with CURLOPT_NOPROGRESS = 0.
+static int translator_curl_cancel_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
+                                     curl_off_t ultotal, curl_off_t ulnow) {
     (void)clientp; (void)dltotal; (void)dlnow; (void)ultotal; (void)ulnow;
     return translator_cancel_requested() ? 1 : 0;
 }
@@ -575,7 +590,7 @@ void translator_curl_response_free(struct translator_curl_response *response) {
     }
 }
 
-bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
+static bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
                                           struct lyrics_data *data,
                                           int translatable_count,
                                           int *already_translated) {
@@ -611,7 +626,7 @@ bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
     return true;  // Continue translation
 }
 
-bool translator_process_line_translation_ex(struct lyrics_line *line,
+static bool translator_process_line_translation_ex(struct lyrics_line *line,
                                               const struct translator_thread_args *args,
                                               struct lyrics_data *data,
                                               int *current,
@@ -729,7 +744,7 @@ bool translator_process_line_translation_ex(struct lyrics_line *line,
     return true;  // Continue
 }
 
-void translator_save_to_cache_ex(const char *cache_path,
+static void translator_save_to_cache_ex(const char *cache_path,
                                    struct lyrics_data *data,
                                    const char *target_lang,
                                    const char *provider_name) {
@@ -763,7 +778,7 @@ void translator_save_to_cache_ex(const char *cache_path,
     unlink(cache_path);
 }
 
-void* translator_async_worker(void *arg) {
+static void* translator_async_worker(void *arg) {
     // Set thread name for easier identification in system monitors
     pthread_setname_np(pthread_self(), "translator");
 
@@ -920,6 +935,7 @@ static struct curl_slist* setup_translator_curl_request(CURL *curl,
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, params->request_body) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, translator_curl_write_callback) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, response) != CURLE_OK ||
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, TRANSLATOR_REQUEST_TIMEOUT_SEC) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, TRANSLATOR_CONNECT_TIMEOUT_SEC) != CURLE_OK ||
         curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, translator_curl_cancel_cb) != CURLE_OK ||
@@ -963,6 +979,12 @@ static char* handle_translator_http_response(long http_code,
     if (http_code == 401 || http_code == 403) {
         // Authentication/permission error - don't retry
         log_error("%s: Authentication error (HTTP %ld)", params->provider_name, http_code);
+        return NULL;
+    }
+
+    if (http_code == 456) {
+        // DeepL: the key's character quota is used up - waiting does not help
+        log_error("%s: Quota exceeded (HTTP %ld)", params->provider_name, http_code);
         return NULL;
     }
 

@@ -14,14 +14,12 @@
 #define TRANSLATOR_CONNECT_TIMEOUT_SEC 5L
 
 // A translation backend, registered once per translator module. The dispatcher
-// and the startup/shutdown lifecycle walk translator_providers[] instead of
-// hardcoding each provider, so a new backend (e.g. Ollama) is one struct plus
-// one array entry — no edits to main.c or the dispatcher.
+// walks translator_providers[] instead of hardcoding each provider, so a new
+// backend (e.g. Ollama) is one struct plus one array entry — no edits to the
+// dispatcher.
 struct translator_provider {
     const char *name;                              // module name, for logging
     bool (*matches)(const char *provider_string);  // does config provider select this?
-    bool (*init)(void);                            // called once at startup; NULL if nothing to set up
-    void (*cleanup)(void);                         // called once at shutdown; NULL if nothing to release
     bool (*translate_lyrics)(struct lyrics_data *data, int64_t track_length_us);
 };
 
@@ -135,13 +133,6 @@ void translator_set_cancel_flag(const _Atomic bool *flag);
 bool translator_sleep_cancellable(int delay_ms);
 
 /**
- * curl CURLOPT_XFERINFOFUNCTION callback: aborts the transfer on cancellation.
- * Set it together with CURLOPT_NOPROGRESS = 0.
- */
-int translator_curl_cancel_cb(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
-                              curl_off_t ultotal, curl_off_t ulnow);
-
-/**
  * Check if translation will complete enough lines to be cached.
  * Warns if translation will be discarded (below cache_policy threshold).
  * Threshold is based on cache_policy: comfort (50%), balanced (75%), aggressive (90%).
@@ -202,78 +193,6 @@ void translator_curl_response_free(struct translator_curl_response *response);
  */
 typedef char* (*translator_line_fn)(const char *text, const char *target_lang,
                                      const char *api_key, const char *model_name);
-
-/**
- * Thread arguments for async translation.
- * Used by all translator implementations.
- */
-struct translator_thread_args {
-    struct lyrics_data *data;
-    char *target_lang;
-    char *api_key;
-    char *model_name;       // Optional (NULL for DeepL)
-    char *cache_path;
-    int64_t track_length_us;
-    const char *provider_name;  // "claude", "openai", "gemini", "deepl"
-    translator_line_fn translate_line_fn;  // API-specific translation function
-};
-
-/**
- * Handle cache loading and validation (common logic).
- * Returns true if translation should continue, false if already complete.
- *
- * @param args Thread arguments with cache path
- * @param data Lyrics data to populate
- * @param translatable_count Total number of translatable lines
- * @param already_translated Output: number of already translated lines
- * @return true to continue translation, false if complete
- */
-bool translator_handle_cache_loading_ex(struct translator_thread_args *args,
-                                          struct lyrics_data *data,
-                                          int translatable_count,
-                                          int *already_translated);
-
-/**
- * Process single line translation with all validation steps (common logic).
- * Returns true to continue iteration, false to break.
- *
- * @param line Lyrics line to translate
- * @param args Thread arguments with translation function
- * @param data Lyrics data for cancellation check
- * @param current Current translation counter (input/output)
- * @param translatable_count Total number of translatable lines
- * @param api_called Set to true only if a translation request was sent, so the
- *                   caller applies the rate-limit delay after real requests only
- * @return true to continue, false to break
- */
-bool translator_process_line_translation_ex(struct lyrics_line *line,
-                                              const struct translator_thread_args *args,
-                                              struct lyrics_data *data,
-                                              int *current,
-                                              int translatable_count,
-                                              bool *api_called);
-
-/**
- * Save translation to cache with provider name in logs (common logic).
- *
- * @param cache_path Path to cache file
- * @param data Lyrics data with translations
- * @param target_lang Target language code
- * @param provider_name Provider name for logging
- */
-void translator_save_to_cache_ex(const char *cache_path,
-                                   struct lyrics_data *data,
-                                   const char *target_lang,
-                                   const char *provider_name);
-
-/**
- * Async translation thread worker (common logic).
- * Calls provider-specific translation function via callback.
- *
- * @param arg Pointer to translator_thread_args
- * @return NULL
- */
-void* translator_async_worker(void *arg);
 
 /**
  * Generic lyrics translation launcher (eliminates 75-line duplication).

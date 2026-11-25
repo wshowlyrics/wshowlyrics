@@ -37,7 +37,6 @@
 
 // Network buffers
 #define URL_BUFFER_SIZE 2048
-#define HTTP_REQUEST_BODY_SIZE 4096
 #define USER_AGENT_STRING "wshowlyrics/0.11.2"
 
 // File size limits

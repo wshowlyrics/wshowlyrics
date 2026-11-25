@@ -14,7 +14,6 @@
 #include "utils/dbus_control/dbus_control.h"
 #include "utils/lock/lock_file.h"
 #include "utils/runtime/runtime_dir.h"
-#include "translator/common/translator_common.h"
 #include <curl/curl.h>
 #include <sys/stat.h>
 #include <signal.h>
@@ -210,13 +209,8 @@ static char *build_font_string(void) {
     return strdup(font_str);
 }
 
-// Initialize subsystems (translation, language detection, D-Bus)
+// Initialize subsystems (language detection, D-Bus)
 static bool initialize_subsystems(struct lyrics_state *state) {
-    for (const struct translator_provider *const *p = translator_providers; *p; p++) {
-        if ((*p)->init) {
-            (*p)->init();
-        }
-    }
     lang_detect_init();
 
     int cleanup_days = config_get_cleanup_days(g_config.cache.cleanup_policy);
@@ -516,11 +510,6 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
     mpris_free_metadata(&state->playback.current_track);
     mpris_cleanup();
     lyrics_providers_cleanup();
-    for (const struct translator_provider *const *p = translator_providers; *p; p++) {
-        if ((*p)->cleanup) {
-            (*p)->cleanup();
-        }
-    }
     lang_detect_cleanup();
 
     // Cleanup Wayland buffers before disconnecting display

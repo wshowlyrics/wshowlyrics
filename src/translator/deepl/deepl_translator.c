@@ -1,36 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "deepl_translator.h"
+#include <json-c/json.h>
 #include "../common/translator_common.h"
-#include "../../constants.h"
 #include "../../user_experience/config/config.h"
-#include "../../utils/curl/curl_utils.h"
-#include "../../utils/json/json_utils.h"
-#include "../../utils/file/file_utils.h"
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
-#include <unistd.h>
-
-// HTTP status codes
-#define HTTP_OK 200
-#define HTTP_UNAUTHORIZED 401
-#define HTTP_TOO_MANY_REQUESTS 429
-#define HTTP_QUOTA_EXCEEDED 456
 
 // DeepL API endpoints
 #define DEEPL_FREE_API_URL "https://api-free.deepl.com/v2/translate"
 #define DEEPL_PRO_API_URL "https://api.deepl.com/v2/translate"
 
-// Maximum request body size (for large lyrics files)
-#define MAX_REQUEST_SIZE (64 * 1024)  // 64KB
-
 // Get DeepL API endpoint based on API key format
 // Free API keys end with ":fx"
 static const char* get_deepl_endpoint(const char *api_key) {
-    if (!api_key) return NULL;
-
     size_t len = strlen(api_key);
     if (len >= 3 && strcmp(&api_key[len - 3], ":fx") == 0) {
         return DEEPL_FREE_API_URL;
@@ -38,140 +22,58 @@ static const char* get_deepl_endpoint(const char *api_key) {
     return DEEPL_PRO_API_URL;
 }
 
-// Escape special characters in JSON string
-static char* json_escape_string(const char *text) {
-    if (!text) return NULL;
+/**
+ * Build DeepL API request JSON
+ * Request format: {"text": ["..."], "target_lang": "KO"}
+ */
+static char* build_request_json(const char *text, const char *target_lang) {
+    json_object *root = json_object_new_object();
+    json_object *text_array = json_object_new_array();
 
-    // Calculate required size (worst case: every char needs escaping)
-    size_t len = strlen(text);
-    size_t escaped_len = len * 2 + 1;
+    json_object_array_add(text_array, json_object_new_string(text));
+    json_object_object_add(root, "text", text_array);
+    json_object_object_add(root, "target_lang", json_object_new_string(target_lang));
 
-    char *escaped = malloc(escaped_len);
-    if (!escaped) return NULL;
+    char *result = strdup(json_object_to_json_string(root));
+    json_object_put(root);
 
-    char *dst = escaped;
-    for (const char *src = text; *src; src++) {
-        switch (*src) {
-            case '"':
-                *dst++ = '\\';
-                *dst++ = '"';
-                break;
-            case '\\':
-                *dst++ = '\\';
-                *dst++ = '\\';
-                break;
-            case '\n':
-                *dst++ = '\\';
-                *dst++ = 'n';
-                break;
-            case '\r':
-                *dst++ = '\\';
-                *dst++ = 'r';
-                break;
-            case '\t':
-                *dst++ = '\\';
-                *dst++ = 't';
-                break;
-            default:
-                *dst++ = *src;
-                break;
-        }
-    }
-    *dst = '\0';
-
-    return escaped;
+    return result;
 }
 
-// Setup CURL request for DeepL API
-// Returns true on success, false on failure
-static bool setup_deepl_curl_request(CURL **curl_out,
-                                      struct curl_slist **headers_out,
-                                      const char *endpoint,
-                                      const char *api_key,
-                                      const char *request_body,
-                                      struct curl_memory_buffer *response) {
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        return false;
+/**
+ * Parse DeepL API response JSON
+ * Response format: {"translations": [{"detected_source_language": "JA", "text": "..."}]}
+ */
+static char* parse_response_json(const char *json_str) {
+    char *text = json_extract_text_by_path(json_str, "translations[0].text", "deepl_translator");
+    if (!text) {
+        return NULL;
     }
 
-    // Enforce TLS 1.2 or higher
-    if (curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
-        curl_easy_cleanup(curl);
-        return false;
-    }
+    char *result = translator_extract_last_line(text);
+    free(text);
+    return result;
+}
 
-    // Build headers
-    struct curl_slist *headers = NULL;
+/**
+ * Build DeepL-specific HTTP headers
+ */
+static struct curl_slist* build_deepl_headers(const char *api_key, const void *extra_data) {
+    (void)extra_data;  // DeepL doesn't need extra data
+
     char auth_header[512];
-    snprintf(auth_header, sizeof(auth_header),
-             "Authorization: DeepL-Auth-Key %s", api_key);
+    snprintf(auth_header, sizeof(auth_header), "Authorization: DeepL-Auth-Key %s", api_key);
+
+    struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, auth_header);
 
-    // Configure request
-    if (curl_easy_setopt(curl, CURLOPT_URL, endpoint) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, response) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, TRANSLATOR_CONNECT_TIMEOUT_SEC) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, translator_curl_cancel_cb) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-        return false;
-    }
-
-    *curl_out = curl;
-    *headers_out = headers;
-    return true;
+    return headers;
 }
 
-// Handle DeepL API response and errors
-// Returns: 0 = success, 1 = retry, -1 = fatal error (no retry)
-static int handle_deepl_response(CURLcode res, long http_code,
-                                  const struct curl_memory_buffer *response,
-                                  char **translation_out,
-                                  int attempt, int max_retries) {
-    if (res == CURLE_OK && http_code == HTTP_OK && response->data) {
-        // Success - parse response
-        char *raw_translation = json_extract_string_from(response->data, "text", response->data);
-        if (raw_translation) {
-            *translation_out = translator_extract_last_line(raw_translation);
-            free(raw_translation);
-        }
-        return 0;  // Success
-    }
-
-    if (res == CURLE_ABORTED_BY_CALLBACK) {
-        // Translation was cancelled mid-request - not an error, no retry
-        return -1;
-    }
-
-    if (http_code == HTTP_UNAUTHORIZED || http_code == 403) {
-        // Authentication error - don't retry
-        log_error("deepl_translator: Authentication error (HTTP %ld)", http_code);
-        return -1;  // Fatal error
-    }
-
-    // Temporary error - retry
-    int retry_delay_ms = 5000 * attempt;  // Exponential backoff
-    log_warn("deepl_translator: HTTP error %ld, retrying in %dms (attempt %d/%d)",
-            http_code, retry_delay_ms, attempt, max_retries);
-
-    if (attempt < max_retries && !translator_sleep_cancellable(retry_delay_ms)) {
-        return -1;  // Cancelled during the backoff - no further request
-    }
-
-    return 1;  // Retry
-}
-
-// Translate a single line (for individual requests)
+/**
+ * Translate a single line using DeepL API with retry logic
+ */
 static char* translate_single_line(const char *text, const char *target_lang,
                                    const char *api_key, const char *model_name) {
     (void)model_name;  // DeepL doesn't use model names
@@ -180,65 +82,34 @@ static char* translate_single_line(const char *text, const char *target_lang,
         return NULL;
     }
 
-    const struct config *cfg = config_get();
-    const int max_retries = cfg->translation.max_retries;
-
-    char *translation = NULL;
-    int attempt = 0;
-
-    while (attempt < max_retries && !translation) {
-        attempt++;
-
-        // Build JSON request
-        char request_body[HTTP_REQUEST_BODY_SIZE];
-        char *escaped = json_escape_string(text);
-        if (!escaped) {
-            return NULL;
-        }
-
-        snprintf(request_body, sizeof(request_body),
-                 "{\"text\":[\"%s\"],\"target_lang\":\"%s\"}",
-                 escaped, target_lang);
-        free(escaped);
-
-        const char *endpoint = get_deepl_endpoint(api_key);
-
-        // Setup CURL request using helper
-        struct curl_memory_buffer response;
-        curl_memory_buffer_init(&response);
-
-        CURL *curl = NULL;
-        struct curl_slist *headers = NULL;
-        if (!setup_deepl_curl_request(&curl, &headers, endpoint, api_key,
-                                       request_body, &response)) {
-            return NULL;
-        }
-
-        // Perform request
-        CURLcode res = curl_easy_perform(curl);
-        long http_code = 0;
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-
-        // Handle response using helper
-        int result = handle_deepl_response(res, http_code, &response,
-                                            &translation, attempt, max_retries);
-        curl_memory_buffer_free(&response);
-
-        if (result == 0) {
-            break;  // Success
-        } else if (result == -1) {
-            return NULL;  // Fatal error
-        }
-        // result == 1: retry
+    char *request_json = build_request_json(text, target_lang);
+    if (!request_json) {
+        return NULL;
     }
 
+    struct translator_http_params params = {
+        .endpoint = get_deepl_endpoint(api_key),
+        .request_body = request_json,
+        .provider_name = "deepl_translator",
+        .api_key = api_key,
+        .extra_data = NULL,
+        .max_retries = config_get()->translation.max_retries,
+        .build_headers = build_deepl_headers
+    };
+
+    // Perform HTTP request with common retry logic
+    char *response_json = translator_perform_http_request(&params);
+    free(request_json);
+
+    if (!response_json) {
+        return NULL;
+    }
+
+    char *translation = parse_response_json(response_json);
+    free(response_json);
     return translation;
 }
 
-// Initialize translator
 // Provider registration (see struct translator_provider in translator_common.h).
 static bool deepl_matches(const char *provider) {
     return strcmp(provider, "deepl") == 0;
@@ -246,89 +117,11 @@ static bool deepl_matches(const char *provider) {
 const struct translator_provider deepl_provider = {
     .name             = "deepl",
     .matches          = deepl_matches,
-    .init             = deepl_translator_init,
-    .cleanup          = deepl_translator_cleanup,
     .translate_lyrics = deepl_translate_lyrics,
 };
 
-bool deepl_translator_init(void) {
-    CURLcode res = curl_global_init(CURL_GLOBAL_DEFAULT);
-    if (res != CURLE_OK) {
-        log_error("Failed to initialize CURL for DeepL translator");
-        return false;
-    }
-    return true;
-}
-
-// Cleanup translator
-void deepl_translator_cleanup(void) {
-    curl_global_cleanup();
-}
-
-// Main translation function
 bool deepl_translate_lyrics(struct lyrics_data *data, int64_t track_length_us) {
-    const struct config *cfg = config_get();
-
-    // Check if API key is configured
-    if (!cfg->translation.api_key || cfg->translation.api_key[0] == '\0') {
-        log_warn("DeepL translation: API key not configured");
-        return false;
-    }
-
-    // Check if lyrics data is valid
-    if (!data || !data->lines) {
-        return false;
-    }
-
-    // Check if lyrics should be translated (LRC only)
-    if (!translator_should_translate(data)) {
-        return false;
-    }
-
-    // Build cache path
-    char cache_path[PATH_BUFFER_SIZE];
-    if (build_translation_cache_path(cache_path, sizeof(cache_path),
-                                      data->md5_checksum,
-                                      cfg->translation.target_language) <= 0) {
-        log_warn("deepl_translator: Failed to build cache path");
-        cache_path[0] = '\0';  // Mark as invalid
-    }
-
-    // Prepare thread args
-    struct translator_thread_args *args = malloc(sizeof(*args));
-    if (!args) {
-        log_error("Failed to allocate memory for translation thread args");
-        return false;
-    }
-
-    args->data = data;
-    args->target_lang = strdup(cfg->translation.target_language);
-    args->api_key = strdup(cfg->translation.api_key);
-    args->model_name = NULL;  // DeepL doesn't use model names
-    args->cache_path = cache_path[0] != '\0' ? strdup(cache_path) : strdup("");
-    args->track_length_us = track_length_us;
-    args->provider_name = "deepl_translator";
-    args->translate_line_fn = translate_single_line;
-
-    if (!args->target_lang || !args->api_key || !args->cache_path) {
-        log_error("Failed to allocate memory for translation thread args");
-        free(args->target_lang);
-        free(args->api_key);
-        free(args->cache_path);
-        free(args);
-        return false;
-    }
-
-    // Start translation thread
-    if (pthread_create(&data->translation_thread, NULL, translator_async_worker, args) != 0) {
-        log_error("Failed to create translation thread");
-        free(args->target_lang);
-        free(args->api_key);
-        free(args->cache_path);
-        free(args);
-        return false;
-    }
-
-    // Don't detach - we need the handle for cancellation
-    return true;
+    return translator_translate_lyrics_generic(data, track_length_us,
+                                                "deepl_translator",
+                                                translate_single_line);
 }
