@@ -53,6 +53,10 @@ if get_option('fuzzing')
 		'fuzz_srt': files('fuzz/fuzz_srt.c') + parser_sources,
 		# url_decode only needs the self-contained url util (no parser deps).
 		'fuzz_url_decode': files('fuzz/fuzz_url_decode.c', 'src/utils/url/url_utils.c'),
+		# Network response reading: the JSON field extraction and the lrclib
+		# search result walk, both free of libcurl.
+		'fuzz_lrclib': files('fuzz/fuzz_lrclib.c', 'src/provider/lrclib/lrclib_response.c',
+			'src/utils/json/json_utils.c'),
 	}
 
 	fuzz_sanitizer_args = (get_option('fuzz_sanitizer') == 'address'
@@ -124,6 +128,7 @@ executable(
 		'src/utils/dbus_control/dbus_control.c',
 		'src/provider/lyrics/lyrics_provider.c',
 		'src/provider/lrclib/lrclib_provider.c',
+		'src/provider/lrclib/lrclib_response.c',
 		'src/provider/itunes/itunes_artwork.c',
 		'src/translator/common/translator_common.c',
 		'src/translator/deepl/deepl_translator.c',

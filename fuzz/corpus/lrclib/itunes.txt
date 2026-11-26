@@ -1,0 +1,1 @@
+{"resultCount":1,"results":[{"wrapperType":"track","artistName":"Artist","collectionName":"Album","trackName":"Song","artworkUrl60":"https://example.invalid/60x60bb.jpg","artworkUrl100":"https://example.invalid/100x100bb.jpg"}]}

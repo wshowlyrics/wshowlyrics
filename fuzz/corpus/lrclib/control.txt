@@ -1,0 +1,4 @@
+[{"trackName":"a\r\nb\u0000c\tend","artistName":"x
+y","duration":200,
+"syncedLyrics":"[00:01.00] one\r\n[00:02.00] tw[31mo\u001b[0m\"\\"},
+{"duration":-1,"syncedLyrics":"\\"}]

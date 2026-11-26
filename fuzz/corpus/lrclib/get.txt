@@ -1,0 +1,1 @@
+{"id":3396226,"trackName":"Song","artistName":"Artist","albumName":"Album","duration":233,"instrumental":false,"plainLyrics":"one\ntwo\n","syncedLyrics":"[00:17.12] one\n[00:19.44] two\n"}

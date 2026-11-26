@@ -1,0 +1,1 @@
+[{"syncedLyrics":"a}{b","duration":5},{"plainLyrics":"x"}]
