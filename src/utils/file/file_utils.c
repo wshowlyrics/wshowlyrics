@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#define _GNU_SOURCE
 #include "file_utils.h"
 #include "../runtime/runtime_dir.h"
 #include "../../constants.h"
@@ -746,4 +747,25 @@ FILE* fopen_private(const char *path) {
         close(fd);
     }
     return f;
+}
+
+FILE* fopen_private_tmp(const char *path, char *tmp_path, size_t tmp_size) {
+    const int len = snprintf(tmp_path, tmp_size, "%s.%d.tmp", path, (int)gettid());
+    if (len < 0 || (size_t)len >= tmp_size) {
+        errno = ENAMETOOLONG;
+        return NULL;
+    }
+    return fopen_private(tmp_path);
+}
+
+bool fclose_into_place(FILE *f, const char *tmp_path, const char *path) {
+    const bool written = (ferror(f) == 0);
+    const bool closed = (fclose(f) == 0);
+    if (written && closed && rename(tmp_path, path) == 0) {
+        return true;
+    }
+    const int saved_errno = errno;
+    unlink(tmp_path);
+    errno = saved_errno;
+    return false;
 }

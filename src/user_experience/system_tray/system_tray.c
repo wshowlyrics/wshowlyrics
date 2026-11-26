@@ -200,7 +200,10 @@ static GdkPixbuf* crop_to_square(GdkPixbuf *const pixbuf) {
 // Write pixbuf to path as a PNG readable and writable by the owner only. The
 // image is encoded in memory and written through fopen_private(), so no umask
 // toggle is needed (see fopen_private) and it is safe to call from the artwork
-// worker thread. On failure returns false and sets *error (if given).
+// worker thread. The file appears under its name complete or not at all
+// (fopen_private_tmp): a dropped artwork worker and its successor can write
+// the same {md5}.png while the main thread reads it as a cache hit (#66).
+// On failure returns false and sets *error (if given).
 static bool save_png_private(GdkPixbuf *pixbuf, const char *path, GError **error) {
     gchar *data = NULL;
     gsize size = 0;
@@ -208,13 +211,12 @@ static bool save_png_private(GdkPixbuf *pixbuf, const char *path, GError **error
         return false;
     }
 
-    FILE *f = fopen_private(path);
+    char tmp_path[PATH_MAX];
+    FILE *f = fopen_private_tmp(path, tmp_path, sizeof(tmp_path));
     bool ok = (f != NULL);
     if (f) {
-        ok = (fwrite(data, 1, size, f) == size);
-        if (fclose(f) != 0) {
-            ok = false;
-        }
+        fwrite(data, 1, size, f);   // a short write shows in fclose_into_place
+        ok = fclose_into_place(f, tmp_path, path);
     }
     if (!ok) {
         g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
@@ -369,6 +371,11 @@ static GdkPixbuf* load_image_from_url(const char *url) {
         free(decoded);
         if (!found) {
             log_warn("system_tray: cannot resolve art file path, ignoring");
+            return NULL;
+        }
+        // A dropped lookup may only now be coming back from a file system
+        // that had stopped answering; it does not go on to read the file
+        if (thread_cancel_requested()) {
             return NULL;
         }
 
@@ -1020,8 +1027,8 @@ enum ffmpeg_result {
 // Wait for the ffmpeg child without blocking past a cancel request or
 // FFMPEG_TIMEOUT_MS; in either case the child is killed and reaped. Returns
 // true, with wait_status filled, only when ffmpeg exited on its own. A file on
-// a stalled network mount would otherwise hold the artwork worker (and the
-// track change that joins it) indefinitely.
+// a stalled network mount would otherwise keep the artwork worker and its
+// ffmpeg alive indefinitely.
 static bool wait_ffmpeg(GPid pid, int *wait_status) {
     const struct timespec slice = { .tv_sec = 0, .tv_nsec = FFMPEG_POLL_MS * 1000000L };
     int waited_ms = 0;
@@ -1185,7 +1192,9 @@ static enum ffmpeg_result extract_video_thumbnail(char *ffmpeg, char *media_path
 // Worker-safe (no GTK).
 static bool try_local_media_art(const char *file_url, int64_t length_us, const char *cache_path) {
     char media_path[PATH_MAX];
-    if (!resolve_local_media_path(file_url, media_path)) {
+    // A dropped lookup may only now be coming back from a file system that had
+    // stopped answering; it does not go on to start ffmpeg
+    if (!resolve_local_media_path(file_url, media_path) || thread_cancel_requested()) {
         return false;
     }
 
@@ -1196,7 +1205,10 @@ static bool try_local_media_art(const char *file_url, int64_t length_us, const c
     }
 
     char out_path[600];
-    snprintf(out_path, sizeof(out_path), "%s/extracted-art.png", get_runtime_dir());
+    // Named after this thread: a dropped lookup's ffmpeg and its successor's
+    // must not write the same file
+    snprintf(out_path, sizeof(out_path), "%s/extracted-art.%d.png", get_runtime_dir(),
+             (int)gettid());
 
     // Only a file with no cover is asked for a frame. One that ffmpeg could not
     // get through in time, or whose worker was cancelled, is not run again.
@@ -1229,8 +1241,9 @@ static bool resolve_itunes_art(const struct tray_art_request *request, const cha
 
 // One album art lookup that has to leave the main thread. system_tray_art_prepare
 // fills it, the worker's system_tray_art_run writes the outcome, and the main
-// thread reads that back in system_tray_art_apply - after joining the worker,
-// so no field is ever touched from two threads at once.
+// thread reads that back in system_tray_art_apply - only once the worker has
+// handed the job over (worker_handoff.h), so no field is ever touched from two
+// threads at once. A worker the main thread dropped frees the job itself.
 struct tray_art_job {
     char *art_url;                          // owned copies; request points at them
     char *file_url;

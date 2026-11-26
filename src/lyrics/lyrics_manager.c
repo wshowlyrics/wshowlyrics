@@ -9,14 +9,12 @@
 #include "../user_experience/system_tray/system_tray.h"
 #include "../parser/lrc/lrc_common.h"
 #include "../utils/file/file_utils.h"
-#include "../utils/thread/thread_cancel.h"
 #include "../utils/thread/worker_handoff.h"
 #include "../parser/lrc/lrcx_parser.h"
 #include <strings.h>
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
-#include <stdatomic.h>
 
 bool lyrics_manager_is_format(const struct lyrics_state *state, const char *extension) {
     if (!state->playback.lyrics.source_file_path) {
@@ -83,8 +81,8 @@ static void cancel_and_wait_translation(struct lyrics_data *lyrics) {
 // Stop everything still running in the background for the current track: the
 // lyrics search, the artwork fetch and the translation. One call so that a path
 // which ends a track (track change, player gone) cannot stop some of them and
-// forget another. The lyrics search is dropped at once; the artwork fetch and
-// the translation are still waited for.
+// forget another. The lyrics search and the artwork lookup are dropped at once;
+// only the translation is waited for.
 void lyrics_manager_cancel_track_work(struct lyrics_state *state) {
     lyrics_manager_cancel_fetch(state);
     lyrics_manager_cancel_art_fetch(state);
@@ -228,10 +226,18 @@ static void reset_for_new_track(struct lyrics_state *state) {
 
 // --- Async album-art offload ---------------------------------------------
 
-// Free the artwork fetch's job.
-static void clear_art_fetch(struct async_art_fetch *af) {
-    system_tray_art_free(af->job);
-    af->job = NULL;
+// One artwork lookup. Run by a detached worker the main thread never joins:
+// the lookup resolves the music file and runs ffmpeg on it, and that file may
+// be on a mount that stopped answering (#66). See worker_handoff.h for who
+// frees the job.
+struct art_fetch_job {
+    struct worker_handoff handoff;
+    struct tray_art_job *art;     // what to resolve, and the outcome; owned
+};
+
+static void art_fetch_job_free(struct art_fetch_job *job) {
+    system_tray_art_free(job->art);
+    free(job);
 }
 
 // Send the track-change desktop notification (main thread).
@@ -251,43 +257,47 @@ static void send_track_notification(const struct lyrics_state *state, const char
     system_tray_send_notification(&notif_info);
 }
 
-// Send the track notification that was held back for the artwork job.
-static void send_art_job_notification(const struct lyrics_state *state) {
-    const struct tray_art_request *request =
-        system_tray_art_request(state->playback.async_art.job);
+// Send the track notification that was held back for an artwork lookup.
+static void send_art_notification(const struct lyrics_state *state,
+                                  const struct tray_art_job *art) {
+    const struct tray_art_request *request = system_tray_art_request(art);
     send_track_notification(state, request->artist, request->album, request->track);
 }
 
 // Artwork worker: resolve the job's art into the cache PNG. Touches only the
 // job, the network and ffmpeg — never GTK/AppIndicator or live state.
 static void *art_fetch_worker(void *arg) {
-    struct lyrics_state *state = arg;
-    struct async_art_fetch *af = &state->playback.async_art;
+    struct art_fetch_job *job = arg;
 
-    thread_cancel_bind(&af->should_cancel);
-    system_tray_art_run(af->job);
+    worker_handoff_enter(&job->handoff, "art-fetch");
+    system_tray_art_run(job->art);
 
-    atomic_store(&af->ready, true);
+    if (!worker_handoff_finish(&job->handoff)) {
+        log_info("An artwork lookup that was dropped has ended");
+        art_fetch_job_free(job);
+    }
     return NULL;
 }
 
-// Start the artwork worker on a prepared job (owned from here on). The track
-// notification waits until the art lands (or fails) — see poll_art. A track
-// change cancels the fetch first, so current_track is still this job's track
-// whenever the notification is sent.
-static void begin_art_fetch(struct lyrics_state *state, struct tray_art_job *job) {
-    struct async_art_fetch *af = &state->playback.async_art;
-    af->job = job;
-    af->should_cancel = false;
-    af->ready = false;
-    if (pthread_create(&af->thread, NULL, art_fetch_worker, state) != 0) {
-        log_warn("Failed to start artwork worker; using default icon");
-        system_tray_reset_icon();
-        send_art_job_notification(state);
-        clear_art_fetch(af);
-        return;
+// Start the artwork worker on a prepared lookup (owned from here on). The
+// track notification waits until the art lands (or fails) — see poll_art. A
+// track change drops the lookup first, so current_track is still this
+// lookup's track whenever the notification is sent.
+static void begin_art_fetch(struct lyrics_state *state, struct tray_art_job *art) {
+    struct art_fetch_job *job = calloc(1, sizeof(*job));
+    if (job) {
+        job->art = art;
+        if (worker_handoff_start(&job->handoff, art_fetch_worker, job)) {
+            state->playback.async_art.job = job;
+            return;
+        }
     }
-    af->thread_active = true;
+
+    log_warn("Failed to start artwork worker; using default icon");
+    system_tray_reset_icon();
+    send_art_notification(state, art);
+    system_tray_art_free(art);
+    free(job);
 }
 
 // Resolve album art from the cache on the main thread, then either send the
@@ -306,9 +316,9 @@ static void finalize_common(struct lyrics_state *state, const char *art_url,
         .track = title,
         .length_us = state->playback.current_track.length_us,
     };
-    struct tray_art_job *job = system_tray_art_prepare(&request);
-    if (job) {
-        begin_art_fetch(state, job);
+    struct tray_art_job *art = system_tray_art_prepare(&request);
+    if (art) {
+        begin_art_fetch(state, art);
         return;   // notification is sent once the art lands (poll_art)
     }
     send_track_notification(state, artist, album, title);
@@ -535,34 +545,31 @@ void lyrics_manager_shutdown(struct lyrics_state *state) {
     }
 }
 
-// Discard an in-flight (or unconsumed) artwork fetch: abort, join, free inputs.
+// Drop the artwork lookup the main thread is waiting for, if any: ask it to
+// stop and leave it behind. Never blocks. A worker that is still running frees
+// the job itself when it returns; its icon and notification never appear.
 void lyrics_manager_cancel_art_fetch(struct lyrics_state *state) {
-    struct async_art_fetch *af = &state->playback.async_art;
-    if (!af->thread_active) return;
+    struct art_fetch_job *job = state->playback.async_art.job;
+    if (!job) return;
+    state->playback.async_art.job = NULL;
 
-    af->should_cancel = true;
-    pthread_join(af->thread, NULL);
-    af->thread_active = false;
-    af->ready = false;
-    clear_art_fetch(af);
+    if (!worker_handoff_abandon(&job->handoff)) {
+        art_fetch_job_free(job);   // the worker had already finished
+    }
 }
 
-// Consume a completed artwork fetch (call every main-loop tick). Applies the
+// Consume a completed artwork lookup (call every main-loop tick). Applies the
 // resolved icon on the main thread and sends the deferred track notification.
 void lyrics_manager_poll_art(struct lyrics_state *state) {
-    struct async_art_fetch *af = &state->playback.async_art;
-    if (!af->thread_active || !atomic_load(&af->ready)) {
+    struct art_fetch_job *job = state->playback.async_art.job;
+    if (!job || !worker_handoff_done(&job->handoff)) {
         return;
     }
+    state->playback.async_art.job = NULL;
 
-    pthread_join(af->thread, NULL);
-    af->thread_active = false;
-    af->ready = false;
-
-    system_tray_art_apply(af->job);
-    send_art_job_notification(state);
-
-    clear_art_fetch(af);
+    system_tray_art_apply(job->art);
+    send_art_notification(state, job->art);
+    art_fetch_job_free(job);
 }
 
 // Helper: Check if text is empty or whitespace-only

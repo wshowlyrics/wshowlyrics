@@ -520,9 +520,11 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
     }
 
     dbus_control_cleanup();
-    system_tray_cleanup();
     lyrics_file_watch_stop();
+    // Before the tray goes: the artwork worker uses libcurl, which
+    // system_tray_cleanup tears down
     lyrics_manager_shutdown(state);
+    system_tray_cleanup();
     lrc_free_data(&state->playback.lyrics);
     mpris_free_metadata(&state->playback.current_track);
     mpris_cleanup();

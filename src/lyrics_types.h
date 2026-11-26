@@ -96,15 +96,12 @@ struct async_lyrics_fetch {
 // block (art URL download, ffmpeg extraction, iTunes) runs on a worker thread
 // that resolves the art into {md5}.png. Only the cache lookup stays on the main
 // thread. The main thread applies the resulting icon (GTK is not thread-safe)
-// and sends the track notification once the art lands (or fails).
-struct tray_art_job;  // system_tray.h
+// and sends the track notification once the art lands (or fails), and drops
+// the lookup - without waiting for the worker - when the track changes.
+struct art_fetch_job;  // lyrics_manager.c
 
 struct async_art_fetch {
-    pthread_t thread;
-    _Atomic bool thread_active;
-    _Atomic bool ready;
-    _Atomic bool should_cancel;
-    struct tray_art_job *job;             // what to resolve; owned (system_tray_art_free)
+    struct art_fetch_job *job;   // the lookup whose result is awaited, or NULL
 };
 
 // Playback state - currently playing track, current/prev/next lines, timing

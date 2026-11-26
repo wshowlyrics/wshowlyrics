@@ -115,4 +115,14 @@ bool touch_cache_file(const char *filepath);
 // the process umask changed. Returns NULL on failure (errno set).
 FILE* fopen_private(const char *path);
 
+// Write a private file so that it appears under path complete or not at all.
+// Two threads can write the same cache file - a dropped worker and its
+// successor (worker_handoff.h) - while a third reads it, so such a file is
+// written under a name of the calling thread's own (returned in tmp_path) and
+// renamed into place by fclose_into_place. That one closes f and returns false,
+// with the temporary file removed and errno set, if any write, the close or
+// the rename failed.
+FILE* fopen_private_tmp(const char *path, char *tmp_path, size_t tmp_size);
+bool fclose_into_place(FILE *f, const char *tmp_path, const char *path);
+
 #endif

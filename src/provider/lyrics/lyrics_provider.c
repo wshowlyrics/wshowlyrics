@@ -726,12 +726,11 @@ static void cache_lrclib_lyrics(const struct track_metadata *track, struct lyric
         return;
     }
 
-    // Written under a name of this thread's own and renamed into place: a
-    // dropped search and its successor can be alive at once for the same
-    // track, and neither may read or overwrite a half-written cache file
+    // Renamed into place when complete: a dropped search and its successor
+    // can be alive at once for the same track, and neither may read or
+    // overwrite a half-written cache file
     char tmp_path[sizeof(cache_path) + 32];
-    snprintf(tmp_path, sizeof(tmp_path), "%s.%d.tmp", cache_path, (int)gettid());
-    FILE *f = fopen_private(tmp_path);
+    FILE *f = fopen_private_tmp(cache_path, tmp_path, sizeof(tmp_path));
 
     if (!f) {
         log_warn("Failed to cache lyrics");
@@ -753,9 +752,8 @@ static void cache_lrclib_lyrics(const struct track_metadata *track, struct lyric
                line->text);
         line = line->next;
     }
-    if (fclose(f) != 0 || rename(tmp_path, cache_path) != 0) {
+    if (!fclose_into_place(f, tmp_path, cache_path)) {
         log_warn("Failed to cache lyrics");
-        unlink(tmp_path);
         return;
     }
     log_info("Cached lyrics: %s", sanitize_path(cache_path));

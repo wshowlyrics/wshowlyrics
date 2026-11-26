@@ -54,8 +54,8 @@ struct tray_art_job *system_tray_art_prepare(const struct tray_art_request *requ
 // the calling thread is cancelled (thread_cancel_bind).
 void system_tray_art_run(struct tray_art_job *job);
 
-// Main thread, after the worker is joined. Set the tray icon from what the job
-// found, or the default icon if it found nothing.
+// Main thread, once the worker has handed the job over. Set the tray icon from
+// what the job found, or the default icon if it found nothing.
 void system_tray_art_apply(const struct tray_art_job *job);
 
 // The request the job was prepared for (the job's own copy; valid until freed).
