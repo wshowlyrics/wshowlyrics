@@ -93,10 +93,9 @@ static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
     const char *ext = strrchr(path, '.');
     if (!ext) return false;
 
-    // Check if this extension is enabled in config
-    if (!config_is_extension_enabled(ext)) {
-        return false;
-    }
+    // No "is this extension enabled" check: every caller builds path from the
+    // search's own extension list (get_extension_priority), and asking the
+    // config here would read it from the worker thread.
 
     log_info("Trying: %s", sanitize_path(path));
     bool success = false;
@@ -208,15 +207,39 @@ static char** parse_custom_extensions(const char *extensions) {
     return result;
 }
 
-// Get ordered list of extensions from config
+// The options of the search running on this thread. Set by
+// lyrics_find_for_track for the length of the call, so the helpers below read
+// the search's own copy of the settings and never the config.
+static _Thread_local const struct lyrics_search_options *t_options = NULL;
+
+static bool is_set(const char *value) {
+    return value && value[0] != '\0';
+}
+
+void lyrics_search_options_capture(struct lyrics_search_options *options) {
+    const struct config *cfg = config_get();
+    options->extensions = strdup(cfg->lyrics.extensions ? cfg->lyrics.extensions : "");
+    options->search_dirs = strdup(cfg->lyrics.search_dirs ? cfg->lyrics.search_dirs : "");
+    options->ignore_dirs = strdup(cfg->lyrics.ignore_dirs ? cfg->lyrics.ignore_dirs : "");
+    options->enable_lrclib = cfg->lyrics.enable_lrclib;
+}
+
+void lyrics_search_options_free(struct lyrics_search_options *options) {
+    free(options->extensions);
+    free(options->search_dirs);
+    free(options->ignore_dirs);
+    memset(options, 0, sizeof(*options));
+}
+
+// Get ordered list of extensions from the search options
 // Returns NULL-terminated array of extension strings
 // Caller must free the array and all strings
 static char** get_extension_priority(void) {
-    if (!g_config.lyrics.extensions || g_config.lyrics.extensions[0] == '\0') {
+    if (!is_set(t_options->extensions)) {
         return create_default_extensions();
     }
 
-    return parse_custom_extensions(g_config.lyrics.extensions);
+    return parse_custom_extensions(t_options->extensions);
 }
 
 // Free extension priority array
@@ -333,12 +356,11 @@ static char* expand_path_token(const char *token, const char *music_file_dir) {
 // Check if the music file's directory matches any entry in ignore_dirs
 // Returns true if the track should be skipped (not searched for lyrics)
 static bool is_track_ignored(const char *music_file_dir) {
-    if (!music_file_dir || !g_config.lyrics.ignore_dirs ||
-        g_config.lyrics.ignore_dirs[0] == '\0') {
+    if (!music_file_dir || !is_set(t_options->ignore_dirs)) {
         return false;
     }
 
-    char *ignore_copy = strdup(g_config.lyrics.ignore_dirs);
+    char *ignore_copy = strdup(t_options->ignore_dirs);
     if (!ignore_copy) return false;
 
     char *saveptr;
@@ -376,13 +398,13 @@ static bool is_track_ignored(const char *music_file_dir) {
     return false;
 }
 
-// Parse user-defined search directories from config
+// Parse user-defined search directories from the search options
 // Returns number of directories added
 static int build_custom_search_dirs(const char **search_dirs, int max_dirs,
                                     const char *current_dir,
                                     char **allocated_dirs, int *alloc_count) {
     int dir_count = 0;
-    char *dirs_copy = strdup(g_config.lyrics.search_dirs);
+    char *dirs_copy = strdup(t_options->search_dirs);
     if (!dirs_copy) return 0;
 
     char *saveptr;
@@ -452,7 +474,7 @@ static int build_search_directories(const char **search_dirs, int max_dirs,
                                     char **allocated_dirs, int *alloc_count) {
     *alloc_count = 0;
 
-    if (g_config.lyrics.search_dirs && g_config.lyrics.search_dirs[0] != '\0') {
+    if (is_set(t_options->search_dirs)) {
         return build_custom_search_dirs(search_dirs, max_dirs, current_dir,
                                         allocated_dirs, alloc_count);
     }
@@ -609,8 +631,8 @@ static void local_cleanup(void) {
     // Nothing to cleanup
 }
 
-static bool local_is_enabled(void) {
-    return g_config.lyrics.extensions && g_config.lyrics.extensions[0] != '\0';
+static bool local_is_enabled(const struct lyrics_search_options *options) {
+    return is_set(options->extensions);
 }
 
 struct lyrics_provider local_provider = {
@@ -682,7 +704,7 @@ static bool try_load_from_cache(const char *metadata_hash, struct lyrics_data *d
 
 // Check if provider should be skipped via is_enabled callback
 static bool should_skip_provider(const struct lyrics_provider *provider) {
-    if (provider->is_enabled && !provider->is_enabled()) {
+    if (provider->is_enabled && !provider->is_enabled(t_options)) {
         log_info("Skipped provider: %s (disabled)", provider->name);
         return true;
     }
@@ -781,10 +803,7 @@ static void log_search_feedback(bool tried_local, bool tried_lrclib) {
     }
 }
 
-bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *data) {
-    if (!track || !track->title) {
-        return false;
-    }
+static bool find_for_track(struct track_metadata *track, struct lyrics_data *data) {
 
     log_info("Searching lyrics for: %s - %s",
              track->artist ? track->artist : "Unknown", track->title);
@@ -834,4 +853,16 @@ bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *dat
     // Provide helpful feedback based on what happened
     log_search_feedback(tried_local, tried_lrclib);
     return false;
+}
+
+bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *data,
+                           const struct lyrics_search_options *options) {
+    if (!track || !track->title || !options) {
+        return false;
+    }
+
+    t_options = options;
+    const bool found = find_for_track(track, data);
+    t_options = NULL;
+    return found;
 }

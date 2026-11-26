@@ -71,6 +71,17 @@ struct lyrics_data {
     _Atomic int translation_total;
 };
 
+// The settings a lyrics search reads, copied out of the config before the
+// search starts. The search runs on a worker thread, and the main thread frees
+// and reloads the config whenever settings.ini is saved - so the worker must
+// never read the config itself (#67).
+struct lyrics_search_options {
+    char *extensions;    // [lyrics] extensions (empty: local search off)
+    char *search_dirs;   // [lyrics] search_dirs (empty: the default directories)
+    char *ignore_dirs;   // [lyrics] ignore_dirs
+    bool enable_lrclib;  // [lyrics] enable_lrclib
+};
+
 // Async lyrics fetch — the (blocking, network) provider search runs on a worker
 // thread so it never stalls the main poll() loop. The worker fills `result` (a
 // buffer private to the fetch, never the live lyrics) and flips `ready`; the main
@@ -87,6 +98,7 @@ struct async_lyrics_fetch {
                                   // install the lyrics, but no artwork or notification
     struct lyrics_data result;    // worker-private result buffer
     struct track_metadata track;  // deep-copied track snapshot the worker fetches for
+    struct lyrics_search_options options;  // the settings the worker searches with
 };
 
 // Async album-art fetch — every step of the tray artwork fallback that can

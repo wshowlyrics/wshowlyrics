@@ -6,6 +6,12 @@
 #include "../../utils/mpris/mpris.h"
 #include <stdbool.h>
 
+// Main thread. Copy the current settings into options (free with _free).
+void lyrics_search_options_capture(struct lyrics_search_options *options);
+
+// Free what _capture copied and zero the struct.
+void lyrics_search_options_free(struct lyrics_search_options *options);
+
 // Abstract interface for lyrics providers
 struct lyrics_provider {
     const char *name;
@@ -22,15 +28,18 @@ struct lyrics_provider {
     // Cleanup provider
     void (*cleanup)(void);
 
-    // Check if provider is enabled (NULL means always enabled)
-    bool (*is_enabled)(void);
+    // Check if provider is enabled for this search (NULL means always enabled)
+    bool (*is_enabled)(const struct lyrics_search_options *options);
 };
 
 // Concrete implementations
 extern struct lyrics_provider local_provider;
 
-// High-level API: Find lyrics for current track
-bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *data);
+// High-level API: Find lyrics for a track, with the settings in options.
+// Blocking (local files, then the network); safe to run on a worker thread -
+// it reads nothing of the config.
+bool lyrics_find_for_track(struct track_metadata *track, struct lyrics_data *data,
+                           const struct lyrics_search_options *options);
 
 // Start translation of the given lyrics with the configured provider.
 // Call on the LIVE lyrics from the main thread after a fetch is swapped in;

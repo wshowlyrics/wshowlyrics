@@ -519,35 +519,6 @@ bool config_load(struct config *cfg, const char *path) {
     return true;
 }
 
-bool config_is_extension_enabled(const char *ext) {
-    if (!ext || !g_config.lyrics.extensions) return true;
-
-    // If extensions is empty, enable all
-    if (g_config.lyrics.extensions[0] == '\0') return true;
-
-    // Skip leading dot if present
-    if (ext[0] == '.') ext++;
-
-    // Check if extension is in the comma-separated list
-    char *exts = strdup(g_config.lyrics.extensions);
-    if (!exts) return true;
-
-    bool found = false;
-    char *saveptr;
-    char *token = strtok_r(exts, ",", &saveptr);
-    while (token) {
-        const char *trimmed = trim_whitespace(token);
-        if (strcasecmp(trimmed, ext) == 0) {
-            found = true;
-            break;
-        }
-        token = strtok_r(NULL, ",", &saveptr);
-    }
-
-    free(exts);
-    return found;
-}
-
 // Structure to hold config key information
 struct config_key {
     char section[64];

@@ -115,9 +115,6 @@ char* config_get_path(void);
 // Returns path to loaded config file (must be freed by caller), or NULL if only defaults used
 char* config_load_with_fallback(struct config *cfg);
 
-// Helper: Check if extension is enabled in config
-bool config_is_extension_enabled(const char *ext);
-
 // Validate user config against settings.ini.example
 void config_validate_user_config(void);
 

@@ -392,6 +392,13 @@ static void copy_track_metadata(struct track_metadata *dst, const struct track_m
     dst->position_us = src->position_us;
 }
 
+// Free what a fetch was started with: its track snapshot and search options.
+static void free_fetch_inputs(struct async_lyrics_fetch *fetch) {
+    mpris_free_metadata(&fetch->track);
+    memset(&fetch->track, 0, sizeof(fetch->track));
+    lyrics_search_options_free(&fetch->options);
+}
+
 // Discard an in-flight (or completed-but-unconsumed) async fetch: ask it to
 // abort, join it, and free its private result and track snapshot.
 void lyrics_manager_cancel_fetch(struct lyrics_state *state) {
@@ -406,8 +413,7 @@ void lyrics_manager_cancel_fetch(struct lyrics_state *state) {
 
     lrc_free_data(&fetch->result);
     memset(&fetch->result, 0, sizeof(fetch->result));
-    mpris_free_metadata(&fetch->track);
-    memset(&fetch->track, 0, sizeof(fetch->track));
+    free_fetch_inputs(fetch);
 }
 
 // Fetch worker: runs the (blocking, network) provider search into the fetch's
@@ -418,7 +424,7 @@ static void *lyrics_fetch_worker(void *arg) {
     struct async_lyrics_fetch *fetch = &state->playback.async_fetch;
 
     thread_cancel_bind(&fetch->should_cancel);
-    fetch->found = lyrics_find_for_track(&fetch->track, &fetch->result);
+    fetch->found = lyrics_find_for_track(&fetch->track, &fetch->result, &fetch->options);
 
     fetch->in_progress = false;
     atomic_store(&fetch->ready, true);
@@ -432,6 +438,8 @@ static void start_fetch(struct lyrics_state *state, bool same_track) {
     struct async_lyrics_fetch *fetch = &state->playback.async_fetch;
     memset(&fetch->result, 0, sizeof(fetch->result));
     copy_track_metadata(&fetch->track, &state->playback.current_track);
+    // Copied here, on the main thread: the worker never reads the config
+    lyrics_search_options_capture(&fetch->options);
     fetch->same_track = same_track;
     fetch->should_cancel = false;
     fetch->found = false;
@@ -441,9 +449,10 @@ static void start_fetch(struct lyrics_state *state, bool same_track) {
     if (pthread_create(&fetch->thread, NULL, lyrics_fetch_worker, state) != 0) {
         log_warn("Failed to start async lyrics fetch thread; loading synchronously");
         fetch->in_progress = false;
-        mpris_free_metadata(&fetch->track);
-        memset(&fetch->track, 0, sizeof(fetch->track));
-        if (lyrics_find_for_track(&state->playback.current_track, &state->playback.lyrics)) {
+        const bool found = lyrics_find_for_track(&fetch->track, &state->playback.lyrics,
+                                                 &fetch->options);
+        free_fetch_inputs(fetch);
+        if (found) {
             finalize_found(state, same_track);
         } else {
             finalize_not_found(state, same_track);
@@ -486,8 +495,7 @@ void lyrics_manager_poll_load(struct lyrics_state *state) {
     fetch->ready = false;
 
     bool found = fetch->found;
-    mpris_free_metadata(&fetch->track);
-    memset(&fetch->track, 0, sizeof(fetch->track));
+    free_fetch_inputs(fetch);
 
     if (found) {
         // The live lyrics were freed when the fetch began, so this move-assign

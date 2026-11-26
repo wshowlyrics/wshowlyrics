@@ -318,6 +318,10 @@ The three workers (lyrics fetch and artwork in `lyrics_manager.c`, translation i
 
 A new worker thread that skips the bind is simply never cancelled - no error.
 
+### Worker Threads Do Not Read the Config
+
+Saving `settings.ini` makes the main thread `config_free()` and reload `g_config`, strings included. A worker that reads `g_config` while that happens reads freed memory, so each worker gets its settings **copied when it is started, on the main thread**: the lyrics search takes a `struct lyrics_search_options` (`lyrics_search_options_capture` in `start_fetch`, passed to `lyrics_find_for_track`; #67), the artwork job copies `enable_itunes` (`art_job_new`), the translation thread gets its strings in its thread arguments. Inside `lyrics_provider.c` the search's options are reached through the thread-local `t_options`, set for the length of `lyrics_find_for_track`. Known gap: the translation thread still reads three scalars (`max_retries`, `rate_limit_ms`, `cache_policy`) from the config.
+
 ### Unicode Paths from MPRIS
 
 MPRIS gives `file:///` URIs with percent-encoding. Always URL-decode before opening (`extract_directory_from_url` and friends).

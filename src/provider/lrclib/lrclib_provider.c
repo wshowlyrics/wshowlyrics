@@ -4,7 +4,6 @@
 #include "../../utils/curl/curl_utils.h"
 #include "../../utils/string/string_utils.h"
 #include "../../utils/json/json_utils.h"
-#include "../../user_experience/config/config.h"
 #include "../../constants.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -412,8 +411,8 @@ static void lrclib_cleanup(void) {
     curl_global_cleanup();
 }
 
-static bool lrclib_is_enabled(void) {
-    return g_config.lyrics.enable_lrclib;
+static bool lrclib_is_enabled(const struct lyrics_search_options *options) {
+    return options->enable_lrclib;
 }
 
 struct lyrics_provider lrclib_provider = {

@@ -350,18 +350,18 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
 
     // Check if the config file changed, and whether the watcher saw the lyrics
     // file change (every 2 seconds).
-    // Skip while an async fetch is running: the worker reads g_config in the
-    // provider chain, and a config reload here would config_free() those strings
-    // out from under it (use-after-free). Fetches are short; the reload just
-    // waits for the next check.
+    // Skipped while a fetch is running. That is no longer about memory - the
+    // worker searches with its own copy of the settings (#67) - but a reload
+    // started here would replace that fetch with a same-track reload, and a
+    // track's first load would then lose its artwork and notification. Fetches
+    // are short; the check just waits for the next round.
     // The counter advances on every tick, so it is updated outside the condition.
     const bool check_due = (*update_counter % TRACK_UPDATE_CHECK_INTERVAL == 0);
     (*update_counter)++;
     if (check_due && !state->playback.async_fetch.thread_active) {
         // Config first. If the translation settings changed, this starts a
-        // reload fetch, which empties the lyrics, so the check below is skipped.
-        // The other way round, a changed lyrics file would start its fetch and
-        // the config reload would then free what that worker reads.
+        // reload fetch, which empties the lyrics, so the check below is skipped
+        // and the two reloads cannot both fire in one round.
         file_monitor_check_and_reload(
             state->config.config_file_path,
             state->config.config_md5_checksum,
