@@ -10,14 +10,6 @@
 #include <string.h>
 #include <curl/curl.h>
 
-// How far a search result's length may be from the track's and still be used.
-// The search API matches by name only and returns whatever is closest, so
-// without a limit a 90 s file got the lyrics of a 201 s song with a similar
-// title (#71). The exact-match API (/api/get) allows 2 s; a little more here
-// for a trailing silence or a differently trimmed file. Much more than that
-// and the lyrics would be out of sync even if the song were the right one.
-#define SEARCH_MAX_DURATION_DIFF_MS 5000
-
 // Build search request URL with sanitized title and optional artist
 static bool build_search_request_url(CURL *curl, const char *title, const char *artist,
                                      char *url_buffer, size_t buffer_size) {
@@ -194,7 +186,7 @@ static void extract_metadata_from_result(const char *obj_start, struct lyrics_da
 
 // Try search API when we have incomplete metadata (missing artist or album)
 // or when exact match fails. The result closest in length is used, if it is
-// within SEARCH_MAX_DURATION_DIFF_MS; with neither an artist nor a track length
+// within LRCLIB_MAX_DURATION_DIFF_MS; with neither an artist nor a track length
 // there is nothing to tell songs apart by, and no request is made.
 // Note: Album is intentionally excluded to avoid issues with incorrect album metadata.
 static bool lrclib_search_fallback(const char *title, const char *artist,
@@ -248,10 +240,10 @@ static bool lrclib_search_fallback(const char *title, const char *artist,
 
     bool success = false;
     if (match.synced_lyrics && duration_ms > 0 &&
-        match.duration_diff > SEARCH_MAX_DURATION_DIFF_MS) {
+        match.duration_diff > LRCLIB_MAX_DURATION_DIFF_MS) {
         log_info("Closest lrclib search result is %ld ms off the track's length "
                  "(limit %d ms): another song or another cut, not used",
-                 match.duration_diff, SEARCH_MAX_DURATION_DIFF_MS);
+                 match.duration_diff, LRCLIB_MAX_DURATION_DIFF_MS);
     } else if (match.synced_lyrics) {
         if (duration_ms > 0) {
             log_info("Selected best match with duration diff: %ld ms", match.duration_diff);

@@ -676,6 +676,30 @@ void lyrics_providers_cleanup(void) {
     }
 }
 
+// Whether cached lyrics belong to a track of this length. The cache is keyed
+// by artist, title and album, which for a file without tags is the title
+// alone, so the same entry can come up for a different recording (#71).
+static bool cached_lyrics_fit_track(const struct lyrics_data *data, int64_t track_length_us) {
+    if (track_length_us <= 0) {
+        return true;   // nothing to check against
+    }
+    const int64_t track_ms = track_length_us / 1000;
+
+    // The length the lyrics were cached for, as written by cache_lrclib_lyrics
+    if (data->metadata.length_ms > 0) {
+        return llabs(data->metadata.length_ms - track_ms) <= LRCLIB_MAX_DURATION_DIFF_MS;
+    }
+
+    // A cache file from before that tag was written (or cached with the length
+    // unknown). All that can be said is that lyrics running past the end of
+    // the track were timed against a longer one.
+    const struct lyrics_line *last = data->lines;
+    while (last && last->next) {
+        last = last->next;
+    }
+    return !last || last->timestamp_us / 1000 <= track_ms + LRCLIB_MAX_DURATION_DIFF_MS;
+}
+
 // Try to load lyrics from cache
 static bool try_load_from_cache(const char *metadata_hash, struct lyrics_data *data,
                                int64_t track_length_us) {
@@ -685,6 +709,14 @@ static bool try_load_from_cache(const char *metadata_hash, struct lyrics_data *d
     }
 
     if (!lrc_parse_file(cache_path, data)) {
+        return false;
+    }
+
+    // Left in place: a search that finds the right lyrics overwrites it
+    if (!cached_lyrics_fit_track(data, track_length_us)) {
+        log_info("Cached lyrics are for a track of another length, searching again: %s",
+                 sanitize_path(cache_path));
+        lrc_free_data(data);
         return false;
     }
 
@@ -704,8 +736,6 @@ static bool try_load_from_cache(const char *metadata_hash, struct lyrics_data *d
     // Translation is started by the caller on the live lyrics after this returns
     // (see lyrics_provider_translate) — never here, so it is safe to run this
     // path on the async fetch worker thread.
-    (void)track_length_us;
-
     return true;
 }
 
@@ -741,6 +771,13 @@ static void cache_lrclib_lyrics(const struct track_metadata *track, struct lyric
     fprintf(f, "[ar:%s]\n", track->artist ? track->artist : "Unknown");
     fprintf(f, "[ti:%s]\n", track->title ? track->title : "Unknown");
     fprintf(f, "[al:%s]\n", track->album ? track->album : "Unknown");
+    // The length of the track these lyrics were fetched for. The cache key is
+    // artist, title and album only, so this is what tells the cache reader
+    // that a later track of the same name is a different recording (#71).
+    if (track->length_us > 0) {
+        const int64_t length_s = track->length_us / 1000000;
+        fprintf(f, "[length:%02ld:%02ld]\n", length_s / 60, length_s % 60);
+    }
 
     // Write lyrics lines with timestamps
     struct lyrics_line *line = data->lines;

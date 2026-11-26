@@ -109,6 +109,27 @@ static bool parse_string_tag(const char *line, const char *tag, size_t tag_len,
     return true;
 }
 
+// Largest [length:] value accepted, in minutes (a day); keeps the result in int
+#define MAX_LENGTH_TAG_MINUTES 1440
+
+// Parse the value of a [length:mm:ss] tag (what follows the colon, up to and
+// including the closing bracket). False for anything else, e.g. "3:", "3:21.5"
+// or "1:02:03".
+static bool parse_length_tag(const char *value, int *length_ms) {
+    char *end = NULL;
+    const long minutes = strtol(value, &end, 10);
+    if (end == value || *end != ':' || minutes < 0 || minutes > MAX_LENGTH_TAG_MINUTES) {
+        return false;
+    }
+    const char *seconds_text = end + 1;
+    const long seconds = strtol(seconds_text, &end, 10);
+    if (end == seconds_text || *end != ']' || seconds < 0 || seconds >= 60) {
+        return false;
+    }
+    *length_ms = (int)((minutes * 60 + seconds) * 1000);
+    return true;
+}
+
 bool parse_lrc_metadata_tag(const char *line, struct lyrics_metadata *metadata) {
     // Table-driven metadata parsing
     struct {
@@ -139,7 +160,14 @@ bool parse_lrc_metadata_tag(const char *line, struct lyrics_metadata *metadata) 
         }
     }
 
-    // Ignore unknown metadata tags (e.g., [au:], [by:], [length:])
+    // [length:mm:ss] - written into a cached lyrics file: the length of the
+    // track the lyrics were fetched for. A malformed value is ignored.
+    if (strncmp(line, "[length:", 8) == 0) {
+        parse_length_tag(line + 8, &metadata->length_ms);
+        return true;
+    }
+
+    // Ignore unknown metadata tags (e.g., [au:], [by:])
     // Pattern: [xxx:...] where xxx is NOT a timestamp (which starts with digit)
     if (line[0] == '[' && line[1] != '<' && !isdigit((unsigned char)line[1])) {
         const char *colon = strchr(line, ':');

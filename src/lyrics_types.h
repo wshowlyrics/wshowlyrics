@@ -52,6 +52,8 @@ struct lyrics_metadata {
     char *artist;
     char *album;
     int offset_ms; // Offset in milliseconds
+    int length_ms; // [length:mm:ss] - length of the track the lyrics were fetched for
+                   // (written into cached lyrics files); 0 if not given
 };
 
 struct lyrics_data {
