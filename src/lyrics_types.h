@@ -82,23 +82,14 @@ struct lyrics_search_options {
     bool enable_lrclib;  // [lyrics] enable_lrclib
 };
 
-// Async lyrics fetch — the (blocking, network) provider search runs on a worker
-// thread so it never stalls the main poll() loop. The worker fills `result` (a
-// buffer private to the fetch, never the live lyrics) and flips `ready`; the main
-// thread then swaps `result` into the live lyrics and runs the GTK/render/
-// translation steps that must stay on the main thread.
+// Async lyrics fetch — the (blocking, network, file system) provider search
+// runs on a worker thread so it never stalls the main poll() loop. Each search
+// is a job the worker fills in private; the main thread holds only the job it
+// is waiting for, and drops it - without waiting for the worker - when the
+// track changes (see lyrics_manager.c).
+struct lyrics_fetch_job;
 struct async_lyrics_fetch {
-    pthread_t thread;
-    _Atomic bool thread_active;   // true between pthread_create and join
-    _Atomic bool in_progress;     // worker is still running
-    _Atomic bool ready;           // worker finished; result awaits consumption
-    _Atomic bool should_cancel;   // ask the worker (and its curl transfer) to abort
-    _Atomic bool found;           // worker outcome: lyrics were found
-    bool same_track;              // search repeated for the track already playing:
-                                  // install the lyrics, but no artwork or notification
-    struct lyrics_data result;    // worker-private result buffer
-    struct track_metadata track;  // deep-copied track snapshot the worker fetches for
-    struct lyrics_search_options options;  // the settings the worker searches with
+    struct lyrics_fetch_job *job;  // the search whose result is awaited, or NULL
 };
 
 // Async album-art fetch — every step of the tray artwork fallback that can

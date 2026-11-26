@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#define _GNU_SOURCE
 #include "lyrics_manager.h"
 #include "../user_experience/config/config.h"
 #include "../core/state/state_helpers.h"
@@ -81,8 +82,9 @@ static void cancel_and_wait_translation(struct lyrics_data *lyrics) {
 
 // Stop everything still running in the background for the current track: the
 // lyrics search, the artwork fetch and the translation. One call so that a path
-// which ends a track (track change, player gone, shutdown) cannot stop some of
-// them and forget another.
+// which ends a track (track change, player gone) cannot stop some of them and
+// forget another. The lyrics search is dropped at once; the artwork fetch and
+// the translation are still waited for.
 void lyrics_manager_cancel_track_work(struct lyrics_state *state) {
     lyrics_manager_cancel_fetch(state);
     lyrics_manager_cancel_art_fetch(state);
@@ -392,74 +394,116 @@ static void copy_track_metadata(struct track_metadata *dst, const struct track_m
     dst->position_us = src->position_us;
 }
 
-// Free what a fetch was started with: its track snapshot and search options.
-static void free_fetch_inputs(struct async_lyrics_fetch *fetch) {
-    mpris_free_metadata(&fetch->track);
-    memset(&fetch->track, 0, sizeof(fetch->track));
-    lyrics_search_options_free(&fetch->options);
+// --- Async lyrics fetch ---------------------------------------------------
+
+// One lyrics search, owned by whichever side settles it last. The worker fills
+// it in; the main thread either takes the result or walks away from it. Walking
+// away matters because the search reads the music file's directory, and on a
+// network mount that stopped answering those calls block for as long as the
+// mount takes - joining the worker froze the overlay on a track change (#62,
+// #68). So the worker is detached and never joined; instead the job's state
+// leaves FETCH_RUNNING exactly once:
+//   worker: RUNNING -> DONE       the result waits for the main thread, which
+//                                 frees the job after taking it
+//   main:   RUNNING -> ABANDONED  the worker frees the job when it gets there
+// Whoever loses that race frees the job. After its transition the worker does
+// not touch the job again, and neither does the main thread after abandoning.
+enum fetch_state { FETCH_RUNNING = 0, FETCH_DONE, FETCH_ABANDONED };
+
+struct lyrics_fetch_job {
+    atomic_int state;             // enum fetch_state
+    _Atomic bool should_cancel;   // ask the worker (and its curl transfer) to abort
+    bool found;                   // worker outcome, valid once state is FETCH_DONE
+    bool same_track;              // search repeated for the track already playing:
+                                  // install the lyrics, but no artwork or notification
+    struct lyrics_data result;    // filled by the worker
+    struct track_metadata track;  // deep-copied track snapshot the worker fetches for
+    struct lyrics_search_options options;  // the settings the worker searches with
+};
+
+// Fetch workers that have not returned yet, abandoned ones included. Only
+// shutdown looks at it (lyrics_manager_shutdown).
+static atomic_int g_fetch_workers;
+
+static void fetch_job_free(struct lyrics_fetch_job *job) {
+    lrc_free_data(&job->result);
+    mpris_free_metadata(&job->track);
+    lyrics_search_options_free(&job->options);
+    free(job);
 }
 
-// Discard an in-flight (or completed-but-unconsumed) async fetch: ask it to
-// abort, join it, and free its private result and track snapshot.
+// Drop the fetch the main thread is waiting for, if any: ask it to stop and
+// leave it behind. Never blocks. A worker that is still running frees the job
+// itself when it returns; its result is never looked at.
 void lyrics_manager_cancel_fetch(struct lyrics_state *state) {
-    struct async_lyrics_fetch *fetch = &state->playback.async_fetch;
-    if (!fetch->thread_active) return;
+    struct lyrics_fetch_job *job = state->playback.async_fetch.job;
+    if (!job) return;
+    state->playback.async_fetch.job = NULL;
 
-    fetch->should_cancel = true;
-    pthread_join(fetch->thread, NULL);
-    fetch->thread_active = false;
-    fetch->in_progress = false;
-    fetch->ready = false;
-
-    lrc_free_data(&fetch->result);
-    memset(&fetch->result, 0, sizeof(fetch->result));
-    free_fetch_inputs(fetch);
+    job->should_cancel = true;
+    int expected = FETCH_RUNNING;
+    if (!atomic_compare_exchange_strong(&job->state, &expected, FETCH_ABANDONED)) {
+        fetch_job_free(job);   // the worker had already finished
+    }
 }
 
-// Fetch worker: runs the (blocking, network) provider search into the fetch's
-// private result buffer. Touches only fetch->result / fetch->track and atomics —
-// never the live lyrics, GTK, or the renderer.
+// Fetch worker: runs the blocking provider search into its job. Touches only
+// the job - never the live lyrics, GTK, the renderer or the config.
 static void *lyrics_fetch_worker(void *arg) {
-    struct lyrics_state *state = arg;
-    struct async_lyrics_fetch *fetch = &state->playback.async_fetch;
+    struct lyrics_fetch_job *job = arg;
 
-    thread_cancel_bind(&fetch->should_cancel);
-    fetch->found = lyrics_find_for_track(&fetch->track, &fetch->result, &fetch->options);
+    pthread_setname_np(pthread_self(), "lyrics-fetch");
+    thread_cancel_bind(&job->should_cancel);
+    job->found = lyrics_find_for_track(&job->track, &job->result, &job->options);
 
-    fetch->in_progress = false;
-    atomic_store(&fetch->ready, true);
+    int expected = FETCH_RUNNING;
+    if (!atomic_compare_exchange_strong(&job->state, &expected, FETCH_DONE)) {
+        // Abandoned while searching
+        log_info("A lyrics search that was dropped has ended");
+        fetch_job_free(job);
+    }
+    atomic_fetch_sub(&g_fetch_workers, 1);
     return NULL;
 }
 
-// Snapshot the track and kick off the fetch worker for it. The live lyrics must
-// already be empty. Non-blocking; the result is consumed later by
-// lyrics_manager_poll_load, which treats it as same_track says.
-static void start_fetch(struct lyrics_state *state, bool same_track) {
-    struct async_lyrics_fetch *fetch = &state->playback.async_fetch;
-    memset(&fetch->result, 0, sizeof(fetch->result));
-    copy_track_metadata(&fetch->track, &state->playback.current_track);
-    // Copied here, on the main thread: the worker never reads the config
-    lyrics_search_options_capture(&fetch->options);
-    fetch->same_track = same_track;
-    fetch->should_cancel = false;
-    fetch->found = false;
-    fetch->ready = false;
-    fetch->in_progress = true;
+// Start a detached worker on the job. On success the job is no longer the
+// caller's alone (see enum fetch_state).
+static bool start_fetch_worker(struct lyrics_fetch_job *job) {
+    pthread_t thread;
+    atomic_fetch_add(&g_fetch_workers, 1);
+    if (pthread_create(&thread, NULL, lyrics_fetch_worker, job) != 0) {
+        atomic_fetch_sub(&g_fetch_workers, 1);
+        return false;
+    }
+    pthread_detach(thread);
+    return true;
+}
 
-    if (pthread_create(&fetch->thread, NULL, lyrics_fetch_worker, state) != 0) {
-        log_warn("Failed to start async lyrics fetch thread; loading synchronously");
-        fetch->in_progress = false;
-        const bool found = lyrics_find_for_track(&fetch->track, &state->playback.lyrics,
-                                                 &fetch->options);
-        free_fetch_inputs(fetch);
-        if (found) {
-            finalize_found(state, same_track);
-        } else {
-            finalize_not_found(state, same_track);
-        }
+// Snapshot the track and kick off a fetch worker for it. The live lyrics must
+// already be empty and the previous fetch dropped. Non-blocking; the result is
+// consumed later by lyrics_manager_poll_load, which treats it as same_track says.
+static void start_fetch(struct lyrics_state *state, bool same_track) {
+    struct lyrics_fetch_job *job = calloc(1, sizeof(*job));
+    if (!job) {
+        log_error("Out of memory; lyrics search skipped");
+        finalize_not_found(state, same_track);
         return;
     }
-    fetch->thread_active = true;
+    copy_track_metadata(&job->track, &state->playback.current_track);
+    // Copied here, on the main thread: the worker never reads the config
+    lyrics_search_options_capture(&job->options);
+    job->same_track = same_track;
+
+    if (start_fetch_worker(job)) {
+        state->playback.async_fetch.job = job;
+        return;
+    }
+
+    // No search on the main thread instead: it could block there for as long
+    // as the track's file system takes, which is what the worker is for
+    log_warn("Failed to start the lyrics search thread; no lyrics for this track");
+    fetch_job_free(job);
+    finalize_not_found(state, same_track);
 }
 
 // Begin an asynchronous load for a new track: reset per-track state (so the
@@ -481,35 +525,56 @@ void lyrics_manager_begin_reload(struct lyrics_state *state) {
     start_fetch(state, true);
 }
 
-// Consume a completed async fetch (call every main-loop tick). Swaps the fetched
+// Consume a completed async fetch (call every main-loop tick). Moves the fetched
 // result into the live lyrics and runs the main-thread finalize steps. No-op
 // while the worker is still running.
 void lyrics_manager_poll_load(struct lyrics_state *state) {
-    struct async_lyrics_fetch *fetch = &state->playback.async_fetch;
-    if (!fetch->thread_active || !atomic_load(&fetch->ready)) {
+    struct lyrics_fetch_job *job = state->playback.async_fetch.job;
+    if (!job || atomic_load(&job->state) != FETCH_DONE) {
         return;
     }
+    state->playback.async_fetch.job = NULL;
 
-    pthread_join(fetch->thread, NULL);
-    fetch->thread_active = false;
-    fetch->ready = false;
-
-    bool found = fetch->found;
-    free_fetch_inputs(fetch);
-
+    const bool found = job->found;
+    const bool same_track = job->same_track;
     if (found) {
         // The live lyrics were freed when the fetch began, so this move-assign
-        // does not leak; zero the source so we never double-free the buffer.
-        state->playback.lyrics = fetch->result;
-        memset(&fetch->result, 0, sizeof(fetch->result));
-        finalize_found(state, fetch->same_track);
+        // does not leak; zero the source so the job does not free it too.
+        state->playback.lyrics = job->result;
+        memset(&job->result, 0, sizeof(job->result));
+    }
+    fetch_job_free(job);
+
+    if (found) {
+        finalize_found(state, same_track);
     } else {
-        lrc_free_data(&fetch->result);
-        memset(&fetch->result, 0, sizeof(fetch->result));
-        finalize_not_found(state, fetch->same_track);
+        finalize_not_found(state, same_track);
     }
 
     rendering_manager_set_dirty(state);
+}
+
+// How long shutdown waits for fetch workers to return. A cancelled lrclib
+// request aborts within a second; a worker that takes longer is blocked in a
+// file system call and will not come back until its mount does.
+#define FETCH_WORKER_EXIT_WAIT_MS 2000
+#define FETCH_WORKER_EXIT_POLL_MS 20
+
+// Stop the track's background work and give fetch workers - abandoned ones
+// too - a moment to return, so library teardown does not run under a request
+// that is about to end anyway. Does not wait for a worker stuck on a mount.
+void lyrics_manager_shutdown(struct lyrics_state *state) {
+    lyrics_manager_cancel_track_work(state);
+
+    const struct timespec slice = { .tv_nsec = FETCH_WORKER_EXIT_POLL_MS * 1000000L };
+    int waited_ms = 0;
+    while (atomic_load(&g_fetch_workers) > 0 && waited_ms < FETCH_WORKER_EXIT_WAIT_MS) {
+        nanosleep(&slice, NULL);
+        waited_ms += FETCH_WORKER_EXIT_POLL_MS;
+    }
+    if (atomic_load(&g_fetch_workers) > 0) {
+        log_warn("A lyrics search is still waiting on a file system that does not answer; exiting without it");
+    }
 }
 
 // Discard an in-flight (or unconsumed) artwork fetch: abort, join, free inputs.

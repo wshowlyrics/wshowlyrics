@@ -64,8 +64,10 @@ void lyrics_manager_begin_reload(struct lyrics_state *state);
 void lyrics_manager_poll_load(struct lyrics_state *state);
 
 /**
- * Cancel and discard any in-flight or unconsumed async lyrics fetch.
- * Call on track change (implicitly done by begin_load) and at shutdown.
+ * Drop any in-flight or unconsumed async lyrics fetch. Never blocks: a search
+ * that is still running is asked to stop and left to finish on its own, and
+ * its result is discarded. Call on track change (implicitly done by
+ * begin_load).
  *
  * @param state Lyrics state
  */
@@ -91,11 +93,21 @@ void lyrics_manager_cancel_art_fetch(struct lyrics_state *state);
 /**
  * Stop all background work for the current track: the lyrics search, the
  * artwork fetch and the translation. Call whenever the track ends (track
- * change, player gone, shutdown).
+ * change, player gone).
  *
  * @param state Lyrics state
  */
 void lyrics_manager_cancel_track_work(struct lyrics_state *state);
+
+/**
+ * Shutdown: stop the track's background work, then wait briefly for lyrics
+ * search workers - including ones dropped earlier - to return before the
+ * libraries they use are torn down. A worker stuck on a file system that does
+ * not answer is not waited for.
+ *
+ * @param state Lyrics state
+ */
+void lyrics_manager_shutdown(struct lyrics_state *state);
 
 /**
  * Update current line based on playback position

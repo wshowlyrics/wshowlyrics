@@ -311,12 +311,24 @@ if (data->translation_thread_active) {
 
 ### Worker Threads Bind Their Cancel Flag
 
-The three workers (lyrics fetch and artwork in `lyrics_manager.c`, translation in `translator_common.c`) call `thread_cancel_bind(&should_cancel)` once on entry (`src/utils/thread/thread_cancel.h`). The flag is thread-local, so there is nothing to clear and no setter to pair up on the main thread, which only sets the flag and joins. Anything that can block on a worker must watch it:
+The three workers (lyrics fetch and artwork in `lyrics_manager.c`, translation in `translator_common.c`) call `thread_cancel_bind(&should_cancel)` once on entry (`src/utils/thread/thread_cancel.h`). The flag is thread-local, so there is nothing to clear and no setter to pair up on the main thread, which only sets the flag and joins (or, for the lyrics fetch, drops the worker - see below). Anything that can block on a worker must watch it:
 
 - a curl transfer: `curl_install_thread_cancel(curl)` in its `curl_easy_setopt` chain;
 - a wait or poll loop: `thread_cancel_requested()` (the ffmpeg wait, `translator_sleep_cancellable`).
 
 A new worker thread that skips the bind is simply never cancelled - no error.
+
+### The Lyrics Fetch Worker Is Dropped, Not Joined
+
+The lyrics search reads the music file's directory, which can sit on a network mount; when the mount stops answering, the worker blocks in `stat()`/`open()` and no flag reaches it. Joining it on a track change froze the overlay (#62, #68). So each search is a heap `struct lyrics_fetch_job` (`lyrics_manager.c`) run by a **detached** thread, and its `state` leaves `FETCH_RUNNING` exactly once, by compare-and-swap: the worker sets `FETCH_DONE` (the main thread takes the result in `lyrics_manager_poll_load` and frees the job), or the main thread sets `FETCH_ABANDONED` in `lyrics_manager_cancel_fetch` (the worker frees the job when it returns). The loser of that race frees the job, and neither side touches it after handing it over. Consequences to keep in mind:
+
+- Everything the worker reads or writes lives in its job — never in `state`. Two lyrics workers can now be alive at once (a dropped one and the current one), so the search path must stay free of shared mutable state.
+- A dropped search stops at its next file probe or provider boundary (`thread_cancel_requested()` in `try_load_lyrics_file` and `try_providers`). The lrclib cache file is written under a per-thread temporary name and renamed into place, so a dropped search and its successor never see each other's half-written file.
+- There is no search on the main thread, not even as a fallback: if the worker cannot be started the track simply has no lyrics.
+- Only `lyrics_manager_cancel_fetch` never blocks. `lyrics_manager_cancel_track_work` still joins the artwork and translation workers.
+- Shutdown calls `lyrics_manager_shutdown`, which waits up to 2 s for fetch workers to return before libcurl is torn down, then exits without a stuck one.
+
+#66 moves the artwork worker to this scheme; the hand-over and the worker counter should then become one shared helper (one shutdown wait for the whole process, not one per worker kind).
 
 ### Worker Threads Do Not Read the Config
 

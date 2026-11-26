@@ -353,12 +353,14 @@ static void monitor_track_and_files(struct lyrics_state *state, int *update_coun
     // Skipped while a fetch is running. That is no longer about memory - the
     // worker searches with its own copy of the settings (#67) - but a reload
     // started here would replace that fetch with a same-track reload, and a
-    // track's first load would then lose its artwork and notification. Fetches
-    // are short; the check just waits for the next round.
+    // track's first load would then lose its artwork and notification. A fetch
+    // is normally short and the check just waits for the next round; while one
+    // is stuck on a file system that does not answer, a saved settings.ini is
+    // not picked up until the track changes or the search returns.
     // The counter advances on every tick, so it is updated outside the condition.
     const bool check_due = (*update_counter % TRACK_UPDATE_CHECK_INTERVAL == 0);
     (*update_counter)++;
-    if (check_due && !state->playback.async_fetch.thread_active) {
+    if (check_due && !state->playback.async_fetch.job) {
         // Config first. If the translation settings changed, this starts a
         // reload fetch, which empties the lyrics, so the check below is skipped
         // and the two reloads cannot both fire in one round.
@@ -520,7 +522,7 @@ static void cleanup_resources(struct lyrics_state *state, char *font_from_config
     dbus_control_cleanup();
     system_tray_cleanup();
     lyrics_file_watch_stop();
-    lyrics_manager_cancel_track_work(state);
+    lyrics_manager_shutdown(state);
     lrc_free_data(&state->playback.lyrics);
     mpris_free_metadata(&state->playback.current_track);
     mpris_cleanup();

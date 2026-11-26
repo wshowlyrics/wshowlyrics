@@ -10,6 +10,7 @@
 #include "../../constants.h"
 #include "../../utils/file/file_utils.h"
 #include "../../utils/string/string_utils.h"
+#include "../../utils/thread/thread_cancel.h"
 #include "../../utils/url/url_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -87,6 +88,12 @@ static char* sanitize_filename(const char *str) {
 }
 
 static bool try_load_lyrics_file(const char *path, struct lyrics_data *data) {
+    // A search that was dropped (track change) may only now be coming back
+    // from a file system that had stopped answering; it looks no further
+    if (thread_cancel_requested()) {
+        return false;
+    }
+
     // Check file extension to determine parser
     // Note: No stat() call here to avoid TOCTOU race condition
     // Parser functions will handle missing/inaccessible files
@@ -719,7 +726,12 @@ static void cache_lrclib_lyrics(const struct track_metadata *track, struct lyric
         return;
     }
 
-    FILE *f = fopen_private(cache_path);
+    // Written under a name of this thread's own and renamed into place: a
+    // dropped search and its successor can be alive at once for the same
+    // track, and neither may read or overwrite a half-written cache file
+    char tmp_path[sizeof(cache_path) + 32];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.%d.tmp", cache_path, (int)gettid());
+    FILE *f = fopen_private(tmp_path);
 
     if (!f) {
         log_warn("Failed to cache lyrics");
@@ -741,7 +753,11 @@ static void cache_lrclib_lyrics(const struct track_metadata *track, struct lyric
                line->text);
         line = line->next;
     }
-    fclose(f);
+    if (fclose(f) != 0 || rename(tmp_path, cache_path) != 0) {
+        log_warn("Failed to cache lyrics");
+        unlink(tmp_path);
+        return;
+    }
     log_info("Cached lyrics: %s", sanitize_path(cache_path));
 
     // Calculate MD5 checksum of cached file
@@ -757,6 +773,10 @@ static bool try_providers(const struct track_metadata *track, struct lyrics_data
                          int64_t duration_ms, const char *metadata_hash,
                          bool *tried_local, bool *tried_lrclib) {
     for (int i = 0; providers[i]; i++) {
+        // A dropped search does not go on to the next provider
+        if (thread_cancel_requested()) {
+            return false;
+        }
         if (should_skip_provider(providers[i])) {
             continue;
         }
@@ -776,8 +796,10 @@ static bool try_providers(const struct track_metadata *track, struct lyrics_data
 
         log_success("Found lyrics via %s provider", providers[i]->name);
 
-        // If lyrics came from lrclib, cache them first
-        if (strcmp(providers[i]->name, "lrclib") == 0 && metadata_hash) {
+        // If lyrics came from lrclib, cache them first. Not for a dropped
+        // search: nobody will use its result.
+        if (strcmp(providers[i]->name, "lrclib") == 0 && metadata_hash &&
+            !thread_cancel_requested()) {
             cache_lrclib_lyrics(track, data, metadata_hash);
         }
 
@@ -850,8 +872,11 @@ static bool find_for_track(struct track_metadata *track, struct lyrics_data *dat
         return true;
     }
 
-    // Provide helpful feedback based on what happened
-    log_search_feedback(tried_local, tried_lrclib);
+    // Provide helpful feedback based on what happened (not for a dropped
+    // search, which did not look everywhere)
+    if (!thread_cancel_requested()) {
+        log_search_feedback(tried_local, tried_lrclib);
+    }
     return false;
 }
 
