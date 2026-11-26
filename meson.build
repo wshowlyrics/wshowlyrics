@@ -140,6 +140,7 @@ executable(
 		'src/utils/lock/lock_file.c',
 		'src/utils/runtime/runtime_dir.c',
 		'src/utils/thread/thread_cancel.c',
+		'src/utils/thread/worker_handoff.c',
 		'src/utils/lang_detect/lang_detect.c',
 		'src/utils/render/render_common.c',
 		'src/utils/render/ruby_render.c',
