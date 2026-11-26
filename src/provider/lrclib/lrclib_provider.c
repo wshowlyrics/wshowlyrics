@@ -10,6 +10,14 @@
 #include <string.h>
 #include <curl/curl.h>
 
+// How far a search result's length may be from the track's and still be used.
+// The search API matches by name only and returns whatever is closest, so
+// without a limit a 90 s file got the lyrics of a 201 s song with a similar
+// title (#71). The exact-match API (/api/get) allows 2 s; a little more here
+// for a trailing silence or a differently trimmed file. Much more than that
+// and the lyrics would be out of sync even if the song were the right one.
+#define SEARCH_MAX_DURATION_DIFF_MS 5000
+
 // Build search request URL with sanitized title and optional artist
 static bool build_search_request_url(CURL *curl, const char *title, const char *artist,
                                      char *url_buffer, size_t buffer_size) {
@@ -91,7 +99,9 @@ struct best_match_result {
     int64_t duration_diff;
 };
 
-// Find best match from JSON array response based on duration
+// Pick the result whose length is closest to the track's. A result with no
+// synced lyrics is passed over, and so is one that states no length when the
+// track's is known. Whether the closest one is close enough is the caller's call.
 static struct best_match_result find_best_match_in_results(
     const char *response_data, int64_t target_duration_ms) {
 
@@ -132,8 +142,10 @@ static struct best_match_result find_best_match_in_results(
                 result.obj_start = obj_start;
                 synced_lyrics = NULL; // Prevent free below
             }
-        } else if (!result.synced_lyrics) {
-            // No duration to compare, just take first result
+        } else if (target_duration_ms <= 0 && !result.synced_lyrics) {
+            // The track's length is unknown: take the first result. (When it
+            // is known, a result that states no length cannot be checked
+            // against it and is passed over.)
             result.synced_lyrics = synced_lyrics;
             result.obj_start = obj_start;
             synced_lyrics = NULL; // Prevent free below
@@ -181,10 +193,19 @@ static void extract_metadata_from_result(const char *obj_start, struct lyrics_da
 }
 
 // Try search API when we have incomplete metadata (missing artist or album)
-// or when exact match fails. Select best match by duration.
+// or when exact match fails. The result closest in length is used, if it is
+// within SEARCH_MAX_DURATION_DIFF_MS; with neither an artist nor a track length
+// there is nothing to tell songs apart by, and no request is made.
 // Note: Album is intentionally excluded to avoid issues with incorrect album metadata.
 static bool lrclib_search_fallback(const char *title, const char *artist,
                                     int64_t duration_ms, struct lyrics_data *data) {
+    // A title alone, with no length to check the result against, would accept
+    // the first song of that name
+    if (duration_ms <= 0 && (!artist || artist[0] == '\0')) {
+        log_info("lrclib search skipped: no artist and no track length to tell songs apart");
+        return false;
+    }
+
     CURL *curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to initialize CURL");
@@ -226,7 +247,12 @@ static bool lrclib_search_fallback(const char *title, const char *artist,
     struct best_match_result match = find_best_match_in_results(response.data, duration_ms);
 
     bool success = false;
-    if (match.synced_lyrics && match.synced_lyrics[0] != '\0') {
+    if (match.synced_lyrics && duration_ms > 0 &&
+        match.duration_diff > SEARCH_MAX_DURATION_DIFF_MS) {
+        log_info("Closest lrclib search result is %ld ms off the track's length "
+                 "(limit %d ms): another song or another cut, not used",
+                 match.duration_diff, SEARCH_MAX_DURATION_DIFF_MS);
+    } else if (match.synced_lyrics) {
         if (duration_ms > 0) {
             log_info("Selected best match with duration diff: %ld ms", match.duration_diff);
         }
@@ -238,7 +264,7 @@ static bool lrclib_search_fallback(const char *title, const char *artist,
             extract_metadata_from_result(match.obj_start, data);
         }
     } else {
-        log_info("No synced lyrics in search results");
+        log_info("No usable synced lyrics in search results");
     }
 
     free(match.synced_lyrics);
