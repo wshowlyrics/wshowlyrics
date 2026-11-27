@@ -39,7 +39,7 @@
 #define URL_BUFFER_SIZE 2048
 // Name, version and home page: lrclib.net asks clients to identify themselves
 // this way and gives a named client a higher rate limit (#22)
-#define USER_AGENT_STRING "wshowlyrics/0.11.2 (https://github.com/wshowlyrics/wshowlyrics)"
+#define USER_AGENT_STRING "wshowlyrics/0.12.0 (https://github.com/wshowlyrics/wshowlyrics)"
 
 // File size limits
 #define MAX_LYRICS_FILE_SIZE (10 * 1024 * 1024)   // 10 MB
