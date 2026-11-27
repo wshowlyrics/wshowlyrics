@@ -1,0 +1,1 @@
+[ { "trackName" : "spaced" , "duration" : 200.5 , "syncedLyrics" : "[00:01.00] a" , "nested" : { "x" : "}" } } , {"syncedLyrics":"[00:02.00] b \\","duration":201},{"syncedLyrics":"no duration here"},{"duration":199,"syncedLyrics":"[00:03.00] c"}]

@@ -11,7 +11,8 @@
 // The search result chosen by lrclib_find_best_match.
 struct lrclib_match {
     char *synced_lyrics;    // owned (free); NULL if no result could be used
-    const char *obj_start;  // the result's JSON object, inside the response
+    const char *obj_start;  // the result's JSON object, inside the response:
+    const char *obj_end;    // its opening and its closing brace
     int64_t duration_diff;  // |result length - track length| in ms; INT64_MAX
                             // if the lengths were not compared
 };

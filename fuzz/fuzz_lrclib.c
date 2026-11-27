@@ -24,6 +24,10 @@ int LLVMFuzzerInitialize(int *argc, char ***argv) {
     return 0;
 }
 
+static void extract_string_in(const struct lrclib_match *match, const char *key) {
+    free(json_extract_string_in(match->obj_start, match->obj_end, key));
+}
+
 static void extract_string(const char *json, const char *key) {
     free(json_extract_string(json, key));
 }
@@ -43,7 +47,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     extract_string(input, "artistName");
     extract_string(input, "albumName");
     extract_string(input, "trackName");
-    extract_string(input, "resultCount");
+    (void)json_extract_int(input, "resultCount");
     extract_string(input, "artworkUrl100");
     (void)json_extract_int(input, "duration");
 
@@ -55,9 +59,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             struct lrclib_match match = lrclib_find_best_match(input, targets[i]);
             if (match.obj_start) {
                 // What extract_metadata_from_result reads from the chosen result
-                extract_string(match.obj_start, "artistName");
-                extract_string(match.obj_start, "albumName");
-                extract_string(match.obj_start, "trackName");
+                extract_string_in(&match, "artistName");
+                extract_string_in(&match, "albumName");
+                extract_string_in(&match, "trackName");
             }
             free(match.synced_lyrics);
         }

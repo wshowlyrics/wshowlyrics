@@ -51,16 +51,10 @@ static bool setup_itunes_request(CURL *curl, const char *url,
 
 // Helper: Extract artwork URL from iTunes API response
 static char* extract_artwork_from_response(const char *response_data) {
-    // Check result count
-    char *result_count_str = json_extract_string(response_data, "resultCount");
-    if (result_count_str) {
-        int result_count = atoi(result_count_str);
-        free(result_count_str);
-
-        if (result_count == 0) {
-            log_info("iTunes API: no tracks found");
-            return NULL;
-        }
+    // resultCount is a number; -1 (not stated) goes on to look for the URL
+    if (json_extract_int(response_data, "resultCount") == 0) {
+        log_info("iTunes API: no tracks found");
+        return NULL;
     }
 
     // Extract artworkUrl100 from first result

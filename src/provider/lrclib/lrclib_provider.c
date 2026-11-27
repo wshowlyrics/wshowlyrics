@@ -250,12 +250,12 @@ static bool build_get_request_url(CURL *curl, const char *title, const char *art
 }
 
 // Extract and update metadata from matched result
-static void extract_metadata_from_result(const char *obj_start, struct lyrics_data *data) {
-    if (!obj_start) return;
+static void extract_metadata_from_result(const struct lrclib_match *match, struct lyrics_data *data) {
+    if (!match->obj_start) return;
 
-    char *artist_name = json_extract_string(obj_start, "artistName");
-    char *album_name = json_extract_string(obj_start, "albumName");
-    char *track_name = json_extract_string(obj_start, "trackName");
+    char *artist_name = json_extract_string_in(match->obj_start, match->obj_end, "artistName");
+    char *album_name = json_extract_string_in(match->obj_start, match->obj_end, "albumName");
+    char *track_name = json_extract_string_in(match->obj_start, match->obj_end, "trackName");
 
     if (artist_name && artist_name[0] != '\0') {
         free(data->metadata.artist);
@@ -335,7 +335,7 @@ static enum lrclib_outcome lrclib_search_by_name(struct lrclib_session *session,
         success = lrc_parse_string(match.synced_lyrics, data);
 
         if (success) {
-            extract_metadata_from_result(match.obj_start, data);
+            extract_metadata_from_result(&match, data);
         }
     } else {
         log_info("No usable synced lyrics in search results");
