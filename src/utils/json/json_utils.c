@@ -84,13 +84,15 @@ char* json_extract_string_in(const char *start, const char *end, const char *key
     }
 
     size_t out = 0;
-    for (size_t i = 0; i < len; i++) {
+    size_t i = 0;
+    while (i < len) {
         const char plain = (value[i] == '\\' && i + 1 < len) ? unescaped(value[i + 1]) : 0;
         if (plain) {
             result[out++] = plain;
-            i++;
+            i += 2;
         } else {
             result[out++] = value[i];
+            i++;
         }
     }
     result[out] = '\0';

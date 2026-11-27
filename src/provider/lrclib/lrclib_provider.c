@@ -402,7 +402,7 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
         return false;
     }
 
-    struct lrclib_session session = { .curl = curl_easy_init() };
+    struct lrclib_session session = { .curl = curl_handle_new() };
     if (!session.curl) {
         log_error("Failed to initialize CURL");
         return false;

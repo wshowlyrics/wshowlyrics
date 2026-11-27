@@ -65,7 +65,7 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
         return NULL;
     }
 
-    CURL *curl = curl_easy_init();
+    CURL *curl = curl_handle_new();
     if (!curl) {
         log_error("Failed to initialize CURL for iTunes search");
         return NULL;

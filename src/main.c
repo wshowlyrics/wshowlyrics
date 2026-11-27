@@ -56,7 +56,7 @@ static int handle_purge_option(const char *arg) {
 
 // Fetch and display detailed help from GitHub
 static bool display_detailed_help(const char *program_name) {
-    CURL *curl = curl_easy_init();
+    CURL *curl = curl_handle_new();
     if (!curl) {
         return false;
     }

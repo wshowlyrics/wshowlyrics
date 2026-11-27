@@ -103,7 +103,7 @@ static bool is_allowed_image_format(const unsigned char *data, size_t len) {
 // Download image from URL to memory. The body is limited to
 // MAX_ARTWORK_DOWNLOAD_BYTES, announced or not (see curl_write_to_memory).
 static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
-    CURL *curl = curl_easy_init();
+    CURL *curl = curl_handle_new();
     if (!curl) {
         return false;
     }

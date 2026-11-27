@@ -57,6 +57,16 @@ size_t curl_write_to_memory(void *contents, size_t size, size_t nmemb, void *use
     return realsize;
 }
 
+CURL *curl_handle_new(void) {
+    CURL *curl = curl_easy_init();
+    if (curl && curl_easy_setopt(curl, CURLOPT_SSLVERSION,
+                                 (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
+        curl_easy_cleanup(curl);
+        curl = NULL;
+    }
+    return curl;
+}
+
 bool curl_setup_get(CURL *curl, const char *url, struct curl_memory_buffer *response) {
     return curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) == CURLE_OK &&
            curl_easy_setopt(curl, CURLOPT_URL, url) == CURLE_OK &&

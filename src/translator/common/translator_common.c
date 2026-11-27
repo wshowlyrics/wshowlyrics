@@ -1057,19 +1057,10 @@ char* translator_perform_http_request(const struct translator_http_params *param
         return NULL;
     }
 
-    // Create thread-local CURL handle to avoid race conditions
-    CURL *local_curl = curl_easy_init();
+    // A handle of this thread's own (never shared), TLS 1.2 or newer
+    CURL *local_curl = curl_handle_new();
     if (!local_curl) {
         log_error("%s: Failed to initialize CURL for translation", params->provider_name);
-        return NULL;
-    }
-
-    // Enforce TLS 1.2 minimum (allows TLS 1.2, 1.3, and future versions)
-    // Excludes weak protocols: SSL 2.0/3.0, TLS 1.0/1.1
-    CURLcode setopt_res = curl_easy_setopt(local_curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
-    if (setopt_res != CURLE_OK) {
-        log_error("%s: Failed to set SSL version: %s", params->provider_name, curl_easy_strerror(setopt_res));
-        curl_easy_cleanup(local_curl);
         return NULL;
     }
 

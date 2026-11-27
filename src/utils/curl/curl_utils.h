@@ -31,6 +31,11 @@ void curl_memory_buffer_free(struct curl_memory_buffer *buffer);
 // CURLE_FILESIZE_EXCEEDED when libcurl (8.4 and newer) notices first.
 size_t curl_write_to_memory(void *contents, size_t size, size_t nmemb, void *userp);
 
+// A new handle that will not speak anything older than TLS 1.2. Every handle
+// here is made this way rather than with curl_easy_init, so that the floor is
+// there from the start and in one place. NULL on failure.
+CURL *curl_handle_new(void);
+
 // Set a handle up to GET url into response, the way every plain download here
 // is made: TLS 1.2 or newer, our User-Agent, 10 s in all and 5 s to connect,
 // redirects followed, no signals, the body limited to response->max_size, and
