@@ -22,6 +22,7 @@ bool curl_install_thread_cancel(CURL *curl) {
 void curl_memory_buffer_init(struct curl_memory_buffer *buffer) {
     buffer->data = NULL;
     buffer->size = 0;
+    buffer->max_size = CURL_RESPONSE_MAX_BYTES;
 }
 
 void curl_memory_buffer_free(struct curl_memory_buffer *buffer) {
@@ -33,6 +34,14 @@ void curl_memory_buffer_free(struct curl_memory_buffer *buffer) {
 size_t curl_write_to_memory(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     struct curl_memory_buffer *mem = (struct curl_memory_buffer *)userp;
+
+    // libcurl before 8.4 (Ubuntu 22.04 ships 7.81) applies CURLOPT_MAXFILESIZE
+    // to an announced length only, so the limit is also enforced here as the
+    // body arrives. Newer libcurl stops such a transfer itself, before this.
+    if (mem->size > mem->max_size || realsize > mem->max_size - mem->size) {
+        log_warn("Response body exceeds %zu bytes, transfer aborted", mem->max_size);
+        return 0;
+    }
 
     char *ptr = realloc(mem->data, mem->size + realsize + 1);
     if (!ptr) {
@@ -46,6 +55,21 @@ size_t curl_write_to_memory(void *contents, size_t size, size_t nmemb, void *use
     mem->data[mem->size] = 0;
 
     return realsize;
+}
+
+bool curl_setup_get(CURL *curl, const char *url, struct curl_memory_buffer *response) {
+    return curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_URL, url) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_MAXFILESIZE_LARGE,
+                            (curl_off_t)response->max_size) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) == CURLE_OK &&
+           curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) == CURLE_OK &&
+           curl_install_thread_cancel(curl);
 }
 
 char* curl_url_encode(CURL *curl, const char *str) {

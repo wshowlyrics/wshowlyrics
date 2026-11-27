@@ -80,19 +80,6 @@ static enum lrclib_outcome classify_transfer(CURLcode res, long http_code) {
     return LRCLIB_REJECTED;
 }
 
-// The options every request of a lookup shares; set once per session
-static bool setup_session(CURL *curl) {
-    // TLS 1.2 or higher
-    return curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) == CURLE_OK &&
-           curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) == CURLE_OK &&
-           curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) == CURLE_OK &&
-           curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) == CURLE_OK &&
-           curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) == CURLE_OK &&
-           curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) == CURLE_OK &&
-           curl_install_thread_cancel(curl) &&
-           curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) == CURLE_OK;
-}
-
 // How long to wait before the next attempt: the schedule above, or what the
 // server asked for if that is longer. Negative if it asked for too long.
 static int retry_wait_ms(const struct lrclib_session *session) {
@@ -133,8 +120,7 @@ static enum lrclib_outcome attempt_request(struct lrclib_session *session, const
                                            struct curl_memory_buffer *response) {
     CURL *curl = session->curl;
     curl_memory_buffer_init(response);
-    if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response) != CURLE_OK) {
+    if (!curl_setup_get(curl, url, response)) {
         log_error("lrclib: Failed to set CURL options");
         return LRCLIB_UNAVAILABLE;
     }
@@ -422,12 +408,8 @@ static bool lrclib_search(const char *title, const char *artist, const char *alb
         return false;
     }
 
-    bool found = false;
-    if (setup_session(session.curl)) {
-        found = lrclib_lookup(&session, title, artist, album, duration_ms, data) == LRCLIB_OK;
-    } else {
-        log_error("lrclib: Failed to set CURL options");
-    }
+    const bool found =
+        lrclib_lookup(&session, title, artist, album, duration_ms, data) == LRCLIB_OK;
 
     curl_easy_cleanup(session.curl);
     return found;

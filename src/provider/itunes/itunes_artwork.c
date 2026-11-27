@@ -31,24 +31,6 @@ static void build_search_term_with_metadata(char *buffer, size_t buffer_size,
              has_artist ? artist : "none", has_album ? album : "none");
 }
 
-// Helper: Setup CURL options for iTunes request
-static bool setup_itunes_request(CURL *curl, const char *url,
-                                 struct curl_memory_buffer *response) {
-    if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK ||
-        !curl_install_thread_cancel(curl) ||
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK) {
-        log_error("iTunes: Failed to set CURL options");
-        return false;
-    }
-    return true;
-}
-
 // Helper: Extract artwork URL from iTunes API response
 static char* extract_artwork_from_response(const char *response_data) {
     // resultCount is a number; -1 (not stated) goes on to look for the URL
@@ -86,13 +68,6 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
     CURL *curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to initialize CURL for iTunes search");
-        return NULL;
-    }
-
-    // Enforce TLS 1.2 or higher for security
-    if (curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
-        log_error("iTunes: Failed to set SSL version");
-        curl_easy_cleanup(curl);
         return NULL;
     }
 
@@ -136,7 +111,8 @@ char* itunes_search_artwork(const char *artist, const char *album, const char *t
     struct curl_memory_buffer response;
     curl_memory_buffer_init(&response);
 
-    if (!setup_itunes_request(curl, request_url, &response)) {
+    if (!curl_setup_get(curl, request_url, &response)) {
+        log_error("iTunes: Failed to set CURL options");
         curl_memory_buffer_free(&response);
         curl_easy_cleanup(curl);
         return NULL;

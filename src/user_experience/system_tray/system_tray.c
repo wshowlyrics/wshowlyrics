@@ -100,47 +100,19 @@ static bool is_allowed_image_format(const unsigned char *data, size_t len) {
     return false;
 }
 
-// Capped write callback: abort the transfer if artwork exceeds the ceiling
-// (defends against a server that streams without a Content-Length).
-static size_t artwork_write_capped(void *contents, size_t size, size_t nmemb, void *userp) {
-    const struct curl_memory_buffer *mem = (const struct curl_memory_buffer *)userp;
-    size_t realsize = size * nmemb;
-    if (realsize > MAX_ARTWORK_DOWNLOAD_BYTES ||
-        mem->size > MAX_ARTWORK_DOWNLOAD_BYTES - realsize) {
-        log_warn("system_tray: artwork exceeds %d bytes, aborting download",
-                 MAX_ARTWORK_DOWNLOAD_BYTES);
-        return 0;
-    }
-    return curl_write_to_memory(contents, size, nmemb, userp);
-}
-
-// Download image from URL to memory
+// Download image from URL to memory. The body is limited to
+// MAX_ARTWORK_DOWNLOAD_BYTES, announced or not (see curl_write_to_memory).
 static bool download_image(const char *url, struct curl_memory_buffer *buffer) {
     CURL *curl = curl_easy_init();
     if (!curl) {
         return false;
     }
 
-    // Enforce TLS 1.2 or higher for security
-    if (curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2) != CURLE_OK) {
-        log_error("system_tray: Failed to set SSL version");
-        curl_easy_cleanup(curl);
-        return false;
-    }
-
     curl_memory_buffer_init(buffer);
+    buffer->max_size = MAX_ARTWORK_DOWNLOAD_BYTES;
 
-    if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, artwork_write_capped) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)buffer) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_MAXFILESIZE, (long)MAX_ARTWORK_DOWNLOAD_BYTES) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK ||
-        !curl_install_thread_cancel(curl)) {
+    if (!curl_setup_get(curl, url, buffer)) {
         log_error("system_tray: Failed to set CURL options");
-        curl_memory_buffer_free(buffer);
         curl_easy_cleanup(curl);
         return false;
     }

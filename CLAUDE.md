@@ -335,6 +335,10 @@ The lyrics search reads the music file's directory and the artwork lookup resolv
 
 A new worker that can touch the track's file system should use `worker_handoff` rather than a joined thread.
 
+### Plain Downloads Go Through `curl_setup_get`
+
+Every GET into memory - lrclib, iTunes, the artwork download, the `--help` text - sets its handle up with `curl_setup_get(curl, url, &buffer)` (`src/utils/curl/curl_utils.h`): TLS 1.2 or newer, our User-Agent, 10 s in all and 5 s to connect, redirects followed, the thread cancel flag watched, and **the body limited to the buffer's `max_size`**. `curl_memory_buffer_init` sets that to `CURL_RESPONSE_MAX_BYTES` (2 MiB); the artwork download raises it to 8 MiB. The limit is set as `CURLOPT_MAXFILESIZE` and also enforced in the write callback as the body arrives: libcurl before 8.4 (Ubuntu 22.04 has 7.81) applies the option to an announced length only. So an oversized body ends as `CURLE_FILESIZE_EXCEEDED` or `CURLE_WRITE_ERROR` depending on the libcurl - do not branch on which. Do not write another `curl_easy_setopt` chain for a GET - set what differs after the shared call (the help fetch shortens the timeout). The translators POST with their own buffer and callback (`translator_common.c`), which applies the same limit.
+
 ### Worker Threads Do Not Read the Config
 
 Saving `settings.ini` makes the main thread `config_free()` and reload `g_config`, strings included. A worker that reads `g_config` while that happens reads freed memory, so each worker gets its settings **copied when it is started, on the main thread**: the lyrics search takes a `struct lyrics_search_options` (`lyrics_search_options_capture` in `start_fetch`, passed to `lyrics_find_for_track`; #67), the artwork job copies `enable_itunes` (`art_job_new`), the translation thread gets its strings in its thread arguments. Inside `lyrics_provider.c` the search's options are reached through the thread-local `t_options`, set for the length of `lyrics_find_for_track`. Known gap: the translation thread still reads three scalars (`max_retries`, `rate_limit_ms`, `cache_policy`) from the config.

@@ -66,13 +66,9 @@ static bool display_detailed_help(const char *program_name) {
 
     const char *help_url = "https://raw.githubusercontent.com/wshowlyrics/wshowlyrics/refs/heads/master/docs/help.txt";
 
-    if (curl_easy_setopt(curl, CURLOPT_URL, help_url) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_to_memory) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buffer) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L) != CURLE_OK ||
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, USER_AGENT_STRING) != CURLE_OK) {
+    // The shared setup, with a shorter wait: this runs before anything is shown
+    if (!curl_setup_get(curl, help_url, &buffer) ||
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L) != CURLE_OK) {
         curl_memory_buffer_free(&buffer);
         curl_easy_cleanup(curl);
         return false;

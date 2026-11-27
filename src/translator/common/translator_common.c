@@ -523,6 +523,14 @@ size_t translator_curl_write_callback(void *contents, size_t size, size_t nmemb,
     size_t realsize = size * nmemb;
     struct translator_curl_response *response = (struct translator_curl_response *)userp;
 
+    // The same ceiling as every other response read here (curl_utils.h)
+    if (response->size > CURL_RESPONSE_MAX_BYTES ||
+        realsize > CURL_RESPONSE_MAX_BYTES - response->size) {
+        log_warn("translator: response body exceeds %d bytes, transfer aborted",
+                 CURL_RESPONSE_MAX_BYTES);
+        return 0;
+    }
+
     char *ptr = realloc(response->data, response->size + realsize + 1);
     if (!ptr) {
         log_error("translator: Memory allocation failed in CURL callback");
