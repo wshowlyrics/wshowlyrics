@@ -1,6 +1,6 @@
 # TODO: Code Quality & Security Improvements
 
-## 현재 상태 (2026-11-27, 0.12.0 사전 점검까지 — 마지막 푸시 `164c044`, 파이프라인 918 성공, SonarCloud 0건·게이트 OK, Coverity @`fa52690` 0건·@`164c044` 제출됨)
+## 현재 상태 (2026-11-27, **v0.12.0 릴리스** — 태그 592d168, 파이프라인 920 성공, SonarCloud 0건·게이트 OK, Coverity @`fa52690` 0건·@`164c044` 제출됨)
 
 감사 범위: `1d3800a..28e6f06` (69커밋, 그중 `src/`·`meson.build` 변경 29커밋 / 82파일). 이전 감사(2026-07-06)는 1d3800a까지. 11-23에 후속 6커밋(`28e6f06..3a6b2f4`)을 추가 검토.
 
@@ -95,6 +95,7 @@ MQR 심각도(`impactSeverities`) 기준: BLOCKER 1 · HIGH 2 · MEDIUM 6 · LOW
 - 2026-11-27: 4352a2d·2cfa239·fa52690 푸시 — #22 닫힘, Coverity 수동 실행(run 45972126185, fa52690, 46 단위) 제출 성공(결과는 대시보드). **SonarCloud @fa52690: 미해결 4건, 게이트 ERROR** — `c:S886` json_utils.c:87(for 본문에서 루프 변수 증가, 내가 2cfa239에서 넣음), `c:S4423` ×3 lrclib_provider.c:405·itunes_artwork.c:68·system_tray.c:106(TLS 옵션을 `curl_setup_get`으로 옮기자 `curl_easy_init` 호출 지점에서 같은 함수 안의 설정이 안 보여 다시 열림 — 검토가 `curl_utils.c`에 열릴 것으로 예상했으나 실제는 호출 지점). **수정안(작업 트리, 미커밋)**: 루프를 while로; `curl_handle_new()`가 init과 TLS 하한을 한 함수에서 하고 핸들 다섯(번역기 포함)이 모두 그것으로 생성 — 표시가 아니라 코드로 해소. 빌드 3종·검사 프로그램 통과. → **164c044로 로컬 커밋(미푸시)**: 실제 서버 확인 — iTunes(found artwork·no tracks found), `--help`, lrclib 정확 일치(같은 실행의 로그에서 43줄). 번역기 핸들만 미실행. 파이프라인 917은 7개 잡 전부 성공(COPR 포함). 재분석에서 4건이 사라지는지는 푸시 후 확인. **Coverity @fa52690: 사용자 확인(2026-11-27) 결함 0건.**
 - 2026-11-27: 164c044 푸시 → **SonarCloud @164c044: 4건 → 1건, 게이트 ERROR 유지**. 남은 것은 `c:S4423` curl_utils.c:62(키 `AaIca5Tx5B_5k76XjBKg`) — `curl_handle_new` 안의 TLS 1.2 설정 줄 자체. 내 추정(핸들 생성 함수 안에서 설정이 보이면 풀린다)은 틀림: 이 규칙은 TLS 설정 지점마다 열리고, 과거 키들(main.c·translator·lrclib·itunes·tray·deepl 9개)은 정책대로 오탐 표시돼 있다가 이번에 코드가 옮겨지며 FIXED로 닫힘. 이제 표시할 곳이 하나로 줄었음 — 정책(표의 S4423 = falsepositive, 'Code explicitly enforces CURL_SSLVERSION_TLSv1_2')대로 표시 필요, 토큰 파일 없음. `S886`은 해소. 파이프라인 918 진행 중(확인 시점에 build:makepkg 성공, build:fuzz 실행 중).
 - 2026-11-27: 파이프라인 918 성공(7개 잡). **0.12.0 사전 점검**: v0.11.2 이후 74커밋(fix 39·ci 11·docs 8·refactor 7·feat 7). 태그 때만 도는 deb/PPA 빌드 환경을 미리 재현 — `ubuntu:22.04` 컨테이너(gcc 11.4, meson 0.61.2, libcurl 7.81.0, glibc 2.35)에서 HEAD(164c044)가 경고 0으로 빌드됨. NUR이 치환하는 config.c 리터럴 셋 그대로. 릴리스 전 남은 것: S4423 오탐 표시 1건(게이트 ERROR), 번역 경로 실행 확인(핸들 생성·응답 상한 변경 후 미실행), 164c044 Coverity 미실행, 태그 파이프라인 동안 HM-iMac 로그인 유지(docker-modern), 태그에서 닫을 need-verify(#48·#30).
+- 2026-11-27: **v0.12.0 릴리스**. 감사 문서 9ccca27, 버전 커밋 592d168(사용자), 모의 서버 b89d070(`tests/lrclib-mock/`)을 master로 푸시 → 파이프라인 919 성공(7개 잡) → 서명 태그 `v0.12.0`(592d168) 푸시 → **태그 파이프라인 920 성공(14개 잡)**. GitHub 릴리스 v0.12.0 생성(deb·rpm·AppImage+asc 등 자산 8개), COPR 빌드 11399417 succeeded. 이 태그를 기다리던 `need-verify` 넷을 조건 대조 후 **Done**으로 닫음: #48(copr-stable 통과; Alpine `sh`의 `.wait-github-tag`는 오류 없이 지나갔으나 미러에 태그가 이미 있어 기다리는 분기는 실행 안 됨), #30(소요 시간을 #28에 기록: ppa:tarball 612→57초, github-release 844→52초), #38, #37. #10은 #22가 닫혀 `blocked:prereq` 해제·`priority::low`(weight는 시작 때 Task로 나눠서; TSan 항목은 #60·#62로 전제가 바뀌어 다시 적어야 함). 모의 빌드용 임시 디렉터리 이름의 `lrclib`가 로그 필터에 걸리던 것은 커밋 전에 고침. Coverity @164c044 결과는 아직 전달받지 못함.
 - 2026-11-25: 추적 방식 메모 — 11-23의 SEC-5부터 수정마다 이슈를 만들고 `Closes #N`으로 닫는 흐름이 되면서, 후속 건까지 이슈로 나가 이틀간 #49~#64가 생김(사용자 지적: "이슈가 스팸수준"). **이 문서가 감사 항목의 추적 원본**이고, 이슈는 커밋을 닫을 대상이 필요할 때와 감사와 무관하게 따로 일정이 잡힐 건에만 쓴다. 정리 단계에서 나온 관련 건은 진행 중인 이슈에 넣는다.
 
 ---
@@ -347,9 +348,9 @@ struct lyrics_state {
 
 ## 상태
 
-- **최종 업데이트**: 2026-11-27 (`164c044`까지 푸시, 0.12.0 사전 점검)
+- **최종 업데이트**: 2026-11-27 (v0.12.0 릴리스, 태그 파이프라인 920 성공)
 - **현재 단계**: 2026-11-25~27에 열린 이슈 #41·#59·#60·#63·#62(Task #65~#69)·#71·#22를 닫음. 그 뒤 이슈 없이 한 일: 응답 크기 상한과 GET 설정 통합(fa52690), 핸들 생성 통합(164c044). SonarCloud @164c044는 `c:S4423` 1건(curl_utils.c, 키 `AaIca5Tx5B_5k76XjBKg`)을 사용자가 오탐 표시해 **0건·게이트 OK**(2026-11-27 재조회). Coverity는 fa52690에서 0건(사용자 확인), 164c044는 제출만 됨(run 45988754705) — 대시보드 확인 필요. 번역 경로는 164c044 빌드로 실행 확인(`[1/56] Translated`). 시험 잔여물 정리함(sshfs 재현 마운트 해제, scratchpad 시험 파일 삭제, `build-mock` 삭제; 실제 캐시는 이미 비워져 있었음). `scratchpad/i22`에 모의 서버(`mock.py`)·시험 스크립트 넷만 남김 — tmpfs라 재부팅 시 사라짐, 저장소에 둘지는 미정.
-- **0.12.0 전 남은 것**: Coverity @164c044 결과 확인; 태그 파이프라인 동안 HM-iMac 로그인 유지(docker-modern); 태그에서 `need-verify` #48·#30 확인. Ubuntu 22.04(gcc 11.4·libcurl 7.81) 빌드는 컨테이너로 미리 확인함(경고 0).
+- **v0.12.0 릴리스됨(2026-11-27)**: 태그 `v0.12.0` = 592d168, 파이프라인 920 성공. 남은 확인은 Coverity @164c044 결과뿐(릴리스 커밋과는 버전 문자열 한 줄 차이).
 - **완료**: Phase 1-14 + 2026-05-02 SonarCloud 마킹 + TINY 묶음 (c15cdb9) + R1 (9007eec) + R2-A (6b55f10) + R12-A (43a6366)
   - **2026-07-06 세션**: SEC-1 (38d1a85) · R13+R17 (6fcfc72) · SEC-2 (89530c9) · R14~R16 (bb8b0cc) · SEC-3/4 (f992c86) · R7 (1d3800a)
   - **이후**: SonarCloud S912/S5443/S5847 (b7f50a8) · NUR 리터럴 복원 (afa4a6a) · fuzz url_decode (8fdf3a3) · Coverity CID 1697552 (1fc4295) · CI-1 Coverity 워크플로 복구 (424c2cf) · SEC-5 notify-send `--` (af72173, #49) · R21 BLOCKER/HIGH (e4a990a, 1c8afd8) · R18+R19 번역 취소·타임아웃 (8fa788e, #53) · R22 플레이어 소멸 시 fetch 취소 (0383670, #54) · pthread_cancel 폴백 제거 (949a700, #56) · R21 15건 (e9eef27) · SEC-7·R24·SEC-6 (b718934) · R23 (0396394) · R26(a) (a19df73) · 썸네일 20% 지점 (4f2c558, #57) · R20 (a)(b) 아트 조회 worker화 (80669d4, #61) · R27 확장자 (1d831b0, #55 / 5b852ec) · R20 (c) 재검색·재로드 worker화 (e2bccaf, 69a7eb1, #64)
