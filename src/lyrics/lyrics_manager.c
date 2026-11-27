@@ -61,7 +61,7 @@ static void cancel_and_wait_translation(struct lyrics_data *lyrics) {
     // can leave their internal locks held and stall the next request, and it
     // skips the thread's own cleanup and cache save. Its waits and requests all
     // watch the cancel flag and are bounded by timeouts (see
-    // translator_sleep_cancellable / curl_install_thread_cancel), so it exits
+    // thread_cancel_sleep_ms / curl_install_thread_cancel), so it exits
     // on its own; a slow exit is reported instead of papered over.
     struct timespec start;
     struct timespec end;

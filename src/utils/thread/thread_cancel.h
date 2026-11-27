@@ -17,4 +17,9 @@ void thread_cancel_bind(const _Atomic bool *flag);
 // Whether the calling thread has been asked to stop
 bool thread_cancel_requested(void);
 
+// Sleep for delay_ms, waking early if the calling thread is cancelled: a rate
+// limit or a backoff before a retry must not make a track change wait it out.
+// Returns true if the whole delay passed, false if cancelled.
+bool thread_cancel_sleep_ms(int delay_ms);
+
 #endif // THREAD_CANCEL_H

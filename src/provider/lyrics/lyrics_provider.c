@@ -219,10 +219,6 @@ static char** parse_custom_extensions(const char *extensions) {
 // the search's own copy of the settings and never the config.
 static _Thread_local const struct lyrics_search_options *t_options = NULL;
 
-static bool is_set(const char *value) {
-    return value && value[0] != '\0';
-}
-
 void lyrics_search_options_capture(struct lyrics_search_options *options) {
     const struct config *cfg = config_get();
     options->extensions = strdup(cfg->lyrics.extensions ? cfg->lyrics.extensions : "");
@@ -242,7 +238,7 @@ void lyrics_search_options_free(struct lyrics_search_options *options) {
 // Returns NULL-terminated array of extension strings
 // Caller must free the array and all strings
 static char** get_extension_priority(void) {
-    if (!is_set(t_options->extensions)) {
+    if (!str_is_set(t_options->extensions)) {
         return create_default_extensions();
     }
 
@@ -363,7 +359,7 @@ static char* expand_path_token(const char *token, const char *music_file_dir) {
 // Check if the music file's directory matches any entry in ignore_dirs
 // Returns true if the track should be skipped (not searched for lyrics)
 static bool is_track_ignored(const char *music_file_dir) {
-    if (!music_file_dir || !is_set(t_options->ignore_dirs)) {
+    if (!music_file_dir || !str_is_set(t_options->ignore_dirs)) {
         return false;
     }
 
@@ -481,7 +477,7 @@ static int build_search_directories(const char **search_dirs, int max_dirs,
                                     char **allocated_dirs, int *alloc_count) {
     *alloc_count = 0;
 
-    if (is_set(t_options->search_dirs)) {
+    if (str_is_set(t_options->search_dirs)) {
         return build_custom_search_dirs(search_dirs, max_dirs, current_dir,
                                         allocated_dirs, alloc_count);
     }
@@ -639,7 +635,7 @@ static void local_cleanup(void) {
 }
 
 static bool local_is_enabled(const struct lyrics_search_options *options) {
-    return is_set(options->extensions);
+    return str_is_set(options->extensions);
 }
 
 struct lyrics_provider local_provider = {

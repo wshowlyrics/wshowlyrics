@@ -438,31 +438,6 @@ static const char* find_reusable_translation(const struct lyrics_data *data,
 // translation thread only; atomic because that thread changes per track.
 static atomic_bool g_translator_config_rejected = false;
 
-// Longest stretch slept without checking for cancellation
-#define TRANSLATOR_SLEEP_SLICE_MS 50
-
-// Sleep for delay_ms, waking early if the thread is cancelled. Used for the
-// rate limit between requests and for the backoff before a retry, so a track
-// change never has to wait out the whole delay. Returns true if the full delay
-// elapsed, false if cancelled.
-static bool translator_sleep_cancellable(int delay_ms) {
-    int remaining_ms = delay_ms;
-    while (remaining_ms > 0) {
-        if (thread_cancel_requested()) {
-            return false;
-        }
-        const int slice_ms = remaining_ms < TRANSLATOR_SLEEP_SLICE_MS
-                                 ? remaining_ms : TRANSLATOR_SLEEP_SLICE_MS;
-        struct timespec delay = {
-            .tv_sec = 0,
-            .tv_nsec = slice_ms * 1000000L
-        };
-        nanosleep(&delay, NULL);
-        remaining_ms -= slice_ms;
-    }
-    return !thread_cancel_requested();
-}
-
 void translator_check_time_feasibility(struct lyrics_data *data, int rate_limit_ms,
                                         int64_t track_length_us) {
     if (!data || rate_limit_ms <= 0) {
@@ -834,7 +809,7 @@ static void* translator_async_worker(void *arg) {
         // The wait itself can be cut short by a cancel.
         if (!stopped && api_called && line->next) {
             const struct config *cfg = config_get();
-            stopped = !translator_sleep_cancellable(cfg->translation.rate_limit_ms);
+            stopped = !thread_cancel_sleep_ms(cfg->translation.rate_limit_ms);
         }
 
         line = line->next;
@@ -975,7 +950,7 @@ static char* handle_translator_http_response(long http_code,
                                              int attempt, bool *should_retry) {
     *should_retry = false;
 
-    if (http_code == 200) {
+    if (http_code == HTTP_OK) {
         // Success - transfer ownership of response data
         char *data = response->data;
         response->data = NULL;
@@ -991,7 +966,7 @@ static char* handle_translator_http_response(long http_code,
         return NULL;
     }
 
-    const bool retryable = http_code == 429 || http_code >= 500;
+    const bool retryable = http_code == HTTP_TOO_MANY_REQUESTS || http_code >= HTTP_SERVER_ERROR_MIN;
     if (!retryable) {
         // Any other client error (bad request, body too large)
         // comes back the same however often it is sent
@@ -1012,7 +987,7 @@ static char* handle_translator_http_response(long http_code,
     // Sleep before retry (if not last attempt). A cancelled wait gives up the
     // retry instead of sending one more request for a track that is gone.
     if (attempt < params->max_retries) {
-        *should_retry = translator_sleep_cancellable(retry_delay_ms);
+        *should_retry = thread_cancel_sleep_ms(retry_delay_ms);
     }
 
     return NULL;

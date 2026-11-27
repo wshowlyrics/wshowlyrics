@@ -1,2 +1,3 @@
 option('fuzzing', type: 'boolean', value: false, description: 'Build only the fuzz targets, not the main binary (requires clang with libFuzzer)')
 option('fuzz_sanitizer', type: 'combo', choices: ['address', 'none'], value: 'address', description: 'Sanitizer for fuzz targets (none for valgrind)')
+option('lrclib_mock_port', type: 'integer', min: 0, max: 65535, value: 0, description: 'Test builds only: send lrclib requests to http://127.0.0.1:<port> (a mock server) instead of lrclib.net; 0 = off')

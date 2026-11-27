@@ -75,6 +75,11 @@ if get_option('fuzzing')
 	subdir_done()
 endif
 
+# Test builds only: point the lrclib provider at a mock server on this machine
+if get_option('lrclib_mock_port') > 0
+	add_project_arguments('-DLRCLIB_MOCK_PORT=@0@'.format(get_option('lrclib_mock_port')), language: 'c')
+endif
+
 cairo          = dependency('cairo')
 fontconfig     = dependency('fontconfig')
 pango          = dependency('pango')

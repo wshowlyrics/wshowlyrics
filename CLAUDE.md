@@ -197,11 +197,11 @@ references in them use the full path (`wshowlyrics/wshowlyrics#9`), not `#9`.
 Version strings live in two places and **must be synced before tagging**:
 
 1. `meson.build` line 4: `version: 'X.Y.Z'`
-2. `src/constants.h`: `#define USER_AGENT_STRING "wshowlyrics/X.Y.Z"`
+2. `src/constants.h`: `#define USER_AGENT_STRING "wshowlyrics/X.Y.Z (https://github.com/wshowlyrics/wshowlyrics)"`
 
 ```bash
 sed -i "0,/^\tversion: '[^']*'/s//\tversion: 'X.Y.Z'/" meson.build   # anchored: must not touch meson_version
-sed -i 's|"wshowlyrics/[^"]*"|"wshowlyrics/X.Y.Z"|' src/constants.h
+sed -i 's|"wshowlyrics/[0-9][0-9.]*|"wshowlyrics/X.Y.Z|' src/constants.h   # version only: the home page URL after it stays
 git commit -am "chore: Bump version to X.Y.Z"
 git tag -s vX.Y.Z -m "Release vX.Y.Z"
 git push origin master --tags
@@ -221,6 +221,10 @@ Pushing master and the tag together is safe. The master and tag pipelines then r
 `src/provider/lyrics/lyrics_provider.c` searches local files first (same dir as music file → `$XDG_MUSIC_DIR` → `~/.lyrics/` → `$HOME`), then `src/provider/lrclib/lrclib_provider.c` falls back to lrclib.net. **URL decoding is mandatory** for MPRIS file URIs (Korean/Japanese/Unicode paths). Online provider only accepts synced lyrics — plain text is dropped to keep sync intact.
 
 If `[lyrics] extensions` in settings.ini is empty, local search is skipped entirely.
+
+**lrclib requests are classified, and only failures that may pass are retried** (#22). `lrclib_fetch` in `lrclib_provider.c` is the one place a request is made: 200 is `LRCLIB_OK`, 404 `LRCLIB_NOT_FOUND`, another 4xx `LRCLIB_REJECTED` (no retry, but the search API is still asked), and 5xx/429/timeouts/connection errors are retried - three failed attempts per lookup, shared by the exact match (`/api/get`) and the search (`/api/search`), waiting 1 s then 3 s or the server's `Retry-After` if longer (and not at all if it asks for more than 5 s). When the exact match ends without an answer the search is skipped: it is the same server. The waits use `thread_cancel_sleep_ms`, so a track change ends them. `lrclib_lookup` returns the outcome rather than a bool so that a future negative cache (#10) can remember "not found" and never "could not ask". A search result or a cached file is used only within `LRCLIB_MAX_DURATION_DIFF_MS` (5 s) of the track's length (#71); the cache file records that length as `[length:mm:ss]`.
+
+To test the failure paths, build with `meson setup build-mock -Dlrclib_mock_port=8071`: that binary sends lrclib requests to `http://127.0.0.1:8071` (and says so at startup). It is a build-time switch only - there is deliberately no run-time way to redirect the provider.
 
 ### Parsers — All Live Under `src/parser/lrc/`
 
@@ -314,7 +318,7 @@ if (data->translation_thread_active) {
 The three workers (lyrics fetch and artwork in `lyrics_manager.c`, translation in `translator_common.c`) call `thread_cancel_bind(&should_cancel)` once on entry (`src/utils/thread/thread_cancel.h`). The flag is thread-local, so there is nothing to clear and no setter to pair up on the main thread, which only sets the flag and joins (translation) or drops the worker (lyrics fetch and artwork - see below; `worker_handoff_enter` does the bind for those two). Anything that can block on a worker must watch it:
 
 - a curl transfer: `curl_install_thread_cancel(curl)` in its `curl_easy_setopt` chain;
-- a wait or poll loop: `thread_cancel_requested()` (the ffmpeg wait, `translator_sleep_cancellable`).
+- a wait or poll loop: `thread_cancel_requested()` (the ffmpeg wait), or `thread_cancel_sleep_ms()` for a plain delay (the translation rate limit, a backoff before a retry).
 
 A new worker thread that skips the bind is simply never cancelled - no error.
 

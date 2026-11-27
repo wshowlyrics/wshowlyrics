@@ -81,6 +81,7 @@ settings.ini
 # Fuzz testing artifacts
 build-fuzz/
 build-valgrind/
+build-mock/
 fuzz/artifacts/
 crash-*
 leak-*

@@ -37,7 +37,9 @@
 
 // Network buffers
 #define URL_BUFFER_SIZE 2048
-#define USER_AGENT_STRING "wshowlyrics/0.11.2"
+// Name, version and home page: lrclib.net asks clients to identify themselves
+// this way and gives a named client a higher rate limit (#22)
+#define USER_AGENT_STRING "wshowlyrics/0.11.2 (https://github.com/wshowlyrics/wshowlyrics)"
 
 // File size limits
 #define MAX_LYRICS_FILE_SIZE (10 * 1024 * 1024)   // 10 MB
@@ -98,6 +100,9 @@
 // ============================================================================
 
 #define HTTP_OK 200
+#define HTTP_NOT_FOUND 404
+#define HTTP_TOO_MANY_REQUESTS 429
+#define HTTP_SERVER_ERROR_MIN 500
 
 // ============================================================================
 // Event Loop and Timing

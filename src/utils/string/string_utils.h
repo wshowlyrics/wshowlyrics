@@ -2,7 +2,13 @@
 #ifndef _STRING_UTILS_H
 #define _STRING_UTILS_H
 
+#include <stdbool.h>
 #include <stddef.h>
+
+// Whether a string is there and not empty
+static inline bool str_is_set(const char *s) {
+    return s && s[0] != '\0';
+}
 
 // Cut a trailing audio/video file extension (".mkv", ".flac", ...) off name, in
 // place. Case-insensitive. NULL-safe.
